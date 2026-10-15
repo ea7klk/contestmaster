@@ -23,6 +23,9 @@ from backend.app.master_data.fcc import (
     DATASET_KEY as FCC_DATASET_KEY,
 )
 from backend.app.master_data.fcc import (
+    LICENSE_NAME as FCC_LICENSE_NAME,
+)
+from backend.app.master_data.fcc import (
     SOURCE_KEY as FCC_SOURCE_KEY,
 )
 from backend.app.master_data.fcc import (
@@ -153,11 +156,15 @@ def _create_fcc_run(session_factory: sessionmaker[Session]) -> int:
                 source_priority=50,
                 authority_role=MasterDataAuthorityRole.GOVERNING_AUTHORITY,
                 use_terms_url=FCC_TERMS_URL,
-                license_notice="Public Domain U.S. Government",
+                license_notice=FCC_LICENSE_NAME,
                 enabled=True,
             )
             session.add(source)
             session.flush()
+        source.canonical_url = FCC_SOURCE_URL
+        source.use_terms_url = FCC_TERMS_URL
+        source.license_notice = FCC_LICENSE_NAME
+        source.enabled = True
         active = session.scalar(
             select(MasterDataSyncRun).where(
                 MasterDataSyncRun.source_id == source.id,
@@ -190,7 +197,10 @@ def _persist_fcc_data(
 ) -> MasterDataVersion:
     source = session.get(MasterDataSource, run.source_id)
     if source is not None:
-        source.license_notice = "Public Domain U.S. Government"
+        source.canonical_url = FCC_SOURCE_URL
+        source.use_terms_url = FCC_TERMS_URL
+        source.license_notice = FCC_LICENSE_NAME
+        source.enabled = True
     current = session.scalar(
         select(MasterDataVersion).where(
             MasterDataVersion.dataset_key == FCC_DATASET_KEY,

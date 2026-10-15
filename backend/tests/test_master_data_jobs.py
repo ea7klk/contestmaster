@@ -205,6 +205,34 @@ def test_fcc_parser_aggregates_only_us_call_district_codes() -> None:
     assert data.normalized_checksum
 
 
+def test_fcc_import_requires_official_public_domain_metadata(monkeypatch) -> None:
+    import json
+
+    import backend.app.master_data.fcc as fcc
+
+    metadata = {
+        "license": {
+            "name": "Public Domain U.S. Government",
+            "termsLink": "https://www.usa.gov/government-works",
+        }
+    }
+    monkeypatch.setattr(
+        fcc.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: io.BytesIO(json.dumps(metadata).encode()),
+    )
+    fcc._verify_source_license()
+
+    metadata["license"]["name"] = "Unknown terms"
+    monkeypatch.setattr(
+        fcc.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: io.BytesIO(json.dumps(metadata).encode()),
+    )
+    with pytest.raises(ValueError, match="expected public-domain license"):
+        fcc._verify_source_license()
+
+
 def test_fcc_sync_is_idempotent_and_does_not_retain_licensee_records(session_factory) -> None:
     first = sync_fcc_call_districts(session_factory, fcc_fetcher())
     second = sync_fcc_call_districts(session_factory, fcc_fetcher())

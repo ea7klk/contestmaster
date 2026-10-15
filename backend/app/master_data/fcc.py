@@ -14,7 +14,9 @@ from datetime import UTC, datetime
 DATASET_KEY = "call-districts-us"
 SOURCE_KEY = "fcc-uls-amateur"
 SOURCE_URL = "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"
-TERMS_URL = "https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4"
+METADATA_URL = "https://opendata.fcc.gov/api/views/x28i-i4z4"
+TERMS_URL = "https://www.usa.gov/government-works"
+LICENSE_NAME = "Public Domain U.S. Government"
 MAX_ARCHIVE_BYTES = 250_000_000
 MAX_EXPANDED_BYTES = 1_500_000_000
 MIN_LICENSE_RECORDS = 100
@@ -38,6 +40,7 @@ class FCCCallDistrictData:
 
 
 def fetch_amateur_archive() -> tuple[bytes, str, str, datetime]:
+    _verify_source_license()
     request = urllib.request.Request(
         SOURCE_URL,
         headers={"User-Agent": "Contestmaster/0.1 (FCC ULS master-data sync)"},
@@ -50,6 +53,29 @@ def fetch_amateur_archive() -> tuple[bytes, str, str, datetime]:
     retrieved_at = datetime.now(UTC)
     release = modified.strip('"') if modified else retrieved_at.date().isoformat()
     return archive, release, SOURCE_URL, retrieved_at
+
+
+def _verify_source_license() -> None:
+    request = urllib.request.Request(
+        METADATA_URL,
+        headers={"User-Agent": "Contestmaster/0.1 (FCC ULS license metadata check)"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        metadata_bytes = response.read(1_000_001)
+    if len(metadata_bytes) > 1_000_000:
+        raise ValueError("FCC ULS license metadata exceeds the configured size limit")
+    try:
+        metadata = json.loads(metadata_bytes)
+    except json.JSONDecodeError as exc:
+        raise ValueError("FCC ULS license metadata is not valid JSON") from exc
+    license_info = metadata.get("license")
+    if not isinstance(license_info, dict) or license_info.get("name") != LICENSE_NAME:
+        raise ValueError("FCC ULS source no longer declares the expected public-domain license")
+    terms_link = license_info.get("termsLink")
+    if not isinstance(terms_link, str) or not terms_link.startswith("https://www.usa.gov/"):
+        raise ValueError(
+            "FCC ULS source did not provide an approved U.S. government-works terms link"
+        )
 
 
 def parse_amateur_archive(
