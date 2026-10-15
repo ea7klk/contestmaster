@@ -84,6 +84,8 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "callsign_prefixes",
         "audit_events",
         "ruleset_activations",
+        "result_publications",
+        "result_publication_entries",
     } <= tables
     assert "call_districts" not in tables
     assert "iaru_regions" not in tables
@@ -94,9 +96,11 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0012_adjudication_score_details"
+    assert version == "0013_result_publications"
     assert foreign_keys == 1
-    assert {"category_values"} <= {column["name"] for column in inspector.get_columns("entries")}
+    assert {"category_values", "is_late"} <= {
+        column["name"] for column in inspector.get_columns("entries")
+    }
     assert {
         "original_content",
         "import_metadata",
@@ -127,6 +131,11 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert "integer_score_run_detail_insert" in triggers
     assert "integer_score_run_detail_update" in triggers
     assert "integer_qso_score_bonus_insert" in triggers
+    assert "immutable_result_publication_update" in triggers
+    assert "retain_result_publications" in triggers
+    assert "no_entries_in_sealed_publication" in triggers
+    assert "immutable_result_publication_entry_update" in triggers
+    assert "retain_result_publication_entries" in triggers
     assert {
         "bonus_points",
         "adjudicated_score",

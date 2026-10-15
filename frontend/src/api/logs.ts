@@ -47,7 +47,39 @@ export interface ManagedEntry {
   entry_key: string
   category_values: Record<string, string>
   revision_number: number | null
+  revision_id: number | null
   contacts: EntryContact[]
+}
+
+export async function downloadEntryRevision(
+  entryId: number,
+  revisionId: number,
+  receiptToken?: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers()
+  if (receiptToken) headers.set('X-Entry-Receipt', receiptToken)
+  let response: Response
+  try {
+    response = await fetch(
+      `${apiPrefix}/public/entries/${entryId}/revisions/${revisionId}/download`,
+      { headers, credentials: 'same-origin' },
+    )
+  } catch {
+    throw new ApiError('The log download connection could not be reached.')
+  }
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null
+    throw new ApiError(
+      payload?.error?.message ?? `The log download failed with HTTP ${response.status}.`,
+      [],
+      response.status,
+    )
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const filename = disposition.match(/filename="([A-Za-z0-9._-]+)"/)?.[1] ?? `entry-${entryId}.log`
+  return { blob: await response.blob(), filename }
 }
 
 export interface ContactWrite {

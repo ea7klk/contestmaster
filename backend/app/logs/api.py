@@ -13,7 +13,7 @@ from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -36,12 +36,14 @@ from backend.app.models import (
     Entry,
     EntryAccessGrant,
     EntryRevision,
+    EntryStatus,
     LogSubmissionRequest,
     Qso,
     RulesetVersion,
     Station,
 )
 from backend.app.rulesets.persistence import load_ruleset_version
+from backend.app.rulesets.schema import SubmissionRule
 
 router = APIRouter(tags=["log submissions"])
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -159,14 +161,7 @@ async def _read_upload(request: Request) -> tuple[bytes, str | None, str | None]
 
 def _contest_rules(
     session: Session, slug: str
-) -> tuple[
-    int,
-    str,
-    str,
-    list[str] | None,
-    dict[str, str],
-    list[dict[str, object]],
-]:
+) -> tuple[int, str, str, object, str, list[str] | None, dict[str, str], list[dict[str, object]]]:
     contest = session.scalar(select(Contest).where(Contest.slug == slug))
     if contest is None:
         raise HTTPException(status_code=404, detail="Contest not found.")
@@ -180,6 +175,7 @@ def _contest_rules(
     columns = None
     header_fields: dict[str, str] = {}
     mappings: list[dict[str, object]] = []
+    late_policy = "accept_late"
     if contest.ruleset_version_id is not None:
         version = session.get(RulesetVersion, contest.ruleset_version_id)
         if version is None:
@@ -192,13 +188,24 @@ def _contest_rules(
                 mappings = [
                     item.model_dump(mode="json") for item in configured.rule.category_mappings
                 ]
-                break
+            if isinstance(configured.rule, SubmissionRule):
+                late_policy = configured.rule.late_policy
     # Read-only metadata is captured, then release the DB transaction before parsing.
     contest_id = contest.id
     contest_name = contest.name
     contest_slug = contest.slug
+    contest_ends_at = contest.ends_at
     session.rollback()
-    return contest_id, contest_slug, contest_name, columns, header_fields, mappings
+    return (
+        contest_id,
+        contest_slug,
+        contest_name,
+        contest_ends_at,
+        late_policy,
+        columns,
+        header_fields,
+        mappings,
+    )
 
 
 def _validate_log(
@@ -271,9 +278,16 @@ async def submit_log(
         content = content_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="The log file must be UTF-8 encoded.") from exc
-    contest_id, selected_slug, selected_name, columns, header_fields, category_mappings = (
-        _contest_rules(session, contest_slug)
-    )
+    (
+        contest_id,
+        selected_slug,
+        selected_name,
+        contest_ends_at,
+        late_policy,
+        columns,
+        header_fields,
+        category_mappings,
+    ) = _contest_rules(session, contest_slug)
     parsed = parse_cabrillo(content, qso_columns=columns, header_fields=header_fields)
     category_values, validation = _validate_log(
         parsed, selected_slug, selected_name, category_mappings
@@ -302,6 +316,9 @@ async def submit_log(
     key_hash = digest(idempotency_key)
     content_hash = digest(content_bytes)
     receipt_token = _receipt_for_submission(contest_id, idempotency_key, content_hash)
+    is_late = datetime.now(UTC) > contest_ends_at
+    if is_late and late_policy == "reject":
+        raise HTTPException(status_code=409, detail="This contest does not accept late logs.")
     session.execute(text("BEGIN IMMEDIATE"))
     try:
         contest = session.get(Contest, contest_id)
@@ -309,6 +326,7 @@ async def submit_log(
             contest is None
             or contest.status is not ContestStatus.OPEN
             or contest.log_submission_cutoff_at <= datetime.now(UTC)
+            or (is_late and late_policy == "reject")
         ):
             session.rollback()
             raise HTTPException(
@@ -325,6 +343,8 @@ async def submit_log(
             request_key_hash=key_hash,
             content_sha256=content_hash,
             receipt_token=receipt_token,
+            is_late=is_late,
+            late_policy=late_policy,
         )
         session.commit()
     except IdempotencyConflict as exc:
@@ -385,6 +405,8 @@ async def resubmit_log(
     if contest is None:
         raise HTTPException(status_code=404, detail="Entry not found.")
     contest_id, contest_slug, contest_name = contest.id, contest.slug, contest.name
+    contest_ends_at = contest.ends_at
+    late_policy = "accept_late"
     columns: list[str] | None = None
     header_fields: dict[str, str] = {}
     mappings: list[dict[str, object]] = []
@@ -402,7 +424,8 @@ async def resubmit_log(
                     mappings = [
                         item.model_dump(mode="json") for item in configured.rule.category_mappings
                     ]
-                    break
+                if isinstance(configured.rule, SubmissionRule):
+                    late_policy = configured.rule.late_policy
     session.rollback()
     parsed = parse_cabrillo(content, qso_columns=columns, header_fields=header_fields)
     category_values, validation = _validate_log(parsed, contest_slug, contest_name, mappings)
@@ -429,12 +452,28 @@ async def resubmit_log(
 
     session.execute(text("BEGIN IMMEDIATE"))
     current = session.get(Entry, entry_id)
+    current_contest = session.get(Contest, contest_id)
     if current is None:
         session.rollback()
         raise HTTPException(status_code=404, detail="Entry not found.")
     _authorize_entry(
         current, request=request, session=session, receipt=receipt, participant=participant
     )
+    now = datetime.now(UTC)
+    is_late = now > contest_ends_at
+    if current.status in {EntryStatus.WITHDRAWN, EntryStatus.DISQUALIFIED}:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="This entry cannot accept a log revision.")
+    if (
+        current_contest is None
+        or current_contest.status is ContestStatus.PUBLISHED
+        or current_contest.log_submission_cutoff_at <= now
+    ):
+        session.rollback()
+        raise HTTPException(status_code=409, detail="The log submission deadline has passed.")
+    if is_late and late_policy == "reject":
+        session.rollback()
+        raise HTTPException(status_code=409, detail="This contest does not accept late logs.")
     key_hash = digest(idempotency_key)
     content_hash = digest(content_bytes)
     previous = session.scalar(
@@ -467,6 +506,9 @@ async def resubmit_log(
         ),
         received_via="participant_session" if participant is not None else "entry_receipt",
     )
+    current.is_late = is_late
+    if is_late and late_policy == "checklog":
+        current.status = EntryStatus.CHECKLOG
     session.add(
         LogSubmissionRequest(
             contest_id=contest_id,
@@ -576,6 +618,7 @@ def _entry_output(session: Session, entry: Entry) -> dict[str, object]:
         "entry_key": entry.entry_key,
         "category_values": entry.category_values,
         "revision_number": revision.revision_number if revision else None,
+        "revision_id": revision.id if revision else None,
         "contacts": [
             {
                 "id": qso.id,
@@ -601,6 +644,34 @@ def get_entry(
 ) -> dict[str, object]:
     entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
     return _entry_output(session, entry)
+
+
+@router.get("/entries/{entry_id}/revisions/{revision_id}/download")
+def download_entry_revision(
+    entry_id: int,
+    revision_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
+    participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
+) -> Response:
+    entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
+    revision = session.scalar(
+        select(EntryRevision).where(
+            EntryRevision.id == revision_id, EntryRevision.entry_id == entry.id
+        )
+    )
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Entry revision not found.")
+    filename = _filename(revision.original_filename or f"entry-{entry.id}.log")
+    return Response(
+        revision.original_content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Contestmaster-Log-Format": f"{revision.input_format}-source-v1",
+        },
+    )
 
 
 class ContactInput(BaseModel):

@@ -17,6 +17,7 @@ from backend.app.models import (
     Entry,
     EntryAccessGrant,
     EntryRevision,
+    EntryStatus,
     LogSubmissionRequest,
     Participant,
     ParticipantEmail,
@@ -164,6 +165,8 @@ def create_guest_entry(
     request_key_hash: str,
     content_sha256: str,
     receipt_token: str,
+    is_late: bool = False,
+    late_policy: str = "accept_late",
 ) -> tuple[Entry, str, bool]:
     """Create an entry, receipt grant, first revision, and idempotency row together."""
     previous = session.scalar(
@@ -222,6 +225,10 @@ def create_guest_entry(
         participant_id=participant.id,
         submitter_user_id=None,
         entry_key=secrets.token_urlsafe(18),
+        status=EntryStatus.CHECKLOG
+        if is_late and late_policy == "checklog"
+        else EntryStatus.ACCEPTED,
+        is_late=is_late,
     )
     session.add(entry)
     session.flush()

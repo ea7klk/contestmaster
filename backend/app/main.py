@@ -38,6 +38,8 @@ from backend.app.master_data.scheduler import (
 )
 from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
+from backend.app.results.api import public_router as public_results_router
+from backend.app.results.api import router as results_router
 from backend.app.rulesets.api import router as ruleset_router
 
 settings = get_settings()
@@ -104,6 +106,8 @@ app.include_router(master_data_admin_router, prefix=settings.api_prefix)
 app.include_router(contest_router, prefix=f"{settings.api_prefix}/contests")
 app.include_router(public_contest_router, prefix=f"{settings.api_prefix}/public/contests")
 app.include_router(adjudication_router, prefix=settings.api_prefix)
+app.include_router(results_router, prefix=settings.api_prefix)
+app.include_router(public_results_router, prefix=settings.api_prefix)
 
 
 @app.middleware("http")

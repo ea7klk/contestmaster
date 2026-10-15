@@ -48,6 +48,7 @@ watch(() => route.fullPath, refreshIdentity)
       >
       <span class="header-caption">Amateur radio contest engine</span>
       <nav aria-label="Main navigation" class="site-navigation">
+        <RouterLink to="/">Published results</RouterLink>
         <RouterLink to="/manage/contests">Manage contests</RouterLink>
         <RouterLink to="/rulesets/compose">Ruleset composer</RouterLink>
         <RouterLink to="/participant/access">Participant access</RouterLink>

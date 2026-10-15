@@ -28,6 +28,7 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 - Create and configure contest rulesets with a simple graphical rule composer. Configure contest operating times, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
+- Let contest managers review unresolved scoring items, generate result lists, and publish immutable numbered result snapshots. Public standings expose aggregate score explanations and configured entry categories, not raw QSOs or private review data.
 - Track adjudication decisions and score changes for later review.
 - Let global administrators review master-data versions and their effective intervals, provenance, sync outcomes, and references in a protected administration section. Permit deletion only for non-current versions not referenced by a contest or score run.
 
@@ -142,6 +143,10 @@ erDiagram
     ENTRY_REVISION ||--o{ QSO : records
     QSO ||--o{ QSO_DECISION : receives
     ENTRY ||--o{ SCORE_RUN : has
+    CONTEST ||--o{ RESULT_PUBLICATION : publishes
+    RESULT_PUBLICATION ||--o{ RESULT_PUBLICATION_ENTRY : snapshots
+    ENTRY ||--o{ RESULT_PUBLICATION_ENTRY : represents
+    SCORE_RUN ||--o{ RESULT_PUBLICATION_ENTRY : selected_run
     ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
     CONTEST ||--o{ LOG_SUBMISSION_REQUEST : deduplicates
     ENTRY ||--o{ LOG_SUBMISSION_REQUEST : identifies
@@ -233,6 +238,7 @@ erDiagram
         integer participant_id FK
         integer submitter_user_id FK
         text category_values_json
+        integer is_late
         text submitted_at_utc
         text status
     }
@@ -321,6 +327,35 @@ erDiagram
         integer final_score
         integer adjudicated_score
     }
+    RESULT_PUBLICATION {
+        integer id PK
+        integer contest_id FK
+        integer publication_number
+        text source_digest
+        integer entry_count
+        integer withheld_count
+        integer published_by_user_id FK
+        text published_at_utc
+        integer is_sealed
+    }
+    RESULT_PUBLICATION_ENTRY {
+        integer id PK
+        integer publication_id FK
+        integer entry_id FK
+        integer score_run_id FK
+        text callsign
+        text category_values_json
+        text status
+        integer score
+        integer points
+        integer multiplier_count
+        integer bonus_points
+        integer penalty_points
+        integer qso_count
+        integer credited_qso_count
+        integer placement
+        text explanation_json
+    }
     SCORE_RUN_MASTER_DATA_VERSION {
         integer score_run_id PK, FK
         text dataset_key PK
@@ -361,6 +396,8 @@ erDiagram
 - Store contest start, end, and log submission cutoff as separate UTC timestamps with a documented, consistent precision. The cutoff is independent of the operating end time and governs acceptance of new log submissions. SQLite can store them as ISO 8601 text; convert to local time at display or file-format boundaries.
 - Use integer values only for points, bonuses, penalties, multipliers, intermediate score values, and final scores. Never use floating-point or decimal values for scoring. If a published rule yields a fractional result, apply its specified rounding rule and keep the stored result an integer.
 - Keep each score run immutable or auditable: a changed log or ruleset should produce a new run, not silently rewrite the prior explanation.
+- A manager publication copies selected latest completed runs into a sealed, immutable snapshot with a numbered publication and source digest. Re-publication appends a snapshot. Withdrawn entries are excluded; late, checklog, and unresolved entries are withheld by default; reclassified and disqualified entries are included with status labels by default. Disqualified entries have zero score and no placement. A `result_publication` ruleset hook may explicitly change these inclusion booleans.
+- Public standings and `results-v1` JSON/CSV exports are generated from publication snapshots, never from mutable current score-run state. Public responses include aggregate score explanations and configured categories only; original logs remain receipt/participant/manager scoped.
 - Keep ruleset versions, accepted entry revisions, station/QSO input, adjudication decisions, and audit events append-only. A completed score run and its per-QSO explanations are immutable at the database level; corrections create a new revision or score run. Private staff notes can be edited, with material administrative actions recorded in the audit trail.
 - Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
 - Treat JSON configuration and exchange payloads as untrusted input. Validate their schema and preserve the original submitted exchange when a normalized interpretation is stored.

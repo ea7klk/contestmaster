@@ -410,6 +410,27 @@ class WorkflowHookRule(StrictModel):
         | dict[Identifier, StrictInt],
     ] = Field(default_factory=dict, max_length=80)
 
+    @model_validator(mode="after")
+    def validate_publication_policy(self) -> WorkflowHookRule:
+        if self.stage != "publication":
+            return self
+        supported = {
+            "include_late",
+            "include_checklog",
+            "include_needs_review",
+            "include_reclassified",
+            "include_disqualified",
+        }
+        unknown = set(self.parameters) - supported
+        if unknown:
+            raise ValueError(
+                "publication workflow hook has unsupported visibility settings: "
+                + ", ".join(sorted(unknown))
+            )
+        if any(type(value) is not bool for value in self.parameters.values()):
+            raise ValueError("publication visibility settings must be booleans")
+        return self
+
 
 RuleDefinition = Annotated[
     ScheduleRule

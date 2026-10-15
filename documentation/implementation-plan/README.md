@@ -135,10 +135,12 @@ None. All current Phase 0 decisions have been recorded.
 2. Implement public unauthenticated contest discovery and result/standings pages with category, band, mode, status, and other configured grouping filters.
 3. Apply publication rules to late logs, checklogs, withdrawn, reclassified, and disqualified entries; avoid exposing private contact data or internal review notes.
 4. Add paginated/filterable API endpoints and matching responsive Vue tables. Include score explanations and clear status labels for data that is public.
-5. Implement reproducible result exports and versioned downloadable log/result formats required by the selected initial contests.
+5. Implement reproducible `results-v1` JSON/CSV exports and authenticated/receipt-scoped downloads of exact original Cabrillo revisions. The initial release does not assume contest-sponsor-specific result formats; add those only when selected contests define a concrete need.
 6. Implement a shared Vue application footer on every route. List each external licensed dataset used by the application and link directly to its license or use terms; keep this inventory synchronized with enabled master-data sources.
 
 **Exit criteria:** a published contest result is readable without login; private/unpublished contest data is not exposed; manager-only result operations are protected; displayed totals match the persisted score run and exports; every frontend page includes the dataset attribution footer and working license/terms links.
+
+**Publication defaults:** result publication creates an immutable, numbered snapshot of explicitly selected latest completed score runs. Withdrawn entries are excluded. Late, checklog, and unresolved entries are withheld by default; reclassified and disqualified entries are included with clear status labels unless the contest's declarative `result_publication` workflow hook overrides those choices. Disqualified entries receive zero score and no placement. The public interface exposes aggregate score explanations and configured category values only, never QSOs, original files, participant email, or internal review notes. Publishing requires a closed contest and advances it to published; managers can withdraw it to closed before a later publication. Each snapshot records a digest of its source selections for reproducibility.
 
 ### Phase 9 — Hardening and first deployment
 

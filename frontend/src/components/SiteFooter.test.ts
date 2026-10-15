@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 import { router } from '../router'
 import App from '../App.vue'
@@ -46,5 +46,41 @@ describe('SiteFooter', () => {
     expect(wrapper.get('footer').text()).toContain('license and use terms')
     expect(wrapper.get('footer').text()).toContain('open access terms')
     expect(wrapper.get('footer').text()).toContain('UN website terms')
+  })
+
+  it('keeps licensed source links in the shared shell across every frontend route', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ error: { message: 'Authentication is required.' } }),
+          { status: 401 },
+        ),
+      ),
+    )
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } })
+    const paths = [
+      '/',
+      '/contests/public-sprint/results',
+      '/manage/contests/4/results',
+      '/submit-log',
+      '/entries/4/manage',
+      '/sign-in',
+      '/participant/access',
+      '/participant/verify?token=example',
+      '/participant/entries',
+      '/admin/master-data',
+      '/manage/contests',
+      '/rulesets/compose',
+    ]
+    for (const path of paths) {
+      await router.push(path)
+      await flushPromises()
+      expect(wrapper.get('footer').text(), path).toContain('M49 numeric codes are used as published')
+      expect(wrapper.find('footer a[href="https://unstats.un.org/unsd/methodology/m49/overview"]').exists(), path).toBe(true)
+      expect(wrapper.find('footer a[href="https://www.un.org/en/about-us/terms-of-use"]').exists(), path).toBe(true)
+    }
   })
 })

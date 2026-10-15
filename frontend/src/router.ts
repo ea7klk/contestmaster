@@ -9,6 +9,18 @@ export const router = createRouter({
       component: () => import('./views/HomeView.vue'),
     },
     {
+      path: '/contests/:slug/results',
+      name: 'contest-results',
+      component: () => import('./views/ContestResultsView.vue'),
+      props: true,
+    },
+    {
+      path: '/manage/contests/:contestId/results',
+      name: 'contest-results-manager',
+      component: () => import('./views/ContestResultsManagerView.vue'),
+      props: true,
+    },
+    {
       path: '/submit-log',
       name: 'log-submission',
       component: () => import('./views/LogSubmissionView.vue'),

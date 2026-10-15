@@ -369,9 +369,7 @@ def test_contest_mutations_require_session_and_csrf_and_ignore_client_owner(iden
     )
     assert rejected_owner_override.status_code == 422
     payload.pop("owner_user_id")
-    created = client.post(
-        "/api/v1/contests", headers={"X-CSRF-Token": csrf}, json=payload
-    )
+    created = client.post("/api/v1/contests", headers={"X-CSRF-Token": csrf}, json=payload)
     assert created.status_code == 201
     assert created.json()["owner_user_id"] == admin_id
 
@@ -575,11 +573,14 @@ def test_contest_status_requires_ruleset_and_public_routes_only_show_published(
     )
     assert opened.status_code == 200
     assert opened.json()["status"] == "open"
-    assert client.put(
-        f"/api/v1/contests/{contest_id}/status",
-        headers=headers,
-        json={"status": "published"},
-    ).status_code == 409
+    assert (
+        client.put(
+            f"/api/v1/contests/{contest_id}/status",
+            headers=headers,
+            json={"status": "published"},
+        ).status_code
+        == 409
+    )
     closed = client.put(
         f"/api/v1/contests/{contest_id}/status",
         headers=headers,
@@ -591,16 +592,15 @@ def test_contest_status_requires_ruleset_and_public_routes_only_show_published(
         headers=headers,
         json={"status": "published"},
     )
-    assert published.status_code == 200
+    assert published.status_code == 409
     public_list = client.get("/api/v1/public/contests")
     assert public_list.status_code == 200
-    assert [item["slug"] for item in public_list.json()["items"]] == ["status-contest"]
-    assert client.get("/api/v1/public/contests/status-contest").json()["status"] == "published"
+    assert public_list.json()["items"] == []
+    assert client.get("/api/v1/public/contests/status-contest").status_code == 404
     with identity_database() as session:
         assert [event.action for event in session.query(AuditEvent).all()] == [
             "ruleset_version.created",
             "contest.ruleset_activated",
-            "contest.status_changed",
             "contest.status_changed",
             "contest.status_changed",
         ]

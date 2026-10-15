@@ -23,6 +23,7 @@ from backend.app.models import (
     ContestStatus,
     Entry,
     EntryAccessGrant,
+    EntryStatus,
     RulesetVersion,
     SystemRole,
 )
@@ -70,6 +71,13 @@ class ContestStatusChange(BaseModel):
 
     status: ContestStatus
     audit_reason: str | None = Field(default=None, max_length=2000)
+
+
+class EntryStatusChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["accepted", "checklog", "withdrawn", "disqualified"]
+    audit_reason: str = Field(min_length=1, max_length=2000)
 
 
 class EntryGrantChange(BaseModel):
@@ -308,9 +316,13 @@ def change_contest_status(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Contest cannot transition from {contest.status.value} "
-                f"to {payload.status.value}."
+                f"Contest cannot transition from {contest.status.value} to {payload.status.value}."
             ),
+        )
+    if payload.status is ContestStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=409,
+            detail="Publish a generated and reviewed result snapshot through the results endpoint.",
         )
     if payload.status in {ContestStatus.OPEN, ContestStatus.PUBLISHED}:
         if contest.ruleset_version_id is None:
@@ -340,6 +352,53 @@ def change_contest_status(
     session.commit()
     session.refresh(contest)
     return contest_output(contest)
+
+
+@router.put("/{contest_id}/entries/{entry_id}/status", responses=API_ERROR_RESPONSES)
+def change_entry_status(
+    contest_id: int,
+    entry_id: int,
+    payload: EntryStatusChange,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    if contest.id != contest_id:
+        raise HTTPException(status_code=404, detail="Contest not found.")
+    entry = session.scalar(
+        select(Entry).where(Entry.id == entry_id, Entry.contest_id == contest.id)
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    next_status = EntryStatus(payload.status)
+    if entry.status is EntryStatus.WITHDRAWN and next_status is not EntryStatus.ACCEPTED:
+        raise HTTPException(
+            status_code=409, detail="Withdrawn entries can only be reinstated as accepted."
+        )
+    previous = entry.status
+    previous_late = entry.is_late
+    entry.status = next_status
+    if next_status is EntryStatus.ACCEPTED:
+        entry.is_late = False
+    record_audit_event(
+        session,
+        actor_user_id=principal.user_id,
+        action="contest.entry_status_changed",
+        target_type="entry",
+        target_id=entry.id,
+        reason=payload.audit_reason,
+        metadata={
+            "contest_id": contest.id,
+            "from": previous.value,
+            "to": next_status.value,
+            "was_late": previous_late,
+            "late_after": entry.is_late,
+        },
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return {"entry_id": entry.id, "status": entry.status.value}
 
 
 def _token_digest(token: str) -> str:
@@ -396,9 +455,7 @@ def manage_entry_access_grant(
     grant: EntryAccessGrant | None = None
     if payload.operation == "create":
         if live_grants:
-            raise HTTPException(
-                status_code=409, detail="Entry already has active guest access."
-            )
+            raise HTTPException(status_code=409, detail="Entry already has active guest access.")
         grant, token = _issue_entry_grant(
             session,
             entry_id=entry.id,
@@ -473,15 +530,23 @@ def public_contest_output(contest: Contest) -> dict[str, object]:
 @public_router.get("", responses=API_ERROR_RESPONSES)
 def list_published_contests(
     session: Annotated[Session, Depends(get_session)],
+    page: Annotated[Page, Depends(pagination_parameters)],
 ) -> dict[str, object]:
+    condition = Contest.status == ContestStatus.PUBLISHED
+    total = session.scalar(select(func.count()).select_from(Contest).where(condition)) or 0
     contests = list(
         session.scalars(
             select(Contest)
-            .where(Contest.status == ContestStatus.PUBLISHED)
+            .where(condition)
             .order_by(Contest.starts_at.desc(), Contest.id.asc())
+            .offset((page.page - 1) * page.page_size)
+            .limit(page.page_size)
         )
     )
-    return {"items": [public_contest_output(contest) for contest in contests]}
+    return {
+        "items": [public_contest_output(contest) for contest in contests],
+        "meta": page_meta(page, total),
+    }
 
 
 @public_router.get("/{slug}", responses=API_ERROR_RESPONSES)

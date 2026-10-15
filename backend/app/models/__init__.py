@@ -47,6 +47,7 @@ from backend.app.models.master_data import (
     PrefixITUZoneAssignment,
     ScoreRunMasterDataVersion,
 )
+from backend.app.models.results import ResultPublication, ResultPublicationEntry
 from backend.app.models.types import UTCDateTime, utc_now
 
 __all__ = [
@@ -87,6 +88,8 @@ __all__ = [
     "QsoScore",
     "RulesetActivation",
     "RulesetVersion",
+    "ResultPublication",
+    "ResultPublicationEntry",
     "ScoreRun",
     "ScoreRunMasterDataVersion",
     "ScoreRunStatus",

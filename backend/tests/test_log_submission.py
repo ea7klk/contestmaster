@@ -220,6 +220,25 @@ def test_full_log_resubmission_creates_new_revision_and_recovers_receipt_on_retr
         assert session.query(EntryRevision).count() == 2
 
 
+def test_cabrillo_source_download_requires_entry_access_and_is_versioned(log_database):
+    client = TestClient(app)
+    submitted = submit(client).json()
+    entry_id = submitted["entry_id"]
+    revision = client.get(
+        f"/api/v1/public/entries/{entry_id}",
+        headers={"X-Entry-Receipt": submitted["receipt_token"]},
+    ).json()
+    url = f"/api/v1/public/entries/{entry_id}/revisions/{revision['revision_id']}/download"
+
+    assert client.get(url).status_code == 404
+    download = client.get(url, headers={"X-Entry-Receipt": submitted["receipt_token"]})
+    assert download.status_code == 200
+    assert download.headers["X-Contestmaster-Log-Format"] == "cabrillo-source-v1"
+    assert download.headers["Content-Disposition"].endswith('filename="entry.log"')
+    assert "CALLSIGN: EA7KLK" in download.text
+    assert "X-EXTRA: kept for audit" in download.text
+
+
 def test_verified_participant_identity_is_associated_and_can_use_its_session(log_database):
     from hashlib import sha256
 

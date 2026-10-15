@@ -245,6 +245,9 @@ class Entry(Base):
     entry_key: Mapped[str] = mapped_column(String(120), nullable=False)
     category_key: Mapped[str | None] = mapped_column(String(120))
     category_values: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    is_late: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     status: Mapped[EntryStatus] = mapped_column(
         enum_column(EntryStatus, "entry_status"), nullable=False, default=EntryStatus.RECEIVED
     )

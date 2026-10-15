@@ -333,6 +333,9 @@ onMounted(refreshData)
             Edit details
           </button>
         </div>
+        <RouterLink :to="`/manage/contests/${contest.id}/results`">
+          Generate and publish results
+        </RouterLink>
         <dl class="contest-meta">
           <div>
             <dt>Starts</dt>

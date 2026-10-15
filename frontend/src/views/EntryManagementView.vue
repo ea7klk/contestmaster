@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
   addEntryContact,
+  downloadEntryRevision,
   editEntryContact,
   getManagedEntry,
   newIdempotencyKey,
@@ -24,6 +25,7 @@ const message = ref('')
 const file = ref<File | null>(null)
 const uploadProgress = ref(0)
 const uploadKey = ref('')
+const downloading = ref(false)
 const editingContactId = ref<number | null>(null)
 const contact = reactive({
   occurredAt: new Date().toISOString().slice(0, 16),
@@ -193,6 +195,30 @@ async function resubmit() {
   }
 }
 
+async function downloadCurrentRevision() {
+  if (!entry.value?.revision_id || downloading.value) return
+  downloading.value = true
+  error.value = ''
+  try {
+    const result = await downloadEntryRevision(
+      entryId,
+      entry.value.revision_id,
+      receiptToken.value || undefined,
+    )
+    const url = URL.createObjectURL(result.blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = result.filename
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (cause) {
+    error.value =
+      cause instanceof ApiError ? cause.message : 'The submitted log could not be downloaded.'
+  } finally {
+    downloading.value = false
+  }
+}
+
 onMounted(() => {
   readStoredReceipt()
   if (entryId > 0) void loadEntry()
@@ -228,6 +254,15 @@ onMounted(() => {
 
     <div v-else>
       <p>Entry {{ entry.entry_key }} · revision {{ entry.revision_number }}</p>
+      <button
+        v-if="entry.revision_id"
+        class="secondary-button"
+        type="button"
+        :disabled="downloading"
+        @click="downloadCurrentRevision"
+      >
+        {{ downloading ? 'Preparing download…' : 'Download original Cabrillo log (source v1)' }}
+      </button>
       <div class="table-scroll">
         <table>
           <caption class="visually-hidden">
