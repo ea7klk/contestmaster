@@ -19,7 +19,20 @@ describe('SiteFooter', () => {
       'a[href="https://unstats.un.org/unsd/ungegn/meetings/Bureau_Divisions/documents/UNGEGN_Bureau_WGN_November_2023_updated.pdf"]',
     )
     expect(ungegnTerms.text()).toBe('open access terms')
-    for (const link of [license, ungegnTerms]) {
+    const m49Source = wrapper.get(
+      'a[href="https://unstats.un.org/unsd/methodology/m49/overview"]',
+    )
+    expect(m49Source.text()).toBe(
+      'Standard Country or Area Codes for Statistical Use (M49)',
+    )
+    const m49Terms = wrapper.get(
+      'a[href="https://www.un.org/en/about-us/terms-of-use"]',
+    )
+    expect(m49Terms.text()).toBe('UN website terms')
+    expect(wrapper.get('footer').text()).toContain(
+      'M49 numeric codes are used as published, without modification or derived geographic classifications.',
+    )
+    for (const link of [license, ungegnTerms, m49Source, m49Terms]) {
       expect(link.attributes('target')).toBe('_blank')
       expect(link.attributes('rel')).toContain('noreferrer')
     }
@@ -32,5 +45,6 @@ describe('SiteFooter', () => {
 
     expect(wrapper.get('footer').text()).toContain('license and use terms')
     expect(wrapper.get('footer').text()).toContain('open access terms')
+    expect(wrapper.get('footer').text()).toContain('UN website terms')
   })
 })
