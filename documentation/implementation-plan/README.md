@@ -12,7 +12,12 @@ The initial release includes every checked rule type in the system catalog: sche
 
 Record the selected choices in a short architecture decision log before implementation begins. The product documentation fixes the architecture boundaries but does not yet choose these details.
 
-- Python REST framework and validation/schema library. Proposed default: FastAPI with typed request/response schemas and generated OpenAPI.
+### Recorded decisions
+
+- **Python REST framework and validation/schema library:** FastAPI + Pydantic. This fits the API-first design and provides typed request/response schemas with generated OpenAPI.
+
+### Decisions remaining
+
 - ORM and migration tools. Proposed default: SQLAlchemy 2.x and Alembic.
 - Vue toolchain and component strategy. Proposed default: Vue 3, TypeScript, Vite, and a small accessible component set.
 - Authentication method, account recovery, and initial global-administrator provisioning.
