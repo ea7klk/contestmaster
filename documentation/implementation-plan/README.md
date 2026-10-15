@@ -65,8 +65,10 @@ None. All current Phase 0 decisions have been recorded.
 5. Add an internal API scheduler that invokes the job at startup when no active version exists and nightly thereafter. Prevent overlapping executions, expose provisioning status, and report failures. Keep scheduling separate from import logic so a future K3s CronJob can launch the same one-shot command.
 6. Validate keys, completeness, expected counts, cross-references, and effective dates before activation. Preserve the last good version on fetch/parse/validation failure; stage meaningful boundary changes for review.
 7. Preserve applicable license notices with imported artifacts. Do not import or publish restricted data until its permitted use has been established.
+8. Give each dataset version an explicit UTC validity interval. After a contest has started, pin the version of each required dataset whose half-open interval contains the contest start instant to that contest. Store contest-to-version and score-run-to-version references so deletion safeguards and later scoring use the same selected versions. If no version covers the contest start, block scoring that depends on it.
+9. Compare each successfully parsed dataset's canonical checksum with its current version. Record an `unchanged` sync run without creating a `MasterDataVersion` or changing validity intervals when content is identical; create and activate a new version only for a validated data change.
 
-**Exit criteria:** a clean install can load a known CTY release and official call-district feeds for every launch-supported jurisdiction; repeat imports are idempotent; a failed or partial import cannot replace active data; import history and differences are reviewable; the internal API timer and one-shot CLI job are observable and safe to retry.
+**Exit criteria:** a clean install can load a known CTY release and official call-district feeds for every launch-supported jurisdiction; repeat imports are idempotent and unchanged content creates no version; a failed or partial import cannot replace active data; contest-start selection matches effective intervals and pins exact versions; import history and differences are reviewable; the internal API timer and one-shot CLI job are observable and safe to retry.
 
 ### Phase 4 — Ruleset engine and initial rule catalog
 
@@ -92,8 +94,9 @@ None. All current Phase 0 decisions have been recorded.
 4. Build Vue privileged sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, schedule/cutoff, category setup, ruleset selection, and automatic recalculation setting.
 5. Implement contest status/publication transitions and validation before a contest/ruleset is made available. Let managers set guest access expiry and close/revoke or rotate entry grants.
 6. Record administrative changes with actor, time, target, and an audit reason where appropriate.
+7. Build a global-administrator-only master-data version section in the Vue application and matching protected API operations. Show dataset versions, effective intervals, provenance, sync results, and references; allow activation of validated candidates and deletion only for old non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference checks in the API/database, not only in the UI.
 
-**Exit criteria:** API authorization tests show no manager can access another manager's contest; the manager can configure and save a validated contest; public visibility is controlled by publication state.
+**Exit criteria:** API authorization tests show no manager can access another manager's contest or global master-data administration; global administrators can review version history and delete only eligible unreferenced old versions; the manager can configure and save a validated contest; public visibility is controlled by publication state.
 
 ### Phase 6 — Guest log submission and format adapters
 
@@ -119,8 +122,9 @@ None. All current Phase 0 decisions have been recorded.
 4. Implement manual review with reviewer, timestamp, evidence, reason, and superseding decisions that preserve the prior audit trail.
 5. Tie every score run to a stable input log revision, ruleset version, and master-data snapshot where used. Keep prior runs when entries, decisions, or rules change.
 6. Implement contest-level `auto_recalculate_on_upload`: trigger only after an accepted new log is committed; do not trigger for rejected uploads. Make retries safe and expose failed/in-progress runs.
+7. For master-data-dependent rules, use the dataset versions pinned to the contest by the contest-start validity check. Record every selected dataset/version reference on each score run; never substitute the latest active version. Report and block scoring when any required dataset lacks a version valid at contest start.
 
-**Exit criteria:** identical input revisions and versions reproduce identical results; all score fields are integers; each QSO's credit/status and every score component can be explained; automatic recalculation follows the per-contest setting and is safe to retry.
+**Exit criteria:** identical input revisions, ruleset versions, and contest-start master-data version sets reproduce identical results; all score fields are integers; each QSO's credit/status and every score component can be explained; automatic recalculation follows the per-contest setting and is safe to retry.
 
 ### Phase 8 — Result generation and public frontend
 
@@ -157,7 +161,7 @@ None. All current Phase 0 decisions have been recorded.
 5. The backend validates and adjudicates the QSOs, applies duplicate and cross-log rules, and creates an integer-only explainable score run tied to the exact input/rules/master-data versions.
 6. The per-contest recalculation setting is honored. The manager can review decisions, generate a result list, and publish it.
 7. An unauthenticated visitor can view the published standings and allowed score breakdowns; private log content and internal notes remain hidden.
-8. On a clean start, the API immediately invokes the master-data job because no active version exists; thereafter its nightly timer imports or checks Big CTY and configured supplemental sources. It preserves provenance and leaves active data intact if a source fails validation. The same job can run once from CLI.
+8. On a clean start, the API immediately invokes the master-data job because no active version exists; thereafter its nightly timer imports or checks Big CTY and configured supplemental sources. It preserves provenance, creates no duplicate version for unchanged data, and leaves active data intact if a source fails validation. At contest start, it pins the effective master-data version set used by all later scoring. A global administrator can inspect versions and safely delete only unreferenced old versions. The same importer job can run once from CLI.
 
 ## Cross-cutting verification gates
 
@@ -168,6 +172,8 @@ Each implementation issue must include meaningful, behavior-focused unit tests f
 - Guest uploads, manager authorization, administrator privileges, public read access, and unpublished-data privacy have explicit coverage.
 - Import/recalculation retries are idempotent; partial failures do not corrupt logs, master data, or published results.
 - Ruleset/master-data/source changes do not silently alter historical score runs.
+- Contest scoring uses the master-data dataset versions valid at contest start, and unchanged nightly source checks do not create duplicate versions.
+- Only global administrators can manage master-data versions; deletion is rejected while a version is current or referenced by a contest, score run, QSO resolution, or other retained record.
 - SQLite connections use the ORM, foreign keys are enabled, write transactions stay short, and backup/restore is proven.
 
 ## Deferred beyond the initial release

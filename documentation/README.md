@@ -28,6 +28,7 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Track adjudication decisions and score changes for later review.
+- Let global administrators review master-data versions and their effective intervals, provenance, sync outcomes, and references in a protected administration section. Permit deletion only for non-current versions not referenced by a contest or score run.
 
 ### System roles and access
 
@@ -38,6 +39,8 @@ The system has two privileged account roles. A participant is a contest identity
 - **Guest log submitter:** can submit a contest log without an account and use an entry-scoped receipt token to manage that entry. Store only a token hash; the contest manager controls its expiry and can close, revoke, or rotate it. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
 - **Registered participant:** can verify an email address and use a short-lived, single-use email magic link to manage only entries associated with that identity. Participant identity and entry access do not grant privileged system roles.
 - **Public visitor:** can view contest results and standings in the web frontend without an account. Viewing results does not grant contest-management privileges.
+
+Only global administrators can access master-data version management in the web application. The API must enforce the same role restriction. Global administrators can inspect version and sync history, activate validated candidate versions, and delete eligible old versions. Contest managers and public visitors cannot list, activate, or delete shared master data.
 
 ### Later capabilities
 
@@ -100,7 +103,9 @@ flowchart LR
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Contest managers author ruleset configuration through the graphical composer; the API validates and stores versioned configuration. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
-- **Master-data refresh:** the initial single API process invokes a reusable, idempotent import job at startup if no active master-data version exists, then runs it nightly. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, expose provisioning status, keep the last valid version active on failures, and queue interpreted boundary changes for review. Scoring that depends on master data requires a valid active version.
+- **Master-data refresh:** the initial single API process invokes a reusable, idempotent import job at startup if no active master-data version exists, then runs it nightly. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, expose provisioning status, keep the last valid version active on failures, and queue interpreted boundary changes for review. Scoring that depends on master data requires a version valid at the contest's start instant.
+- **Master-data version governance:** each dataset version has an effective UTC interval. For a contest, pin the version of each required dataset whose interval contains the contest start instant; keep those references on the contest and each score run so later source updates cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. A global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
+- **Global administration:** add a master-data version management section visible and accessible only to global administrators. Contest managers and public visitors cannot list, activate, or delete master-data versions.
 - **Initial operations:** start the stack from CLI on one host with SQLite on local storage. Run one API process so the internal timer has a single owner; keep the nightly importer independent of HTTP startup and callable as a standalone job for future K3s scheduling.
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
@@ -110,7 +115,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
 
 ```mermaid
 erDiagram
@@ -121,6 +126,8 @@ erDiagram
     PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
     CONTEST ||--o{ RULESET_VERSION : selects
+    CONTEST ||--o{ CONTEST_MASTER_DATA_VERSION : pins
+    MASTER_DATA_VERSION ||--o{ CONTEST_MASTER_DATA_VERSION : selected_for
     ENTRY ||--o{ ENTRY_REVISION : receives
     ENTRY_REVISION ||--o{ STATION : uses
     ENTRY_REVISION ||--o{ QSO : records
@@ -129,7 +136,8 @@ erDiagram
     ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
     ENTRY_REVISION ||--o{ SCORE_RUN : scores
     RULESET_VERSION ||--o{ SCORE_RUN : evaluates
-    MASTER_DATA_VERSION o|--o{ SCORE_RUN : snapshots
+    SCORE_RUN ||--o{ SCORE_RUN_MASTER_DATA_VERSION : records
+    MASTER_DATA_VERSION ||--o{ SCORE_RUN_MASTER_DATA_VERSION : used_by
     SCORE_RUN ||--o{ QSO_SCORE : explains
     QSO ||--o{ QSO_SCORE : credited_in
     CONTEST_ENTITY o|--o{ QSO : resolves
@@ -154,6 +162,13 @@ erDiagram
         text status
         integer ruleset_version_id FK
         integer auto_recalculate_on_upload
+    }
+    CONTEST_MASTER_DATA_VERSION {
+        integer contest_id PK, FK
+        text dataset_key PK
+        integer master_data_version_id FK
+        text selected_at_utc
+        text contest_start_basis_utc
     }
     PARTICIPANT {
         integer id PK
@@ -245,7 +260,6 @@ erDiagram
         integer entry_id FK
         integer entry_revision_id FK
         integer ruleset_version_id FK
-        integer master_data_version_id FK
         text input_digest
         text ruleset_snapshot_json
         text master_data_snapshot_json
@@ -255,6 +269,11 @@ erDiagram
         integer multiplier_count
         integer penalty_points
         integer final_score
+    }
+    SCORE_RUN_MASTER_DATA_VERSION {
+        integer score_run_id PK, FK
+        text dataset_key PK
+        integer master_data_version_id FK
     }
     QSO_SCORE {
         integer id PK
@@ -365,6 +384,8 @@ erDiagram
         text dataset_key
         text source_release
         text retrieved_at_utc
+        text valid_from_utc
+        text valid_to_utc
         text checksum
         text activated_at_utc
     }
@@ -490,4 +511,6 @@ erDiagram
 
 The diagram is logical rather than a required physical schema. `MASTER_DATA_SOURCE.source_priority` and `authority_role` identify the import order and whether a source is the primary operational feed, a governing authority, or a gap-filling reference. Big CTY has primary operational priority for its supported mappings; CQ/IARU/contest publications govern contest interpretation. `namespace` and `entity_type` distinguish geographic country/area identities (such as M49) from award-defined entities (such as DXCC) and contest-specific entities. Join tables such as `ENTITY_CQ_ZONE`, `ENTITY_ITU_ZONE`, `ENTITY_IARU_REGION`, `ENTITY_ITU_RADIO_REGION`, `IARU_ITU_REGION_MAP`, `PREFIX_CQ_ZONE_ASSIGNMENT`, and `PREFIX_ITU_ZONE_ASSIGNMENT` should carry effective dates, source/version provenance, and optional boundary notes or geometry references. Prefix assignments should support more than one allocation target and time period. A prefix-based zone mapping from Big CTY is the primary operational call-sign resolution mapping; it does not replace entity-to-zone geography or a contest's published boundary rules. Preserve removed records as inactive or expired rows instead of deleting identifiers referenced by historical logs or score runs. All tables and sync operations use the Python ORM and ORM-managed transactions.
 
-Run an initial source check/import at API startup when no valid active version exists, then run one scheduled source check/import each night. Expose whether initial provisioning is pending, active, or failed; scoring that requires the data must wait for a valid active version. Sources with published change feeds or daily transactions can be applied incrementally; static publications should be checked for a changed release, ETag, or checksum. Validate keys, counts, relationships, effective dates, and expected completeness before activation. Retain each prior version and associate score runs with the exact master-data version or snapshot used when the ruleset depends on it. For sources that require human interpretation, the nightly process should create a review candidate rather than silently changing contest classifications.
+Run an initial source check/import at API startup when no valid active version exists, then run one scheduled source check/import each night. Expose whether initial provisioning is pending, active, or failed; scoring that requires the data must wait for a valid version. Sources with published change feeds or daily transactions can be applied incrementally; static publications should be checked for a changed release, ETag, or checksum. Validate keys, counts, relationships, effective dates, and expected completeness before activation. Retain each prior version and associate each contest with the exact version of each required dataset whose effective interval contains its start instant. Use that pinned set for all score runs; never substitute the latest version at scoring time. If no version covers contest start, block dependent scoring and report the missing dataset. For sources that require human interpretation, the nightly process should create a review candidate rather than silently changing contest classifications.
+
+Compare the canonical parsed checksum with the current version for each dataset. When the content is unchanged, record a successful `unchanged` sync outcome but do not create or activate a new `MasterDataVersion` or alter its effective interval. A real change closes the prior interval and starts a new one at activation time. A global administrator can inspect version and sync metadata and activate validated candidate versions in the web UI. Deletion is allowed only for a non-current version with no contest, score-run, QSO-resolution, or other retained-record references; retain versions needed for historical result reproduction.
