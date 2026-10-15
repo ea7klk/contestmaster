@@ -176,4 +176,64 @@ describe('ContestManagerView', () => {
     ).toBe(true)
     expect(wrapper.text()).toContain('Ruleset assigned to Field Day Sprint')
   })
+
+  it('loads an existing contest into the edit form and saves its changed details', async () => {
+    let currentName = 'Summer QSO Party'
+    const updateBodies: Record<string, unknown>[] = []
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        if (path.endsWith('/contests/31') && init?.method === 'PUT') {
+          const payload = JSON.parse(String(init.body)) as Record<
+            string,
+            unknown
+          >
+          updateBodies.push(payload)
+          currentName = String(payload.name)
+          return ok({ ...editableContest, name: currentName })
+        }
+        if (path.includes('/contests')) {
+          return ok({
+            items: [{ ...editableContest, name: currentName }],
+            meta: { page: 1, page_size: 100, total: 1, pages: 1 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountManager()
+    await flushPromises()
+    await wrapper.get('.contest-card .secondary-button').trigger('click')
+    expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
+      'Summer QSO Party',
+    )
+    await wrapper.get('input').setValue('Updated QSO Party')
+    await wrapper.get('.contest-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateBodies[0]?.name).toBe('Updated QSO Party')
+    expect(wrapper.text()).toContain('Updated QSO Party')
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Contest details saved',
+    )
+  })
 })
+
+const editableContest = {
+  id: 31,
+  owner_user_id: 4,
+  name: 'Summer QSO Party',
+  slug: 'summer-qso-party',
+  description: 'Annual contest',
+  starts_at: '2026-07-04T12:00:00Z',
+  ends_at: '2026-07-04T18:00:00Z',
+  log_submission_cutoff_at: '2026-07-11T12:00:00Z',
+  status: 'draft',
+  auto_recalculate_on_upload: false,
+  ruleset_version_id: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
