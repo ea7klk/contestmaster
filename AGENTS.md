@@ -73,6 +73,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 
 ## Changes and documentation
 
+- License Contestmaster's original software under AGPL-3.0-only. Keep its license and copyright notices with distributions. Third-party datasets, contest rules, and other imported materials retain their own terms; the project license does not grant rights to them.
 - Before changing code, inspect the existing structure and follow established conventions.
 - Update API documentation and relevant user or operator documentation when behavior changes.
 - Write meaningful tests alongside implementation. Prefer behavior-focused unit tests for domain rules, parsing, scoring, validation, and state transitions; cover boundary cases and failure paths. Add integration/API/UI tests where unit tests cannot verify cross-layer behavior. Run the relevant tests and record their exact commands and outcomes; do not add tests that only restate implementation details.

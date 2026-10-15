@@ -1,5 +1,9 @@
 # Local development
 
+## Project license
+
+Contestmaster's original source code is licensed under the GNU Affero General Public License version 3 only (SPDX: `AGPL-3.0-only`). See the repository's [`LICENSE`](../../LICENSE) and [`COPYRIGHT`](../../COPYRIGHT) files. Under AGPL section 13, operators of a modified version offered for remote network interaction must provide those users access to the corresponding source. The license applies to project-authored software; external master data, contest rules, and other third-party materials remain subject to their own terms.
+
 ## Requirements
 
 - Python 3.12 and [`uv`](https://docs.astral.sh/uv/).

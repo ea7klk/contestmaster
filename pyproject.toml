@@ -2,6 +2,8 @@
 name = "contestmaster-api"
 version = "0.1.0"
 description = "REST API for the Contestmaster amateur radio contest engine"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "COPYRIGHT"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14,<2",
