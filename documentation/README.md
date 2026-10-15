@@ -22,7 +22,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ### Contest administration
 
-- Configure ruleset options, contest operating times, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
+- Create and configure contest rulesets with a simple graphical rule composer. Configure contest operating times, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Track adjudication decisions and score changes for later review.
@@ -44,13 +44,15 @@ The system has two privileged account roles. A participant is a contest identity
 
 ## Architecture overview
 
-The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
+The Vue application handles contest setup, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
 
 ```mermaid
 flowchart LR
     Participant[Log submitter; account optional] --> Web[Vue web application]
     Visitor[Unauthenticated results viewer] --> Web
     PrivilegedUser[Global administrator or contest manager] --> Web
+    Web --> Composer[Graphical contest rule composer]
+    Composer -->|rule configuration| API[Python REST API]
     Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
     Web -->|public contest results and standings| API
     API -->|privileged actions| Auth[Role and contest-scope authorization]
@@ -67,10 +69,10 @@ flowchart LR
 
 ### Main boundaries
 
-- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, and displays contest results and standings publicly without login. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
+- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides a simple graphical rule composer for contest managers. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
 - **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
-- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Store the ruleset identifier and version with each contest and score run.
+- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Contest managers author ruleset configuration through the graphical composer; the API validates and stores versioned configuration. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
@@ -80,7 +82,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. System accounts are only for global administrators and contest managers; participant records are contest identities and do not require an account. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. System accounts are only for global administrators and contest managers; participant records are contest identities and do not require an account. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
 
 ```mermaid
 erDiagram
