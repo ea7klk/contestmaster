@@ -4,13 +4,32 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
 from sqlalchemy import desc, select
 
 from backend.app.db import SessionFactory
-from backend.app.master_data.jobs import sync_cty
+from backend.app.master_data.jobs import sync_cty, sync_fcc_call_districts
 from backend.app.models import MasterDataSyncRun, MasterDataVersion, MasterDataVersionStatus
+
+logger = logging.getLogger("contestmaster.master_data.cli")
+
+
+def _sync_enabled() -> tuple[dict[str, object], bool]:
+    outcomes: list[dict[str, object]] = []
+    failed = False
+    for dataset_key, importer in (
+        ("cty", sync_cty),
+        ("call-districts-us", sync_fcc_call_districts),
+    ):
+        try:
+            outcomes.append({"dataset_key": dataset_key, **importer(SessionFactory)})
+        except Exception as exc:
+            logger.exception("master_data_sync_error", extra={"dataset_key": dataset_key})
+            outcomes.append({"dataset_key": dataset_key, "error": str(exc)})
+            failed = True
+    return {"sources": outcomes}, failed
 
 
 def _status() -> dict[str, object]:
@@ -57,18 +76,28 @@ def _status() -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="contestmaster-master-data")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser(
-        "sync", help="Fetch, validate, and import the latest Big CTY release once"
-    )
+    subparsers.add_parser("sync", help="Fetch and import all enabled master-data sources")
+    subparsers.add_parser("sync-cty", help="Fetch and import the latest Big CTY release once")
+    subparsers.add_parser("sync-fcc", help="Fetch and import FCC ULS call-district data once")
     subparsers.add_parser("status", help="Show active versions and recent sync runs")
     args = parser.parse_args(argv)
     try:
-        result = sync_cty(SessionFactory) if args.command == "sync" else _status()
+        if args.command == "sync":
+            result, failed = _sync_enabled()
+        elif args.command == "sync-cty":
+            result = sync_cty(SessionFactory)
+            failed = False
+        elif args.command == "sync-fcc":
+            result = sync_fcc_call_districts(SessionFactory)
+            failed = False
+        else:
+            result = _status()
+            failed = False
     except Exception as exc:
         print(json.dumps({"error": str(exc)}, indent=2), file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2, default=str))
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.master_data.jobs import sync_cty
+from backend.app.master_data.jobs import sync_cty, sync_fcc_call_districts
 from backend.app.models import MasterDataVersion, MasterDataVersionStatus
 
 logger = logging.getLogger("contestmaster.master_data.scheduler")
@@ -27,30 +27,39 @@ def seconds_until_nightly_run(now: datetime, hour_utc: int) -> float:
     return (next_run - current).total_seconds()
 
 
-def has_active_cty_version(session_factory: sessionmaker) -> bool:
+REQUIRED_DATASET_KEYS = ("cty", "call-districts-us")
+
+
+def has_all_required_versions(session_factory: sessionmaker) -> bool:
     with session_factory() as session:
-        return (
-            session.scalar(
-                select(MasterDataVersion.id).where(
-                    MasterDataVersion.dataset_key == "cty",
+        active_keys = set(
+            session.scalars(
+                select(MasterDataVersion.dataset_key).where(
+                    MasterDataVersion.dataset_key.in_(REQUIRED_DATASET_KEYS),
                     MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
                 )
             )
-            is not None
         )
+        return active_keys == set(REQUIRED_DATASET_KEYS)
 
 
-async def run_cty_sync(session_factory: sessionmaker, lock: asyncio.Lock) -> None:
+async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock) -> None:
     if lock.locked():
         logger.warning("master_data_sync_skipped", extra={"reason": "already_running"})
         return
     async with lock:
-        try:
-            result = await asyncio.to_thread(sync_cty, session_factory)
-            logger.info("master_data_sync_observed", extra=result)
-        except Exception:
-            # A bad feed must not prevent the API from serving its existing last-good version.
-            logger.exception("master_data_sync_error")
+        for dataset_key, importer in (
+            ("cty", sync_cty),
+            ("call-districts-us", sync_fcc_call_districts),
+        ):
+            try:
+                result = await asyncio.to_thread(importer, session_factory)
+                logger.info(
+                    "master_data_sync_observed",
+                    extra={"dataset_key": dataset_key, **result},
+                )
+            except Exception:
+                logger.exception("master_data_sync_error", extra={"dataset_key": dataset_key})
 
 
 async def nightly_master_data_timer(
@@ -61,4 +70,4 @@ async def nightly_master_data_timer(
     while True:
         delay = seconds_until_nightly_run(datetime.now(UTC), hour_utc)
         await asyncio.sleep(delay)
-        await run_cty_sync(session_factory, lock)
+        await run_master_data_sync(session_factory, lock)

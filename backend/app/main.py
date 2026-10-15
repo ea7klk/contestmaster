@@ -24,9 +24,9 @@ from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
 from backend.app.master_data.scheduler import (
-    has_active_cty_version,
+    has_all_required_versions,
     nightly_master_data_timer,
-    run_cty_sync,
+    run_master_data_sync,
 )
 from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
@@ -42,8 +42,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     timer: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
     if settings.master_data_scheduler_enabled:
-        if not has_active_cty_version(SessionFactory):
-            await run_cty_sync(SessionFactory, sync_lock)
+        if not has_all_required_versions(SessionFactory):
+            await run_master_data_sync(SessionFactory, sync_lock)
         timer = asyncio.create_task(
             nightly_master_data_timer(
                 SessionFactory, sync_lock, settings.master_data_nightly_hour_utc
