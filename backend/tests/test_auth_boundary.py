@@ -276,13 +276,13 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     assert contest["auto_recalculate_on_upload"] is True
 
     other_manager = sign_in("two@example.test")
-    assert other_manager.get("/api/v1/contests").json()["page"]["total"] == 0
+    assert other_manager.get("/api/v1/contests").json()["meta"]["total"] == 0
     assert other_manager.get(f"/api/v1/contests/{contest['id']}").status_code == 404
 
     admin = sign_in("admin@example.test")
     listing = admin.get("/api/v1/contests")
     assert listing.status_code == 200
-    assert listing.json()["page"]["total"] == 1
+    assert listing.json()["meta"]["total"] == 1
     assert admin.get(f"/api/v1/contests/{contest['id']}").status_code == 200
 
     changed = {**payload, "name": "Updated Sprint"}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.auth import AuthenticatedUser, Principal, require_contest_access
 from backend.app.api.errors import API_ERROR_RESPONSES
-from backend.app.api.pagination import Page, page_meta, pagination_parameters
+from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.db import get_session
 from backend.app.models import Contest, ContestStatus, SystemRole
 
@@ -71,20 +71,36 @@ def list_contests(
     principal: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
     page: Annotated[Page, Depends(pagination_parameters)],
+    status: Annotated[ContestStatus | None, Query()] = None,
 ) -> dict[str, object]:
     count_statement = select(func.count()).select_from(Contest)
     statement = _accessible_contests(principal)
     if principal.role is not SystemRole.GLOBAL_ADMINISTRATOR:
         count_statement = count_statement.where(Contest.owner_user_id == principal.user_id)
+    if status is not None:
+        count_statement = count_statement.where(Contest.status == status)
+        statement = statement.where(Contest.status == status)
     total = session.scalar(count_statement) or 0
+    sort_fields = {
+        "name": Contest.name,
+        "slug": Contest.slug,
+        "starts_at": Contest.starts_at,
+        "ends_at": Contest.ends_at,
+        "created_at": Contest.created_at,
+        "id": Contest.id,
+    }
+    ordering = [
+        sort_fields[field].asc() if direction == "asc" else sort_fields[field].desc()
+        for field, direction in validate_sort(page, set(sort_fields), "id")
+    ]
     rows = list(
         session.scalars(
-            statement.order_by(Contest.created_at.desc(), Contest.id.asc())
+            statement.order_by(*ordering)
             .offset((page.page - 1) * page.page_size)
             .limit(page.page_size)
         )
     )
-    return {"items": [contest_output(contest) for contest in rows], "page": page_meta(page, total)}
+    return {"items": [contest_output(contest) for contest in rows], "meta": page_meta(page, total)}
 
 
 @router.post("", status_code=201, responses=API_ERROR_RESPONSES)
