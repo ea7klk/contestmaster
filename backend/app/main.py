@@ -30,6 +30,7 @@ from backend.app.master_data.scheduler import (
 )
 from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
+from backend.app.rulesets.api import router as ruleset_router
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -81,6 +82,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Request-ID", "X-CSRF-Token"],
 )
+app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
 
 
 @app.middleware("http")

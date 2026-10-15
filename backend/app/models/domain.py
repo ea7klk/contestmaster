@@ -161,6 +161,26 @@ class RulesetVersion(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
+class RulesetActivation(Base):
+    __tablename__ = "ruleset_activations"
+    __table_args__ = (
+        CheckConstraint("length(configuration_sha256) = 64", name="configuration_digest_length"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    ruleset_version_id: Mapped[int] = mapped_column(
+        ForeignKey("ruleset_versions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    activated_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("system_users.id", ondelete="SET NULL")
+    )
+    configuration_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    activated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
 class Entry(Base):
     __tablename__ = "entries"
     __table_args__ = (

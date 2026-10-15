@@ -79,6 +79,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "contest_entities",
         "callsign_prefixes",
         "audit_events",
+        "ruleset_activations",
     } <= tables
     assert "call_districts" not in tables
     assert "iaru_regions" not in tables
@@ -89,7 +90,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0006_remove_iaru_region_master_data"
+    assert version == "0007_ruleset_activation_history"
     assert foreign_keys == 1
     triggers = {
         row[0]
@@ -98,6 +99,8 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         )
     }
     assert "immutable_ruleset_versions_update" in triggers
+    assert "immutable_ruleset_activations_update" in triggers
+    assert "immutable_ruleset_activations_delete" in triggers
     assert "completed_score_runs_update" in triggers
 
     with Session(engine) as session:
@@ -189,9 +192,6 @@ def test_fcc_call_area_data_is_removed_by_schema_migration(tmp_path) -> None:
     with Session(engine) as session:
         assert session.query(MasterDataSource).filter_by(source_key="fcc-uls-amateur").count() == 0
         assert (
-            session.query(MasterDataVersion)
-            .filter_by(dataset_key="call-districts-us")
-            .count()
-            == 0
+            session.query(MasterDataVersion).filter_by(dataset_key="call-districts-us").count() == 0
         )
     engine.dispose()

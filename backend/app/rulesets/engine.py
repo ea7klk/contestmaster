@@ -1,0 +1,561 @@
+"""Deterministic integer-only QSO eligibility, duplicate, multiplier, and score engine."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+
+from backend.app.rulesets.checks import validate_categories, validate_exchange
+from backend.app.rulesets.conditions import evaluate_condition
+from backend.app.rulesets.operating import evaluate_operating_constraints
+from backend.app.rulesets.schema import (
+    BonusRule,
+    ConfiguredRule,
+    DuplicateRule,
+    EligibilityRule,
+    ExchangeRule,
+    MultiplierRule,
+    PenaltyRule,
+    PointRule,
+    RulesetDefinition,
+    ScoreFormulaRule,
+    ScoreOperand,
+    ScoreStep,
+)
+from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
+
+
+class RuleExecutionError(ValueError):
+    pass
+
+
+class ScoringQso(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    qso_id: int = Field(gt=0)
+    occurred_at: datetime
+    worked_callsign: str = Field(min_length=1, max_length=32)
+    band: str | None = None
+    mode: str | None = None
+    grid: str | None = None
+    transmitter: str | None = None
+    continent: str | None = None
+    entity: str | None = None
+    cq_zone: str | None = None
+    itu_zone: str | None = None
+    sent_exchange: dict[str, Any] = Field(default_factory=dict)
+    received_exchange: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_aware_time(self) -> ScoringQso:
+        if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
+            raise ValueError("QSO time must be timezone-aware")
+        return self
+
+
+class ScoringEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    entry_id: int = Field(gt=0)
+    station_callsign: str = Field(min_length=1, max_length=32)
+    categories: dict[str, str] = Field(default_factory=dict)
+    declarations: dict[str, Any] = Field(default_factory=dict)
+    power_multiplier: StrictInt = Field(default=1, ge=1)
+    qsos: list[ScoringQso] = Field(max_length=500_000)
+
+    @model_validator(mode="after")
+    def unique_qso_ids(self) -> ScoringEntry:
+        qso_ids = [qso.qso_id for qso in self.qsos]
+        if len(qso_ids) != len(set(qso_ids)):
+            raise ValueError("QSO ids must be unique in a scoring input")
+        return self
+
+
+class QsoScoreResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    qso_id: StrictInt
+    status: Literal["credited", "not_credited", "needs_review"]
+    points: StrictInt = Field(ge=0)
+    penalty_points: StrictInt = Field(ge=0)
+    multiplier_keys: list[str]
+    reasons: list[str]
+
+
+class EntryScoreResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    entry_id: StrictInt
+    outcome: Literal["scored", "needs_review", "reclassified", "disqualified"]
+    qso_count: StrictInt
+    credited_qso_count: StrictInt
+    points_total: StrictInt = Field(ge=0)
+    multiplier_count: StrictInt = Field(ge=0)
+    bonus_points: StrictInt = Field(ge=0)
+    penalty_points: StrictInt = Field(ge=0)
+    final_score: StrictInt = Field(ge=0)
+    qso_scores: list[QsoScoreResult]
+    review_reasons: list[str] = Field(default_factory=list)
+    explanation: list[str]
+
+
+def _safe_value(path: str, context: Mapping[str, Any]) -> Any:
+    value: Any = context
+    for part in path.split("."):
+        if not isinstance(value, Mapping) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
+def _condition_applies(configured: ConfiguredRule, context: Mapping[str, Any]) -> bool:
+    return configured.when is None or evaluate_condition(configured.when, context)
+
+
+def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]:
+    qso_data: dict[str, Any] = {}
+    if qso is not None:
+        qso_data = {
+            "id": qso.qso_id,
+            "occurred_at": qso.occurred_at.astimezone(UTC).isoformat(),
+            "worked_callsign": qso.worked_callsign,
+            "band": qso.band,
+            "mode": qso.mode,
+            "grid": qso.grid,
+            "transmitter": qso.transmitter,
+            "continent": qso.continent,
+            "entity": qso.entity,
+            "cq_zone": qso.cq_zone,
+            "itu_zone": qso.itu_zone,
+            "exchange_sent": qso.sent_exchange,
+            "exchange_received": qso.received_exchange,
+        }
+    return {
+        "qso": qso_data,
+        "entry": {
+            "id": entry.entry_id,
+            "categories": entry.categories,
+            "declarations": entry.declarations,
+            "power_multiplier": entry.power_multiplier,
+        },
+        "station": {"callsign": entry.station_callsign},
+        "contest": {},
+        "exchange": {
+            "sent": qso.sent_exchange if qso is not None else {},
+            "received": qso.received_exchange if qso is not None else {},
+            "entry": entry.declarations,
+            **(qso.received_exchange if qso is not None else {}),
+        },
+    }
+
+
+def _scope_value(rule: DuplicateRule | MultiplierRule, qso: ScoringQso) -> tuple[str, ...] | None:
+    if isinstance(rule, MultiplierRule):
+        parts = rule.scope.split("_")
+    else:
+        parts = rule.scope
+    values: list[str] = []
+    for part in parts:
+        if part in {"contest", "worked_callsign"}:
+            value = qso.worked_callsign.strip().upper()
+        else:
+            value = getattr(qso, part, None)
+        if value is None or value == "":
+            return None
+        values.append(str(value).strip().upper())
+    return tuple(values)
+
+
+def _point_value(rule: PointRule, qso: ScoringQso) -> int | None:
+    if rule.fact == "fixed":
+        return rule.fixed_points
+    if rule.fact == "exchange":
+        value = qso.received_exchange.get(rule.exchange_field or "")
+    else:
+        value = getattr(qso, rule.fact, None)
+    if value is None:
+        return rule.default_points
+    mapped = rule.values.get(str(value))
+    return mapped if mapped is not None else rule.default_points
+
+
+def _operand_value(operand: ScoreOperand, variables: dict[str, int]) -> int:
+    if operand.constant is not None:
+        return operand.constant
+    if operand.variable is None:
+        raise RuleExecutionError("Score formula operand is missing")
+    return variables[operand.variable]
+
+
+def _round_division(numerator: int, denominator: int, rounding: str | None) -> int:
+    if denominator == 0:
+        raise RuleExecutionError("Score formula attempted division by zero")
+    if rounding is None:
+        raise RuleExecutionError("Score formula division has no rounding rule")
+    sign = -1 if (numerator < 0) != (denominator < 0) else 1
+    quotient, remainder = divmod(abs(numerator), abs(denominator))
+    divisor = abs(denominator)
+    if rounding == "floor":
+        return numerator // denominator
+    if rounding == "ceiling":
+        return -((-numerator) // denominator)
+    if rounding == "half_up" and remainder * 2 >= divisor:
+        quotient += 1
+    elif rounding == "half_even" and (
+        remainder * 2 > divisor or (remainder * 2 == divisor and quotient % 2 == 1)
+    ):
+        quotient += 1
+    return sign * quotient
+
+
+def _apply_formula(rule: ScoreFormulaRule, variables: dict[str, int]) -> int:
+    total = _operand_value(rule.start, variables)
+    for step in rule.steps:
+        right = _operand_value(step.operand, variables)
+        if step.operator == "add":
+            total += right
+        elif step.operator == "subtract":
+            total -= right
+        elif step.operator == "multiply":
+            total *= right
+        elif step.operator == "floor_divide":
+            if right == 0:
+                raise RuleExecutionError("Score formula attempted division by zero")
+            total //= right
+        else:
+            total = _round_division(total, right, step.rounding)
+    if total < 0:
+        raise RuleExecutionError(
+            "Score formula produced a negative result; configure an explicit nonnegative formula"
+        )
+    return total
+
+
+def score_entry(
+    definition: RulesetDefinition,
+    entry: ScoringEntry,
+    *,
+    contest_starts_at: datetime,
+    contest_ends_at: datetime,
+) -> EntryScoreResult:
+    """Calculate one immutable result explanation using only validated rules and integer math."""
+    try:
+        definition = validate_ruleset(definition.model_dump(mode="json"))
+    except RulesetValidationError as exc:
+        raise RuleExecutionError("Cannot execute an invalid ruleset") from exc
+    if contest_starts_at.tzinfo is None or contest_ends_at.tzinfo is None:
+        raise RuleExecutionError("Contest boundaries must be timezone-aware")
+    start = contest_starts_at.astimezone(UTC)
+    end = contest_ends_at.astimezone(UTC)
+    if start >= end:
+        raise RuleExecutionError("Contest start must precede contest end")
+
+    configured = definition.rules
+    category_rule = next(item.rule for item in configured if item.rule.kind == "categories")
+    category_issues = validate_categories(category_rule, entry.categories)
+    if category_issues:
+        raise RuleExecutionError(
+            "Entry categories are invalid: " + "; ".join(item.message for item in category_issues)
+        )
+
+    exchange_rules = [item for item in configured if item.rule.kind == "exchange"]
+    eligibility_rules = [item for item in configured if item.rule.kind == "eligibility"]
+    duplicate_rules = [item for item in configured if item.rule.kind == "duplicates"]
+    point_rules = [item for item in configured if item.rule.kind == "points"]
+    multiplier_rules = [item for item in configured if item.rule.kind == "multiplier"]
+    bonus_rules = [item for item in configured if item.rule.kind == "bonus"]
+    penalty_rules = [item for item in configured if item.rule.kind == "penalty"]
+    formula = next(item.rule for item in configured if item.rule.kind == "score_formula")
+    if not isinstance(formula, ScoreFormulaRule):
+        raise RuleExecutionError("Ruleset has no usable score formula")
+
+    results: dict[int, dict[str, Any]] = {}
+    seen: dict[str, set[tuple[str, ...]]] = {item.id: set() for item in duplicate_rules}
+    multiplier_keys: set[str] = set()
+    penalty_occurrences: dict[str, int] = {item.id: 0 for item in penalty_rules}
+    eligible_contexts: list[tuple[ScoringQso, dict[str, Any]]] = []
+    entry_context = _rule_context(entry, None)
+    for qso in sorted(entry.qsos, key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id)):
+        context = _rule_context(entry, qso)
+        status: Literal["credited", "not_credited", "needs_review"] = "credited"
+        reasons: list[str] = []
+        qso_penalties = 0
+        instant = qso.occurred_at.astimezone(UTC)
+        if instant < start or instant >= end:
+            status = "not_credited"
+            reasons.append("out_of_period")
+
+        for configured_rule in eligibility_rules:
+            rule = configured_rule.rule
+            if not isinstance(rule, EligibilityRule) or not _condition_applies(
+                configured_rule, context
+            ):
+                continue
+            invalid = False
+            if rule.reject_out_of_period and (instant < start or instant >= end):
+                invalid = True
+            if rule.allowed_bands and (qso.band or "").upper() not in {
+                value.upper() for value in rule.allowed_bands
+            }:
+                invalid = True
+            if rule.allowed_modes and (qso.mode or "").upper() not in {
+                value.upper() for value in rule.allowed_modes
+            }:
+                invalid = True
+            if (
+                rule.reject_self_contacts
+                and qso.worked_callsign.strip().upper() == entry.station_callsign.strip().upper()
+            ):
+                invalid = True
+            if rule.reject_missing_required_exchange:
+                for exchange_rule in exchange_rules:
+                    exchange = exchange_rule.rule
+                    if not isinstance(exchange, ExchangeRule) or not _condition_applies(
+                        exchange_rule, context
+                    ):
+                        continue
+                    check = validate_exchange(
+                        exchange,
+                        sent=qso.sent_exchange,
+                        received=qso.received_exchange,
+                        entry=entry.declarations,
+                    )
+                    if check.issues:
+                        invalid = True
+                        reasons.extend(issue.code for issue in check.issues)
+            if invalid and status == "credited":
+                status = "not_credited" if rule.action == "not_credited" else "needs_review"
+                reasons.append("eligibility_rule_failed")
+
+        for configured_rule in duplicate_rules:
+            rule = configured_rule.rule
+            if not isinstance(rule, DuplicateRule) or not _condition_applies(
+                configured_rule, context
+            ):
+                continue
+            key = _scope_value(rule, qso)
+            if key is None:
+                if status == "credited":
+                    status = "needs_review"
+                reasons.append("duplicate_key_incomplete")
+                continue
+            if key in seen[configured_rule.id]:
+                reasons.append("duplicate")
+                if rule.effect in {"ignore", "not_credited"}:
+                    status = "not_credited"
+                elif rule.effect == "needs_review" and status == "credited":
+                    status = "needs_review"
+                elif rule.effect == "penalty":
+                    qso_penalties += rule.penalty_points
+                    status = "not_credited"
+            else:
+                seen[configured_rule.id].add(key)
+
+        for configured_rule in penalty_rules:
+            rule = configured_rule.rule
+            if not isinstance(rule, PenaltyRule) or not _condition_applies(
+                configured_rule, context
+            ):
+                continue
+            occurrence = penalty_occurrences[configured_rule.id]
+            if occurrence >= rule.maximum_occurrences:
+                continue
+            penalty_occurrences[configured_rule.id] += 1
+            reasons.append(rule.reason_code)
+            if rule.action == "deduct_points":
+                qso_penalties += rule.points
+            elif rule.action == "remove_contact":
+                status = "not_credited"
+            elif rule.action in {"needs_review", "reclassify"}:
+                if status == "credited":
+                    status = "needs_review"
+            elif rule.action == "disqualify":
+                status = "not_credited"
+
+        points = 0
+        qso_multiplier_keys: list[str] = []
+        if status == "credited":
+            for configured_rule in point_rules:
+                rule = configured_rule.rule
+                if not isinstance(rule, PointRule) or not _condition_applies(
+                    configured_rule, context
+                ):
+                    continue
+                point_value = _point_value(rule, qso)
+                if point_value is None:
+                    status = "needs_review"
+                    reasons.append(f"missing_point_mapping:{configured_rule.id}")
+                    points = 0
+                    break
+                points += point_value
+            if status == "credited":
+                for configured_rule in multiplier_rules:
+                    rule = configured_rule.rule
+                    if not isinstance(rule, MultiplierRule) or not _condition_applies(
+                        configured_rule, context
+                    ):
+                        continue
+                    value = _safe_value(rule.source_fact, context)
+                    scope = _scope_value(rule, qso) if rule.scope != "contest" else ("*",)
+                    if value is None or scope is None:
+                        status = "needs_review"
+                        reasons.append(f"missing_multiplier_value:{configured_rule.id}")
+                        continue
+                    unique_key = (
+                        f"{configured_rule.id}:{'|'.join(scope)}:{str(value).strip().upper()}"
+                    )
+                    if unique_key not in multiplier_keys:
+                        qso_multiplier_keys.append(unique_key)
+
+        if status == "credited":
+            eligible_contexts.append((qso, context))
+            multiplier_keys.update(qso_multiplier_keys)
+
+        results[qso.qso_id] = {
+            "qso_id": qso.qso_id,
+            "status": status,
+            "points": points if status == "credited" else 0,
+            "penalty_points": qso_penalties,
+            "multiplier_keys": qso_multiplier_keys,
+            "reasons": reasons,
+        }
+
+    bonus_total = 0
+    for configured_rule in bonus_rules:
+        rule = configured_rule.rule
+        if not isinstance(rule, BonusRule):
+            continue
+        amount = 0
+        if (
+            rule.basis == "per_eligible_qso"
+            and len(eligible_contexts) >= rule.minimum_eligible_qsos
+        ):
+            for _qso, context in eligible_contexts:
+                if _condition_applies(configured_rule, context):
+                    if rule.evidence_required and not entry.declarations.get(
+                        rule.evidence_key or ""
+                    ):
+                        continue
+                    amount += rule.points
+        elif (
+            _condition_applies(configured_rule, entry_context)
+            and len(eligible_contexts) >= rule.minimum_eligible_qsos
+        ):
+            if rule.evidence_required and not entry.declarations.get(rule.evidence_key or ""):
+                continue
+            amount = rule.points
+        if rule.cap is not None:
+            amount = min(amount, rule.cap)
+        bonus_total += amount
+
+    qso_scores = [
+        QsoScoreResult.model_validate(results[qso.qso_id])
+        for qso in sorted(
+            entry.qsos,
+            key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id),
+        )
+    ]
+    points_total = sum(result.points for result in qso_scores)
+    penalty_points = sum(result.penalty_points for result in qso_scores)
+    multiplier_count = len(multiplier_keys)
+    disqualified = any(
+        rule.action == "disqualify"
+        and any(rule.reason_code in score.reasons for score in qso_scores)
+        for configured_rule in penalty_rules
+        if isinstance((rule := configured_rule.rule), PenaltyRule)
+    )
+    reclassified = any(
+        rule.action == "reclassify"
+        and any(rule.reason_code in score.reasons for score in qso_scores)
+        for configured_rule in penalty_rules
+        if isinstance((rule := configured_rule.rule), PenaltyRule)
+    )
+    variables = {
+        "points_total": points_total,
+        "multiplier_count": multiplier_count,
+        "bonus_points": bonus_total,
+        "penalty_points": penalty_points,
+        "power_multiplier": entry.power_multiplier,
+    }
+    final_score = 0 if disqualified else _apply_formula(formula, variables)
+    review_reasons = [
+        f"qso:{score.qso_id}:{reason}"
+        for score in qso_scores
+        if score.status == "needs_review"
+        for reason in score.reasons
+    ]
+    for configured_rule in configured:
+        if configured_rule.rule.kind == "workflow_hook" and configured_rule.rule.stage in {
+            "cross_log",
+            "adjudication",
+        }:
+            review_reasons.append(
+                f"workflow:{configured_rule.rule.stage}:{configured_rule.rule.key}:{configured_rule.rule.execution}"
+            )
+        elif configured_rule.rule.kind == "operating_constraints" and _condition_applies(
+            configured_rule, entry_context
+        ):
+            findings = evaluate_operating_constraints(
+                configured_rule.rule,
+                entry,
+                contest_starts_at=start,
+                contest_ends_at=end,
+            )
+            review_reasons.extend(f"constraint:{finding.code}" for finding in findings)
+    outcome: Literal["scored", "needs_review", "reclassified", "disqualified"] = (
+        "disqualified"
+        if disqualified
+        else "reclassified"
+        if reclassified
+        else "needs_review"
+        if review_reasons
+        else "scored"
+    )
+    explanation = [
+        f"QSO points total: {points_total}.",
+        f"Unique multiplier count: {multiplier_count}.",
+        f"Bonus points: {bonus_total}.",
+        f"Penalty points: {penalty_points}.",
+        "Score formula evaluated left to right in configured operation order using integers.",
+        f"Final score: {final_score}.",
+        *[f"Pending adjudication: {reason}." for reason in review_reasons],
+    ]
+    return EntryScoreResult(
+        entry_id=entry.entry_id,
+        outcome=outcome,
+        qso_count=len(entry.qsos),
+        credited_qso_count=sum(result.status == "credited" for result in qso_scores),
+        points_total=points_total,
+        multiplier_count=multiplier_count,
+        bonus_points=bonus_total,
+        penalty_points=penalty_points,
+        final_score=final_score,
+        qso_scores=qso_scores,
+        review_reasons=review_reasons,
+        explanation=explanation,
+    )
+
+
+def evaluate_score_step(current: int, step: ScoreStep, variables: dict[str, int]) -> int:
+    """Public integer operation helper for worked examples and rule-summary previews."""
+    operand = (
+        step.operand.constant
+        if step.operand.constant is not None
+        else variables.get(step.operand.variable or "")
+    )
+    if operand is None:
+        raise RuleExecutionError(f"Unknown score variable: {step.operand.variable}")
+    if step.operator == "add":
+        return current + operand
+    if step.operator == "subtract":
+        return current - operand
+    if step.operator == "multiply":
+        return current * operand
+    if step.operator == "floor_divide":
+        if operand == 0:
+            raise RuleExecutionError("Score formula attempted division by zero")
+        return current // operand
+    return _round_division(current, operand, step.rounding)
