@@ -16,7 +16,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 ### Log handling
 
 - Add, edit, and remove contacts through the application.
-- Import and export logs through format adapters, starting with Cabrillo where appropriate.
+- Upload logs through the participant interface and import or export them through format adapters, starting with Cabrillo where appropriate.
 - Report malformed rows and rule violations without silently discarding submitted data.
 - Detect likely duplicate contacts and show how each contact was credited during scoring.
 
@@ -35,12 +35,12 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ## Architecture overview
 
-The Vue application handles contest setup, log entry, administration, and standings display. It calls a Python REST API, which authenticates and validates requests, applies contest domain services, and reads or writes persistent data in SQLite. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
+The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. It sends API requests and multipart log uploads to the Python REST API. The API authenticates and validates requests, passes uploaded files to import adapters, applies contest domain services, and reads or writes persistent data in SQLite. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
 
 ```mermaid
 flowchart LR
     Person[Participant or organizer] --> Web[Vue web application]
-    Web -->|HTTPS REST / JSON| API[Python REST API]
+    Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
     API --> Auth[Authentication and authorization]
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
@@ -54,11 +54,11 @@ flowchart LR
 
 ### Main boundaries
 
-- **Vue frontend:** presents workflows and sends typed API requests. Keep contest rules and final score calculations on the server.
+- **Vue frontend:** presents workflows, sends typed API requests, and lets participants select and upload log files. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
 - **Python REST API:** owns the external API contract, input validation, authorization, and transaction boundaries. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Store the ruleset identifier and version with each contest and score run.
-- **Adapters:** translate files and external formats into and out of the common domain model. Keep format parsing separate from validation and scoring.
+- **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
 - **SQLite:** stores application state for the initial low-concurrency deployment. Use migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance
