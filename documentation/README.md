@@ -35,7 +35,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ## Architecture overview
 
-The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. It sends API requests and multipart log uploads to the Python REST API. The API authenticates and validates requests, passes uploaded files to import adapters, applies contest domain services, and reads or writes persistent data in SQLite. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
+The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. It sends API requests and multipart log uploads to the Python REST API. The API authenticates and validates requests, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
 
 ```mermaid
 flowchart LR
@@ -47,7 +47,7 @@ flowchart LR
     Domain --> Rules[Versioned contest rulesets]
     Domain --> Scoring[Integer scoring and adjudication]
     API --> Store[ORM persistence layer]
-    Store --> DB[(SQLite)]
+    Store -->|ORM-managed connection and session| DB[(SQLite)]
     API --> Adapters[Import and export adapters]
     Adapters --> Formats[Cabrillo and other log formats]
 ```
@@ -55,11 +55,11 @@ flowchart LR
 ### Main boundaries
 
 - **Vue frontend:** presents workflows, sends typed API requests, and lets participants select and upload log files. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
-- **Python REST API:** owns the external API contract, input validation, authorization, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for database access. Publish an OpenAPI description.
+- **Python REST API:** owns the external API contract, input validation, authorization, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
-- **SQLite:** stores application state for the initial low-concurrency deployment through the ORM. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
+- **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance
 
