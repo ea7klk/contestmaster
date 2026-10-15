@@ -15,13 +15,11 @@ describe('SiteFooter', () => {
     expect(license.attributes('target')).toBe('_blank')
     expect(license.attributes('rel')).toContain('noreferrer')
 
-    const fccTerms = wrapper.get('a[href="https://www.usa.gov/government-works"]')
-    expect(fccTerms.text()).toBe('license and use terms')
     const ungegnTerms = wrapper.get(
       'a[href="https://unstats.un.org/unsd/ungegn/meetings/Bureau_Divisions/documents/UNGEGN_Bureau_WGN_November_2023_updated.pdf"]',
     )
     expect(ungegnTerms.text()).toBe('open access terms')
-    for (const link of [fccTerms, ungegnTerms]) {
+    for (const link of [license, ungegnTerms]) {
       expect(link.attributes('target')).toBe('_blank')
       expect(link.attributes('rel')).toContain('noreferrer')
     }

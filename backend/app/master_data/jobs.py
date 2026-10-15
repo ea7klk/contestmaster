@@ -19,26 +19,6 @@ from backend.app.master_data.cty import (
     fetch_latest_archive,
     parse_archive,
 )
-from backend.app.master_data.fcc import (
-    DATASET_KEY as FCC_DATASET_KEY,
-)
-from backend.app.master_data.fcc import (
-    LICENSE_NAME as FCC_LICENSE_NAME,
-)
-from backend.app.master_data.fcc import (
-    SOURCE_KEY as FCC_SOURCE_KEY,
-)
-from backend.app.master_data.fcc import (
-    SOURCE_URL as FCC_SOURCE_URL,
-)
-from backend.app.master_data.fcc import (
-    TERMS_URL as FCC_TERMS_URL,
-)
-from backend.app.master_data.fcc import (
-    FCCCallDistrictData,
-    fetch_amateur_archive,
-    parse_amateur_archive,
-)
 from backend.app.master_data.ungegn import (
     API_DOCS_URL as UNGEGN_API_DOCS_URL,
 )
@@ -62,7 +42,6 @@ from backend.app.master_data.ungegn import (
     fetch_countries,
 )
 from backend.app.models import (
-    CallDistrict,
     CallsignPrefix,
     Contest,
     ContestEntity,
@@ -163,55 +142,6 @@ def _finish_failed(session_factory: sessionmaker[Session], run_id: int, error: E
             run.status = MasterDataRunStatus.FAILED
             run.finished_at = utc_now()
             run.error_summary = str(error)[:2000]
-
-
-def _create_fcc_run(session_factory: sessionmaker[Session]) -> int:
-    with session_factory.begin() as session:
-        source = session.scalar(
-            select(MasterDataSource).where(MasterDataSource.source_key == FCC_SOURCE_KEY)
-        )
-        if source is None:
-            source = MasterDataSource(
-                source_key=FCC_SOURCE_KEY,
-                name="FCC ULS Amateur Radio Licenses",
-                canonical_url=FCC_SOURCE_URL,
-                source_priority=50,
-                authority_role=MasterDataAuthorityRole.GOVERNING_AUTHORITY,
-                use_terms_url=FCC_TERMS_URL,
-                license_notice=FCC_LICENSE_NAME,
-                enabled=True,
-            )
-            session.add(source)
-            session.flush()
-        source.canonical_url = FCC_SOURCE_URL
-        source.use_terms_url = FCC_TERMS_URL
-        source.license_notice = FCC_LICENSE_NAME
-        source.enabled = True
-        active = session.scalar(
-            select(MasterDataSyncRun).where(
-                MasterDataSyncRun.source_id == source.id,
-                MasterDataSyncRun.dataset_key == FCC_DATASET_KEY,
-                MasterDataSyncRun.status == MasterDataRunStatus.RUNNING,
-            )
-        )
-        now = utc_now()
-        if active is not None:
-            if active.started_at >= now - RUN_STALE_AFTER:
-                raise MasterDataError(f"An FCC ULS sync run ({active.id}) is already running")
-            active.status = MasterDataRunStatus.FAILED
-            active.finished_at = now
-            active.error_summary = "Marked failed because its running lease exceeded six hours."
-        session.flush()
-        run = MasterDataSyncRun(
-            source_id=source.id,
-            dataset_key=FCC_DATASET_KEY,
-            started_at=now,
-            parser_version="fcc-uls-am-1",
-            status=MasterDataRunStatus.RUNNING,
-        )
-        session.add(run)
-        session.flush()
-        return run.id
 
 
 def _create_ungegn_run(session_factory: sessionmaker[Session]) -> int:
@@ -331,96 +261,6 @@ def _persist_ungegn_data(
     run.finished_at = utc_now()
     run.error_summary = (
         "Changed country reference staged for global administrator review."
-        if changed
-        else None
-    )
-    return version
-
-
-def _persist_fcc_data(
-    session: Session, run: MasterDataSyncRun, source_data: FCCCallDistrictData
-) -> MasterDataVersion:
-    source = session.get(MasterDataSource, run.source_id)
-    if source is not None:
-        source.canonical_url = FCC_SOURCE_URL
-        source.use_terms_url = FCC_TERMS_URL
-        source.license_notice = FCC_LICENSE_NAME
-        source.enabled = True
-    current = session.scalar(
-        select(MasterDataVersion).where(
-            MasterDataVersion.dataset_key == FCC_DATASET_KEY,
-            MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
-        )
-    )
-    candidate = session.scalar(
-        select(MasterDataVersion).where(
-            MasterDataVersion.dataset_key == FCC_DATASET_KEY,
-            MasterDataVersion.checksum == source_data.normalized_checksum,
-            MasterDataVersion.status == MasterDataVersionStatus.CANDIDATE,
-        )
-    )
-    run.retrieved_at = source_data.retrieved_at
-    run.source_url = source_data.source_url
-    run.source_release = source_data.source_release
-    run.checksum = source_data.archive_sha256
-    run.record_counts = {
-        "districts": len(source_data.district_codes),
-        "license_callsigns_scanned": source_data.license_record_count,
-    }
-    if current is not None and current.checksum == source_data.normalized_checksum:
-        run.status = MasterDataRunStatus.SUCCEEDED
-        run.change_detected = False
-        run.finished_at = utc_now()
-        return current
-    if candidate is not None:
-        run.status = MasterDataRunStatus.SUCCEEDED
-        run.change_detected = False
-        run.finished_at = utc_now()
-        return candidate
-
-    changed = current is not None
-    version = MasterDataVersion(
-        sync_run_id=run.id,
-        dataset_key=FCC_DATASET_KEY,
-        source_release=source_data.source_release,
-        retrieved_at=source_data.retrieved_at,
-        checksum=source_data.normalized_checksum,
-        activated_at=None if changed else source_data.retrieved_at,
-        valid_from=source_data.retrieved_at,
-        status=(MasterDataVersionStatus.CANDIDATE if changed else MasterDataVersionStatus.ACTIVE),
-    )
-    if current is not None and not changed:
-        current.status = MasterDataVersionStatus.RETIRED
-        current.valid_to = source_data.retrieved_at
-    session.add(version)
-    session.flush()
-    entity = ContestEntity(
-        version_id=version.id,
-        namespace="ISO3166-1-alpha2",
-        authority_code="US",
-        name="United States",
-        entity_type=EntityType.SOVEREIGN_COUNTRY,
-    )
-    session.add(entity)
-    session.flush()
-    session.add_all(
-        [
-            CallDistrict(
-                version_id=version.id,
-                entity_id=entity.id,
-                district_code=code,
-                name=f"United States call area {code}",
-                callsign_pattern=rf"^[A-Z]{{1,2}}{code}[A-Z]{{1,4}}$",
-                source_id=run.source_id,
-            )
-            for code in source_data.district_codes
-        ]
-    )
-    run.change_detected = True
-    run.status = MasterDataRunStatus.SUCCEEDED
-    run.finished_at = utc_now()
-    run.error_summary = (
-        "Call-district coverage changed; candidate awaits global administrator review."
         if changed
         else None
     )
@@ -677,34 +517,6 @@ def sync_cty(
     except Exception as exc:
         _finish_failed(session_factory, run_id, exc)
         logger.exception("master_data_sync_failed", extra={"run_id": run_id})
-        raise
-
-
-def sync_fcc_call_districts(
-    session_factory: sessionmaker[Session], fetch_archive=fetch_amateur_archive
-) -> dict[str, int | str | bool | None]:
-    """Refresh the aggregated U.S. call-area codes from the FCC ULS license feed."""
-    run_id = _create_fcc_run(session_factory)
-    try:
-        archive_bytes, release, source_url, retrieved_at = fetch_archive()
-        source_data = parse_amateur_archive(archive_bytes, release, source_url, retrieved_at)
-        with session_factory.begin() as session:
-            run = session.get(MasterDataSyncRun, run_id)
-            if run is None:
-                raise MasterDataError(f"FCC sync run {run_id} disappeared")
-            version = _persist_fcc_data(session, run, source_data)
-            result = {
-                "run_id": run_id,
-                "status": run.status.value,
-                "changed": run.change_detected,
-                "version_id": version.id,
-                **run.record_counts,
-            }
-        logger.info("fcc_master_data_sync_finished", extra=result)
-        return result
-    except Exception as exc:
-        _finish_failed(session_factory, run_id, exc)
-        logger.exception("fcc_master_data_sync_failed", extra={"run_id": run_id})
         raise
 
 

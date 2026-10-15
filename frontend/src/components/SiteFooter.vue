@@ -16,18 +16,6 @@
       >).
     </p>
     <p>
-      U.S. call-area reference data: FCC Universal Licensing System
-      <a
-        href="https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4"
-        target="_blank"
-        rel="noreferrer"
-        >dataset</a
-      >
-      (<a href="https://www.usa.gov/government-works" target="_blank" rel="noreferrer"
-        >license and use terms</a
-      >).
-    </p>
-    <p>
       Country names and M49 identifiers: UNGEGN World Geographical Names API
       (<a
         href="https://unstats.un.org/unsd/ungegn/meetings/Bureau_Divisions/documents/UNGEGN_Bureau_WGN_November_2023_updated.pdf"

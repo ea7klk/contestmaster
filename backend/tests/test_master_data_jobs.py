@@ -13,13 +13,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.db import Base, build_engine
 from backend.app.master_data.cty import parse_archive, parse_cty_dat
-from backend.app.master_data.fcc import parse_amateur_archive
 from backend.app.master_data.jobs import (
     MissingContestMasterData,
     activate_candidate,
     pin_contest_versions,
     sync_cty,
-    sync_fcc_call_districts,
     sync_ungegn_countries,
 )
 from backend.app.master_data.scheduler import (
@@ -29,7 +27,6 @@ from backend.app.master_data.scheduler import (
 )
 from backend.app.master_data.ungegn import parse_country_response
 from backend.app.models import (
-    CallDistrict,
     CallsignPrefix,
     Contest,
     ContestEntity,
@@ -80,19 +77,14 @@ def test_master_data_sync_attempts_each_source_when_one_fails(monkeypatch) -> No
         calls.append("cty")
         raise ValueError("bad CTY response")
 
-    def successful_fcc(_factory):
-        calls.append("fcc")
-        return {"changed": False}
-
     def successful_ungegn(_factory):
         calls.append("ungegn")
         return {"changed": False}
 
     monkeypatch.setattr(scheduler, "sync_cty", broken_cty)
-    monkeypatch.setattr(scheduler, "sync_fcc_call_districts", successful_fcc)
     monkeypatch.setattr(scheduler, "sync_ungegn_countries", successful_ungegn)
     asyncio.run(run_master_data_sync(object(), asyncio.Lock()))
-    assert calls == ["cty", "fcc", "ungegn"]
+    assert calls == ["cty", "ungegn"]
 
 
 @pytest.fixture
@@ -130,32 +122,11 @@ def archive_bytes(data: str) -> bytes:
     return buffer.getvalue()
 
 
-def fcc_archive_bytes(districts=range(10), rows: int = 100) -> bytes:
-    codes = tuple(districts)
-    data = "".join(
-        f"AM|{index}|FILE{index}|EBF{index}|K{codes[index % len(codes)]}AA|E|A|0|\n"
-        for index in range(rows)
-    )
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("AM.dat", data)
-    return buffer.getvalue()
-
-
 def fetcher(data: str):
     return lambda: (
         archive_bytes(data),
         "2026-09-15",
         "https://www.country-files.com/bigcty/download/2026/bigcty-20260915.zip",
-        datetime(2026, 9, 15, tzinfo=UTC),
-    )
-
-
-def fcc_fetcher(districts=range(10)):
-    return lambda: (
-        fcc_archive_bytes(districts),
-        "2026-09-15",
-        "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
         datetime(2026, 9, 15, tzinfo=UTC),
     )
 
@@ -228,18 +199,6 @@ def test_archive_requires_copyright_notice_and_known_minimum_completeness() -> N
             "https://example.test/file.zip",
             datetime(2026, 9, 15, tzinfo=UTC),
         )
-
-
-def test_fcc_parser_aggregates_only_us_call_district_codes() -> None:
-    data = parse_amateur_archive(
-        fcc_archive_bytes(),
-        "2026-09-15",
-        "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
-        datetime(2026, 9, 15, tzinfo=UTC),
-    )
-    assert data.district_codes == tuple(str(code) for code in range(10))
-    assert data.license_record_count == 100
-    assert data.normalized_checksum
 
 
 def test_ungegn_parser_normalizes_m49_and_rejects_incomplete_or_duplicate_data() -> None:
@@ -319,76 +278,6 @@ def test_ungegn_failed_import_preserves_active_version(session_factory) -> None:
         )
         assert active is not None and active.id == first["version_id"]
         assert failed is not None and failed.status == MasterDataRunStatus.FAILED
-
-
-def test_fcc_import_requires_official_public_domain_metadata(monkeypatch) -> None:
-    import json
-
-    import backend.app.master_data.fcc as fcc
-
-    metadata = {
-        "license": {
-            "name": "Public Domain U.S. Government",
-            "termsLink": "https://www.usa.gov/government-works",
-        }
-    }
-    monkeypatch.setattr(
-        fcc.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: io.BytesIO(json.dumps(metadata).encode()),
-    )
-    fcc._verify_source_license()
-
-    metadata["license"]["name"] = "Unknown terms"
-    monkeypatch.setattr(
-        fcc.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: io.BytesIO(json.dumps(metadata).encode()),
-    )
-    with pytest.raises(ValueError, match="expected public-domain license"):
-        fcc._verify_source_license()
-
-
-def test_fcc_sync_is_idempotent_and_does_not_retain_licensee_records(session_factory) -> None:
-    first = sync_fcc_call_districts(session_factory, fcc_fetcher())
-    second = sync_fcc_call_districts(session_factory, fcc_fetcher())
-
-    with session_factory() as session:
-        assert session.scalar(select(func.count(CallDistrict.id))) == 10
-        assert session.scalar(select(func.count(MasterDataVersion.id))) == 1
-        runs = list(session.scalars(select(MasterDataSyncRun).order_by(MasterDataSyncRun.id)))
-        assert runs[1].change_detected is False
-        assert runs[1].source_url == "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"
-    assert first["changed"] is True
-    assert second["changed"] is False
-    assert first["version_id"] == second["version_id"]
-
-
-def test_fcc_district_change_is_staged_and_bad_feed_keeps_current(session_factory) -> None:
-    first = sync_fcc_call_districts(session_factory, fcc_fetcher())
-    changed = sync_fcc_call_districts(session_factory, fcc_fetcher(range(9)))
-    with pytest.raises(ValueError, match="valid ZIP"):
-        sync_fcc_call_districts(
-            session_factory,
-            lambda: (
-                b"bad zip",
-                "2026-09-17",
-                "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
-                datetime(2026, 9, 17, tzinfo=UTC),
-            ),
-        )
-
-    with session_factory() as session:
-        versions = list(
-            session.scalars(
-                select(MasterDataVersion)
-                .where(MasterDataVersion.dataset_key == "call-districts-us")
-                .order_by(MasterDataVersion.id)
-            )
-        )
-        assert [version.id for version in versions] == [first["version_id"], changed["version_id"]]
-        assert versions[0].status == MasterDataVersionStatus.ACTIVE
-        assert versions[1].status == MasterDataVersionStatus.CANDIDATE
 
 
 def test_nightly_timer_calculates_next_utc_run_and_requires_aware_time() -> None:

@@ -8,7 +8,18 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
-from backend.app.models import RulesetVersion
+from backend.app.models import (
+    ContestEntity,
+    EntityType,
+    MasterDataAuthorityRole,
+    MasterDataRunStatus,
+    MasterDataSource,
+    MasterDataSyncRun,
+    MasterDataVersion,
+    MasterDataVersionStatus,
+    RulesetVersion,
+)
+from backend.app.models.types import utc_now
 
 
 def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> None:
@@ -68,13 +79,13 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "iaru_regions",
         "contest_entities",
         "callsign_prefixes",
-        "call_districts",
         "audit_events",
     } <= tables
+    assert "call_districts" not in tables
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0003_master_data_intervals"
+    assert version == "0004_remove_call_district_master_data"
     assert foreign_keys == 1
     triggers = {
         row[0]
@@ -92,4 +103,91 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         ruleset.version = "2"
         with pytest.raises(DBAPIError, match="append-only"):
             session.commit()
+    engine.dispose()
+
+
+def test_fcc_call_area_data_is_removed_by_schema_migration(tmp_path) -> None:
+    database_path = tmp_path / "fcc-removal.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0003_master_data_intervals"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        source = MasterDataSource(
+            source_key="fcc-uls-amateur",
+            name="FCC ULS Amateur Radio Licenses",
+            canonical_url="https://example.test/l_amat.zip",
+            source_priority=50,
+            authority_role=MasterDataAuthorityRole.GOVERNING_AUTHORITY,
+            enabled=True,
+        )
+        session.add(source)
+        session.flush()
+        run = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key="call-districts-us",
+            status=MasterDataRunStatus.SUCCEEDED,
+            started_at=utc_now(),
+            record_counts={"districts": 10},
+        )
+        session.add(run)
+        session.flush()
+        version = MasterDataVersion(
+            sync_run_id=run.id,
+            dataset_key="call-districts-us",
+            retrieved_at=utc_now(),
+            checksum="a" * 64,
+            status=MasterDataVersionStatus.ACTIVE,
+        )
+        session.add(version)
+        session.flush()
+        entity = ContestEntity(
+            version_id=version.id,
+            namespace="ISO3166-1-alpha2",
+            authority_code="US",
+            name="United States",
+            entity_type=EntityType.SOVEREIGN_COUNTRY,
+        )
+        session.add(entity)
+        session.flush()
+        session.execute(
+            text(
+                "INSERT INTO call_districts "
+                "(version_id, entity_id, district_code, name, source_id) "
+                "VALUES (:version_id, :entity_id, '0', 'United States call area 0', :source_id)"
+            ),
+            {"version_id": version.id, "entity_id": entity.id, "source_id": source.id},
+        )
+        session.commit()
+    engine.dispose()
+
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    inspector = inspect(engine)
+    assert "call_districts" not in inspector.get_table_names()
+    with Session(engine) as session:
+        assert session.query(MasterDataSource).filter_by(source_key="fcc-uls-amateur").count() == 0
+        assert (
+            session.query(MasterDataVersion)
+            .filter_by(dataset_key="call-districts-us")
+            .count()
+            == 0
+        )
     engine.dispose()

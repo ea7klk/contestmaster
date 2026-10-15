@@ -410,43 +410,6 @@ class PrefixITUZoneAssignment(Base):
     override_note: Mapped[str | None] = mapped_column(Text)
 
 
-class CallDistrict(Base):
-    __tablename__ = "call_districts"
-    __table_args__ = (
-        UniqueConstraint(
-            "version_id",
-            "entity_id",
-            "district_code",
-            name="call_district_version_entity_code_unique",
-        ),
-        ForeignKeyConstraint(
-            ["entity_id", "version_id"],
-            ["contest_entities.id", "contest_entities.version_id"],
-            name="call_district_entity_version_fk",
-        ),
-        CheckConstraint(
-            "valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from",
-            name="validity_range",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    version_id: Mapped[int] = mapped_column(
-        ForeignKey("master_data_versions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    entity_id: Mapped[int] = mapped_column(
-        ForeignKey("contest_entities.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    district_code: Mapped[str] = mapped_column(String(80), nullable=False)
-    name: Mapped[str] = mapped_column(String(160), nullable=False)
-    callsign_pattern: Mapped[str | None] = mapped_column(String(200))
-    valid_from: Mapped[date | None] = mapped_column(Date)
-    valid_to: Mapped[date | None] = mapped_column(Date)
-    source_id: Mapped[int | None] = mapped_column(
-        ForeignKey("master_data_sources.id", ondelete="RESTRICT")
-    )
-
-
 class EntityCQZoneAssignment(Base):
     __tablename__ = "entity_cq_zone_assignments"
     __table_args__ = (

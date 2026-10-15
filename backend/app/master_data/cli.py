@@ -12,7 +12,6 @@ from sqlalchemy import desc, select
 from backend.app.db import SessionFactory
 from backend.app.master_data.jobs import (
     sync_cty,
-    sync_fcc_call_districts,
     sync_ungegn_countries,
 )
 from backend.app.models import MasterDataSyncRun, MasterDataVersion, MasterDataVersionStatus
@@ -25,7 +24,6 @@ def _sync_enabled() -> tuple[dict[str, object], bool]:
     failed = False
     for dataset_key, importer in (
         ("cty", sync_cty),
-        ("call-districts-us", sync_fcc_call_districts),
         ("countries-ungegn-wgn", sync_ungegn_countries),
     ):
         try:
@@ -83,7 +81,6 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("sync", help="Fetch and import all enabled master-data sources")
     subparsers.add_parser("sync-cty", help="Fetch and import the latest Big CTY release once")
-    subparsers.add_parser("sync-fcc", help="Fetch and import FCC ULS call-district data once")
     subparsers.add_parser(
         "sync-ungegn", help="Fetch and import the UNGEGN WGN country reference once"
     )
@@ -94,9 +91,6 @@ def main(argv: list[str] | None = None) -> int:
             result, failed = _sync_enabled()
         elif args.command == "sync-cty":
             result = sync_cty(SessionFactory)
-            failed = False
-        elif args.command == "sync-fcc":
-            result = sync_fcc_call_districts(SessionFactory)
             failed = False
         elif args.command == "sync-ungegn":
             result = sync_ungegn_countries(SessionFactory)

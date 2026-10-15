@@ -28,7 +28,6 @@ from backend.app.models.enums import (
     SystemRole,
 )
 from backend.app.models.master_data import (
-    CallDistrict,
     CallsignPrefix,
     ContestEntity,
     ContestMasterDataVersion,
@@ -55,7 +54,6 @@ __all__ = [
     "AdminNote",
     "AuditEvent",
     "CQZone",
-    "CallDistrict",
     "CallsignPrefix",
     "Contest",
     "ContestEntity",

@@ -325,9 +325,9 @@ Treat these as product defaults to confirm for the deployment's jurisdiction and
 
 ## Geographic and callsign master data
 
-Designate permitted Big CTY `cty.dat` data as the primary operational source for nightly master-data imports and callsign resolution, preserving its applicable license notice. Its callsign mappings cover prefixes, DXCC entities, CQ zones, and amateur-radio ITU zones. The hosted service will never ingest or redistribute the ARRL DXCC list; use permitted sources for operational mappings and each contest's published rules for scoring definitions. Maintain normalized master data for those fields alongside IARU regions, ITU Radio Regions, country/area identifiers, and call districts. Integrate official machine-readable regulator sources for every jurisdiction whose call districts are supported at launch; a jurisdiction without a suitable source and permitted use is outside launch call-district coverage. Use the source catalog's permitted authority references to validate CTY data and fill fields it does not contain; contest-published rules remain authoritative for adjudication. Keep the concepts distinct: CQ zones and amateur ITU zones are different contest systems; ITU Radio Regions are the three regulatory regions; IARU Regions are the corresponding amateur-radio organizations; and a contest entity such as a DXCC entity is not necessarily a sovereign country.
+Designate permitted Big CTY `cty.dat` data as the primary operational source for nightly master-data imports and callsign resolution, preserving its applicable license notice. Its callsign mappings cover prefixes, DXCC entities, CQ zones, and amateur-radio ITU zones. The hosted service will never ingest or redistribute the ARRL DXCC list; use permitted sources for operational mappings and each contest's published rules for scoring definitions. Maintain normalized master data for those fields alongside IARU regions, ITU Radio Regions, and country/area identifiers. Use the source catalog's permitted authority references to validate CTY data and fill fields it does not contain; contest-published rules remain authoritative for adjudication. Keep the concepts distinct: CQ zones and amateur ITU zones are different contest systems; ITU Radio Regions are the three regulatory regions; IARU Regions are the corresponding amateur-radio organizations; and a contest entity such as a DXCC entity is not necessarily a sovereign country.
 
-Use normalized ORM tables and effective-dated assignments. An entity can span more than one zone, and a zone can include parts of several entities, so zone membership must not be a single zone column on the entity. A logged callsign, portable prefix, operating location, or a contest's own definitions may be needed to resolve the right zone. Call districts are jurisdiction-specific and must not be assumed to follow one worldwide numbering scheme. Keep international prefix-block allocation separate from the prefix rules a contest uses to parse a callsign.
+Use normalized ORM tables and effective-dated assignments. An entity can span more than one zone, and a zone can include parts of several entities, so zone membership must not be a single zone column on the entity. A logged callsign, portable prefix, operating location, or a contest's own definitions may be needed to resolve the right zone. Keep international prefix-block allocation separate from the prefix rules a contest uses to parse a callsign.
 
 The source catalog in [Master data source recommendations](master-data/README.md) identifies the designated primary source, validation and gap-filling authorities, update approach, and known reuse limitations. The nightly importer should save retrieval metadata and checksums, validate a complete candidate dataset before activation, and retain prior versions. A timeout, parse error, empty response, or incomplete download must leave the last valid data active. Public availability does not grant permission to redistribute a dataset: source-specific terms must be checked before enabling automated ingestion or serving copied content.
 
@@ -345,7 +345,6 @@ erDiagram
     MASTER_DATA_VERSION ||--o{ ITU_RADIO_REGION : versions
     MASTER_DATA_VERSION ||--o{ CONTEST_ENTITY : versions
     MASTER_DATA_VERSION ||--o{ CALLSIGN_PREFIX : versions
-    MASTER_DATA_VERSION ||--o{ CALL_DISTRICT : versions
     CONTEST_ENTITY ||--o{ ENTITY_CQ_ZONE : assigned
     CQ_ZONE ||--o{ ENTITY_CQ_ZONE : contains
     CONTEST_ENTITY ||--o{ ENTITY_ITU_ZONE : assigned
@@ -362,7 +361,6 @@ erDiagram
     CQ_ZONE ||--o{ PREFIX_CQ_ZONE_ASSIGNMENT : resolves
     CALLSIGN_PREFIX ||--o{ PREFIX_ITU_ZONE_ASSIGNMENT : maps
     ITU_ZONE ||--o{ PREFIX_ITU_ZONE_ASSIGNMENT : resolves
-    CONTEST_ENTITY ||--o{ CALL_DISTRICT : has
 
     MASTER_DATA_SOURCE {
         integer id PK
@@ -469,16 +467,6 @@ erDiagram
         text valid_from
         text valid_to
         text override_note
-    }
-    CALL_DISTRICT {
-        integer id PK
-        integer version_id FK
-        integer entity_id FK
-        text district_code
-        text name
-        text callsign_pattern
-        text valid_from
-        text valid_to
     }
     ENTITY_CQ_ZONE {
         integer entity_id PK,FK
