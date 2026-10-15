@@ -48,6 +48,8 @@ Passwords are stored as salted scrypt hashes. Sign in through `POST /api/v1/auth
 
 The Vue staff pages are `/sign-in` and `/manage/contests`. A manager creates a draft with its start, end, separate log cutoff, and automatic-recalculation setting. Contest times entered in the browser's local timezone are converted to UTC before they are sent to the API. Configure categories and other contest conditions in `/rulesets/compose`, validate and save that immutable ruleset version, then assign it to the draft in the contest manager. The API enforces ownership and allows ruleset activation only while a contest is a draft.
 
+Administrative account provisioning, contest edits, ruleset version creation, and contest ruleset activation write append-only audit events in the same transaction as the change. The optional `audit_reason` request field records operator context; event metadata must never contain passwords, session/receipt tokens, uploaded log contents, or unnecessary personal information.
+
 The API checks enabled master-data sources immediately on startup when any required active version is missing, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Enabled sources currently include Big CTY, UNGEGN WGN country names/M49 identifiers, and the UNSD M49 country-or-area list. The M49 adapter stores published names and numeric codes as-is. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run all adapters from CLI with `uv run contestmaster-master-data sync`, or one with `sync-cty`, `sync-ungegn`, or `sync-m49`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
 
 ## Useful commands

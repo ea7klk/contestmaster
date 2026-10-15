@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.api.auth import AuthenticatedUser, Principal, require_contest_access
 from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
+from backend.app.audit import record_audit_event
 from backend.app.db import get_session
 from backend.app.models import Contest, ContestStatus, SystemRole
 from backend.app.rulesets.persistence import (
@@ -34,6 +35,7 @@ class ContestWrite(BaseModel):
     ends_at: datetime
     log_submission_cutoff_at: datetime
     auto_recalculate_on_upload: bool = False
+    audit_reason: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def validate_instants(self) -> ContestWrite:
@@ -49,6 +51,7 @@ class RulesetSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ruleset_version_id: int = Field(strict=True, ge=1)
+    audit_reason: str | None = Field(default=None, max_length=2000)
 
 
 def contest_output(contest: Contest) -> dict[str, object]:
@@ -118,6 +121,7 @@ def create_contest(
     payload: ContestWrite,
     principal: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
+    request: Request,
 ) -> dict[str, object]:
     contest = Contest(
         owner_user_id=principal.user_id,
@@ -132,6 +136,17 @@ def create_contest(
     )
     session.add(contest)
     try:
+        session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=principal.user_id,
+            action="contest.created",
+            target_type="contest",
+            target_id=contest.id,
+            reason=payload.audit_reason,
+            metadata={"slug": contest.slug},
+            request_id=getattr(request.state, "request_id", None),
+        )
         session.commit()
     except IntegrityError as exc:
         session.rollback()
@@ -154,10 +169,12 @@ def update_contest(
     payload: ContestWrite,
     contest: Annotated[Contest, Depends(require_contest_access)],
     session: Annotated[Session, Depends(get_session)],
+    principal: AuthenticatedUser,
+    request: Request,
 ) -> dict[str, object]:
     if contest.status is ContestStatus.PUBLISHED:
         raise HTTPException(status_code=409, detail="Published contests cannot be edited.")
-    for field_name in (
+    editable_fields = (
         "name",
         "slug",
         "description",
@@ -165,9 +182,26 @@ def update_contest(
         "ends_at",
         "log_submission_cutoff_at",
         "auto_recalculate_on_upload",
-    ):
+    )
+    changed_fields = [
+        field_name
+        for field_name in editable_fields
+        if getattr(contest, field_name) != getattr(payload, field_name)
+    ]
+    for field_name in editable_fields:
         setattr(contest, field_name, getattr(payload, field_name))
     try:
+        if changed_fields:
+            record_audit_event(
+                session,
+                actor_user_id=principal.user_id,
+                action="contest.updated",
+                target_type="contest",
+                target_id=contest.id,
+                reason=payload.audit_reason,
+                metadata={"changed_fields": changed_fields},
+                request_id=getattr(request.state, "request_id", None),
+            )
         session.commit()
     except IntegrityError as exc:
         session.rollback()
@@ -184,6 +218,7 @@ def select_contest_ruleset(
     contest: Annotated[Contest, Depends(require_contest_access)],
     principal: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
+    request: Request,
 ) -> dict[str, object]:
     if contest.status is not ContestStatus.DRAFT:
         raise HTTPException(
@@ -191,12 +226,23 @@ def select_contest_ruleset(
             detail="A ruleset can be selected only while the contest is a draft.",
         )
     try:
-        activate_ruleset(
+        activation = activate_ruleset(
             session,
             contest_id=contest.id,
             ruleset_version_id=payload.ruleset_version_id,
             activated_by_user_id=principal.user_id,
         )
+        if activation is not None:
+            record_audit_event(
+                session,
+                actor_user_id=principal.user_id,
+                action="contest.ruleset_activated",
+                target_type="contest",
+                target_id=contest.id,
+                reason=payload.audit_reason,
+                metadata={"ruleset_version_id": payload.ruleset_version_id},
+                request_id=getattr(request.state, "request_id", None),
+            )
         session.commit()
     except RulesetPersistenceError as exc:
         session.rollback()

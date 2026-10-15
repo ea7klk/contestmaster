@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
+from backend.app.audit import record_audit_event
 from backend.app.db import get_session
 from backend.app.models import RulesetVersion
 from backend.app.rulesets.persistence import RulesetConflictError, save_ruleset_version
@@ -112,6 +113,19 @@ def persist_ruleset_version(
         )
     try:
         persisted = save_ruleset_version(session, definition, created_by_user_id=actor.user_id)
+        if persisted.created:
+            record_audit_event(
+                session,
+                actor_user_id=actor.user_id,
+                action="ruleset_version.created",
+                target_type="ruleset_version",
+                target_id=persisted.version.id,
+                metadata={
+                    "ruleset_key": persisted.version.ruleset_key,
+                    "version": persisted.version.version,
+                },
+                request_id=getattr(request.state, "request_id", None),
+            )
         session.commit()
     except RulesetConflictError as exc:
         session.rollback()

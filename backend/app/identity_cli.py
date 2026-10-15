@@ -10,6 +10,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.api.auth import hash_password, normalize_email
+from backend.app.audit import record_audit_event
 from backend.app.db import SessionFactory
 from backend.app.models import SystemRole, SystemUser
 
@@ -37,6 +38,14 @@ def create_first_administrator(
             raise ValueError("Administrator bootstrap is available only before any user exists")
         session.add(user)
         session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=None,
+            action="system_user.initial_global_administrator_bootstrapped",
+            target_type="system_user",
+            target_id=user.id,
+            metadata={"role": user.role.value, "bootstrap": True},
+        )
         session.commit()
         return user.id
 

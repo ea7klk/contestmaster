@@ -21,6 +21,7 @@ from backend.app.api.auth import (
     set_session_cookies,
 )
 from backend.app.api.errors import API_ERROR_RESPONSES
+from backend.app.audit import record_audit_event
 from backend.app.db import get_session
 from backend.app.models import SystemRole, SystemUser
 
@@ -39,6 +40,7 @@ class UserCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     display_name: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=12, max_length=1024)
+    audit_reason: str | None = Field(default=None, max_length=2000)
 
 
 def _user_response(user: SystemUser) -> dict[str, object]:
@@ -108,8 +110,9 @@ def current_user(actor: AuthenticatedUser) -> dict[str, object]:
 @router.post("/admin/users", status_code=201, responses=API_ERROR_RESPONSES)
 def create_contest_manager(
     payload: UserCreateRequest,
-    _actor: GlobalAdministrator,
+    actor: GlobalAdministrator,
     session: Annotated[Session, Depends(get_session)],
+    request: Request,
 ) -> dict[str, object]:
     try:
         email = normalize_email(payload.email)
@@ -125,6 +128,17 @@ def create_contest_manager(
     )
     session.add(user)
     try:
+        session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=actor.user_id,
+            action="system_user.contest_manager_created",
+            target_type="system_user",
+            target_id=user.id,
+            reason=payload.audit_reason,
+            metadata={"role": user.role.value},
+            request_id=getattr(request.state, "request_id", None),
+        )
         session.commit()
     except IntegrityError as exc:
         session.rollback()

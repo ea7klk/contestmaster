@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
 from backend.app.models import (
+    AuditEvent,
     ContestEntity,
     EntityType,
     MasterDataAuthorityRole,
@@ -102,6 +103,8 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert "immutable_ruleset_versions_update" in triggers
     assert "immutable_ruleset_activations_update" in triggers
     assert "immutable_ruleset_activations_delete" in triggers
+    assert "immutable_audit_events_update" in triggers
+    assert "immutable_audit_events_delete" in triggers
     assert "completed_score_runs_update" in triggers
 
     with Session(engine) as session:
@@ -109,6 +112,23 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         session.add(ruleset)
         session.commit()
         ruleset.version = "2"
+        with pytest.raises(DBAPIError, match="append-only"):
+            session.commit()
+        session.rollback()
+        event = AuditEvent(
+            actor_user_id=None,
+            action="test.recorded",
+            target_type="contest",
+            target_id="1",
+            event_metadata={"source": "migration-test"},
+        )
+        session.add(event)
+        session.commit()
+        event.reason = "rewrite"
+        with pytest.raises(DBAPIError, match="append-only"):
+            session.commit()
+        session.rollback()
+        session.delete(event)
         with pytest.raises(DBAPIError, match="append-only"):
             session.commit()
     engine.dispose()

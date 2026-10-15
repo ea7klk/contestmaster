@@ -17,7 +17,7 @@ from backend.app.api.auth import (
 )
 from backend.app.db import Base, get_session
 from backend.app.main import app
-from backend.app.models import SystemRole, SystemSession, SystemUser
+from backend.app.models import AuditEvent, SystemRole, SystemSession, SystemUser
 
 
 @pytest.fixture
@@ -92,6 +92,11 @@ def test_first_admin_bootstrap_only_succeeds_once(identity_database, monkeypatch
         assert created is not None
         assert created.role is SystemRole.GLOBAL_ADMINISTRATOR
         assert created.email_normalized == "admin@example.test"
+        event = session.query(AuditEvent).one()
+        assert event.actor_user_id is None
+        assert event.action == "system_user.initial_global_administrator_bootstrapped"
+        assert event.target_id == str(first_id)
+        assert event.event_metadata["bootstrap"] is True
 
     with pytest.raises(ValueError, match="only before any user exists"):
         identity_cli.create_first_administrator(
@@ -211,11 +216,21 @@ def test_global_admin_can_create_manager_but_manager_cannot(identity_database):
             "email": "manager@example.test",
             "display_name": "Contest Manager",
             "password": "Another correct horse battery",
+            "audit_reason": "Organizer account provisioned for a scheduled event",
         },
     )
     assert created.status_code == 201
     assert created.json()["role"] == "contest_manager"
     assert "password_hash" not in created.text
+    with identity_database() as session:
+        event = session.query(AuditEvent).one()
+        assert event.actor_user_id == 1
+        assert event.action == "system_user.contest_manager_created"
+        assert event.target_type == "system_user"
+        assert event.target_id == str(created.json()["id"])
+        assert event.reason == "Organizer account provisioned for a scheduled event"
+        assert event.occurred_at.tzinfo is not None
+        assert event.request_id is not None
 
     manager_client = TestClient(app)
     signed_in = manager_client.post(
@@ -269,6 +284,7 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
         "ends_at": "2026-05-01T06:00:00Z",
         "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
         "auto_recalculate_on_upload": True,
+        "audit_reason": "Initial contest setup",
     }
     created = first_manager.post(
         "/api/v1/contests",
@@ -291,7 +307,7 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     assert listing.json()["meta"]["total"] == 1
     assert admin.get(f"/api/v1/contests/{contest['id']}").status_code == 200
 
-    changed = {**payload, "name": "Updated Sprint"}
+    changed = {**payload, "name": "Updated Sprint", "audit_reason": "Corrected event title"}
     forbidden = other_manager.put(
         f"/api/v1/contests/{contest['id']}",
         headers={"X-CSRF-Token": other_manager.cookies.get("contestmaster_csrf")},
@@ -305,6 +321,16 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "Updated Sprint"
+    with identity_database() as session:
+        events = session.query(AuditEvent).order_by(AuditEvent.id).all()
+        assert [event.action for event in events] == ["contest.created", "contest.updated"]
+        assert all(event.actor_user_id == contest["owner_user_id"] for event in events)
+        assert all(event.target_id == str(contest["id"]) for event in events)
+        assert [event.reason for event in events] == [
+            "Initial contest setup",
+            "Corrected event title",
+        ]
+        assert events[1].event_metadata == {"changed_fields": ["name"]}
 
 
 @pytest.mark.parametrize(
@@ -416,6 +442,10 @@ def test_manager_can_save_and_select_ruleset_only_for_owned_draft(identity_datab
     with identity_database() as session:
         assert session.query(RulesetVersion).count() == 1
         assert session.query(RulesetActivation).count() == 1
+        assert {event.action for event in session.query(AuditEvent).all()} == {
+            "ruleset_version.created",
+            "contest.ruleset_activated",
+        }
 
 
 def test_invalid_ruleset_cannot_be_persisted(identity_database):
