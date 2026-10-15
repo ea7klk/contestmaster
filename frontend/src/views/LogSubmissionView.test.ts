@@ -1,0 +1,153 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import LogSubmissionView from './LogSubmissionView.vue'
+
+const responseBody = {
+  status: 'accepted',
+  replayed: false,
+  entry_id: 8,
+  entry_key: 'guest-entry',
+  receipt_token: 'one-time-entry-token',
+  summary: {
+    accepted_qsos: 3,
+    rejected_qsos: 0,
+    error_count: 0,
+    warning_count: 1,
+  },
+  errors: [],
+  warnings: [
+    { line: 8, code: 'unknown_header', message: 'Header was preserved.' },
+  ],
+}
+
+afterEach(() => vi.unstubAllGlobals())
+const pendingUploadCompletions: Array<() => void> = []
+
+describe('LogSubmissionView', () => {
+  it('shows progress, import summary, warnings, and the entry receipt token', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 1,
+                name: 'Winter Sprint',
+                slug: 'winter-sprint',
+                cutoff_at: '2026-12-01T00:00:00Z',
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    pendingUploadCompletions.length = 0
+    class FakeRequest {
+      upload = { onprogress: null as ((event: ProgressEvent) => void) | null }
+      status = 201
+      responseText = JSON.stringify(responseBody)
+      headers = new Map<string, string>()
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      open() {}
+      setRequestHeader(name: string, value: string) {
+        this.headers.set(name, value)
+      }
+      send(body: FormData) {
+        expect(body.get('file')).toBeInstanceOf(File)
+        pendingUploadCompletions.push(() => this.onload?.())
+        this.upload.onprogress?.({
+          lengthComputable: true,
+          loaded: 50,
+          total: 100,
+        } as ProgressEvent)
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeRequest)
+
+    const wrapper = mount(LogSubmissionView)
+    await flushPromises()
+    await wrapper.get('#upload-contest').setValue('winter-sprint')
+    const input = wrapper.get<HTMLInputElement>('#log-file')
+    const file = new File(['START-OF-LOG'], 'entry.log', { type: 'text/plain' })
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file],
+    })
+    await input.trigger('change')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('.upload-progress').text()).toContain('50%')
+    pendingUploadCompletions[0]?.()
+    await flushPromises()
+
+    expect(wrapper.get('[aria-labelledby="result-title"]').text()).toContain(
+      '3 contacts accepted',
+    )
+    expect(wrapper.text()).toContain('one-time-entry-token')
+    expect(wrapper.text()).toContain('Header was preserved.')
+  })
+
+  it('announces line-level parser errors as a rejected log', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              items: [{ id: 1, name: 'Sprint', slug: 'sprint' }],
+            }),
+            {
+              status: 200,
+            },
+          ),
+      ),
+    )
+    class RejectedRequest {
+      upload = { onprogress: null }
+      status = 422
+      responseText = JSON.stringify({
+        status: 'rejected',
+        summary: {
+          accepted_qsos: 0,
+          rejected_qsos: 1,
+          error_count: 1,
+          warning_count: 0,
+        },
+        errors: [
+          {
+            line: 12,
+            code: 'incomplete_qso',
+            message: 'QSO record is incomplete.',
+          },
+        ],
+        warnings: [],
+      })
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      open() {}
+      setRequestHeader() {}
+      send() {
+        this.onload?.()
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', RejectedRequest)
+
+    const wrapper = mount(LogSubmissionView)
+    await flushPromises()
+    await wrapper.get('#upload-contest').setValue('sprint')
+    const input = wrapper.get<HTMLInputElement>('#log-file')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['broken'], 'entry.log', { type: 'text/plain' })],
+    })
+    await input.trigger('change')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('#result-title').text()).toBe('Log needs correction')
+    expect(wrapper.text()).toContain('Line 12: QSO record is incomplete.')
+  })
+})

@@ -41,6 +41,19 @@ Contest managers may change an owned contest through `draft → open → closed 
 
 After an entry exists, its manager may call `PUT /api/v1/contests/{contest_id}/entries/{entry_id}/access-grant` with `operation` set to `create`, `set_expiry`, `revoke`, or `rotate`. Grant expiry is optional and must be a timezone-aware future instant when set. Create and rotate return an opaque `receipt_token` once; only its SHA-256 digest is retained. The route verifies both contest ownership and that the entry belongs to that contest. These operations are audited without storing the secret token.
 
+## Log submission and entry corrections
+
+- `GET /api/v1/public/submittable-contests` lists open contests whose submission cutoff is in the future.
+- `POST /api/v1/public/contests/{contest_slug}/logs` accepts a multipart `file` plus required `Idempotency-Key`. The adapter supports UTF-8 Cabrillo files with `.log`, `.cbr`, `.cabrillo`, or `.txt` suffixes, up to 5 MiB. It requires exactly one `CALLSIGN` and `CONTEST` header and at least one complete QSO. The contest header must match the selected contest name or slug.
+- The API limits full multipart requests to 5 MiB plus 64 KiB overhead and applies a 20-uploads-per-minute per-source-address limit in the initial single-process deployment. Upload filenames are reduced to safe basenames and never used as filesystem paths.
+- Valid submissions create participant/entry records without a privileged account, an entry-scoped receipt grant, an immutable first revision, station and QSO rows in one ORM transaction. A supplied email matching an existing participant email links to that participant; new addresses remain unverified until the email magic-link flow confirms them.
+- Idempotency keys are stored only as SHA-256 digests scoped to the contest. Repeating the same key and file returns the same entry and same deterministic receipt token; using that key for different content returns `409`. In production, `ENTRY_RECEIPT_SECRET` must remain stable and contain at least 32 random bytes. Receipt tokens are returned to the submitter, while persistence stores only their digest.
+- Malformed files return HTTP `422` with line-scoped error codes and messages. Rejected input creates no participant, entry, or QSO rows. Warnings and unmapped categories are reported separately. Unknown headers and extra QSO fields are retained in revision metadata.
+- Parsing and validation finish before the short persistence transaction begins. The exact UTF-8 input text, content digest, safe filename, import metadata, and normalized contacts are stored in ORM-managed revisions and child records. Each revision records whether it came from public submission, an entry receipt, or a verified participant session; participant revisions reference the verified email identity without storing session or receipt secrets.
+- `GET /api/v1/public/entries/{entry_id}` and the entry correction/contact routes require a valid `X-Entry-Receipt` token or a verified participant session associated with the entry. Participant mutations also require the participant CSRF token. Invalid or expired grants do not reveal whether an entry exists.
+- `PUT /api/v1/public/entries/{entry_id}/log` appends a full Cabrillo resubmission using `Idempotency-Key`. `POST /contacts`, `PUT /contacts/{contact_id}`, and `DELETE /contacts/{contact_id}` append contact changes as new immutable revisions. Contact IDs apply only to the current revision; prior revisions remain available for reproducibility.
+- Managers may set grant expiry, revoke access, or rotate a receipt token through the contest access-grant endpoint above. Receipt secrets and idempotency keys are never written to logs.
+
 ## Ruleset authoring
 
 - `GET /api/v1/rulesets/catalog` returns the typed schemas, labels, and execution expectations for the built-in rule types used by the graphical composer.

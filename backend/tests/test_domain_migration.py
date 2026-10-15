@@ -74,6 +74,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "contests",
         "entries",
         "entry_revisions",
+        "log_submission_requests",
         "qsos",
         "score_runs",
         "qso_scores",
@@ -93,8 +94,15 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0010_protect_active_master_data"
+    assert version == "0011_guest_log_submissions"
     assert foreign_keys == 1
+    assert {"category_values"} <= {column["name"] for column in inspector.get_columns("entries")}
+    assert {
+        "original_content",
+        "import_metadata",
+        "received_by_participant_email_id",
+        "received_via",
+    } <= {column["name"] for column in inspector.get_columns("entry_revisions")}
     triggers = {
         row[0]
         for row in engine.connect().exec_driver_sql(
@@ -102,6 +110,8 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         )
     }
     assert "immutable_ruleset_versions_update" in triggers
+    assert "immutable_entry_revisions_update" in triggers
+    assert "immutable_entry_revisions_delete" in triggers
     assert "immutable_ruleset_activations_update" in triggers
     assert "immutable_ruleset_activations_delete" in triggers
     assert "immutable_audit_events_update" in triggers

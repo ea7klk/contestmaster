@@ -244,6 +244,7 @@ class Entry(Base):
     )
     entry_key: Mapped[str] = mapped_column(String(120), nullable=False)
     category_key: Mapped[str | None] = mapped_column(String(120))
+    category_values: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[EntryStatus] = mapped_column(
         enum_column(EntryStatus, "entry_status"), nullable=False, default=EntryStatus.RECEIVED
     )
@@ -270,12 +271,20 @@ class EntryRevision(Base):
     original_filename: Mapped[str | None] = mapped_column(String(255))
     content_type: Mapped[str | None] = mapped_column(String(255))
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    original_content: Mapped[str] = mapped_column(Text, nullable=False)
+    import_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     received_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
     received_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("system_users.id", ondelete="SET NULL")
+    )
+    received_by_participant_email_id: Mapped[int | None] = mapped_column(
+        ForeignKey("participant_emails.id", ondelete="SET NULL")
+    )
+    received_via: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="public_submission"
     )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
@@ -306,6 +315,28 @@ class EntryAccessGrant(Base):
     revoked_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("system_users.id", ondelete="SET NULL")
     )
+
+
+class LogSubmissionRequest(Base):
+    """Idempotency record for public submissions; keys are never stored verbatim."""
+
+    __tablename__ = "log_submission_requests"
+    __table_args__ = (
+        UniqueConstraint("contest_id", "key_sha256", name="contest_submission_key_unique"),
+        CheckConstraint("length(key_sha256) = 64", name="idempotency_key_hash_length"),
+        CheckConstraint("length(content_sha256) = 64", name="submission_content_hash_length"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    key_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("entries.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
 class Station(Base):

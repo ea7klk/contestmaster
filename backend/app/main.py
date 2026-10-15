@@ -28,6 +28,8 @@ from backend.app.api.participant_identity import router as participant_identity_
 from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
+from backend.app.logs.api import MAX_REQUEST_BYTES
+from backend.app.logs.api import router as log_router
 from backend.app.master_data.scheduler import (
     has_all_required_versions,
     nightly_master_data_timer,
@@ -85,13 +87,18 @@ app.add_middleware(
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Request-ID", "X-CSRF-Token"],
+    allow_headers=[
+        "Content-Type",
+        "X-Request-ID",
+        "X-CSRF-Token",
+        "Idempotency-Key",
+        "X-Entry-Receipt",
+    ],
 )
 app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
 app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
-app.include_router(
-    participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth"
-)
+app.include_router(participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth")
+app.include_router(log_router, prefix=f"{settings.api_prefix}/public")
 app.include_router(master_data_admin_router, prefix=settings.api_prefix)
 app.include_router(contest_router, prefix=f"{settings.api_prefix}/contests")
 app.include_router(public_contest_router, prefix=f"{settings.api_prefix}/public/contests")
@@ -105,6 +112,26 @@ async def request_logging(request: Request, call_next):
     request.state.request_id = request_id
     started = time.perf_counter()
     try:
+        is_log_upload = (
+            request.method == "POST"
+            and request.url.path.startswith(f"{settings.api_prefix}/public/contests/")
+            and request.url.path.endswith("/logs")
+        )
+        content_length = request.headers.get("content-length")
+        if is_log_upload and content_length is not None:
+            try:
+                oversized = int(content_length) > MAX_REQUEST_BYTES
+            except ValueError:
+                oversized = True
+            if oversized:
+                response = error_response(
+                    request,
+                    413,
+                    "request_too_large",
+                    "Log upload requests may not exceed 5 MiB plus multipart overhead.",
+                )
+                response.headers["X-Request-ID"] = request_id
+                return response
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         logger.info(

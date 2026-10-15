@@ -131,6 +131,7 @@ onMounted(async () => {
               <th>Entry</th>
               <th>Status</th>
               <th>Submitted</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -139,6 +140,11 @@ onMounted(async () => {
               <td>{{ entry.entry_key }}</td>
               <td>{{ entry.status }}</td>
               <td>{{ new Date(entry.submitted_at).toLocaleString() }}</td>
+              <td>
+                <RouterLink :to="`/entries/${entry.id}/manage`">
+                  Manage entry
+                </RouterLink>
+              </td>
             </tr>
           </tbody>
         </table>

@@ -268,6 +268,7 @@ def _add_score_references(session, version: MasterDataVersion, owner_id: int):
         revision_number=1,
         input_format="cabrillo",
         storage_key="test/ref.log",
+        original_content="START-OF-LOG\nEND-OF-LOG",
         content_sha256="b" * 64,
         byte_size=10,
         submitted_at=datetime(2026, 2, 1, tzinfo=UTC),

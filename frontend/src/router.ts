@@ -9,6 +9,17 @@ export const router = createRouter({
       component: () => import('./views/HomeView.vue'),
     },
     {
+      path: '/submit-log',
+      name: 'log-submission',
+      component: () => import('./views/LogSubmissionView.vue'),
+    },
+    {
+      path: '/entries/:entryId/manage',
+      name: 'entry-management',
+      component: () => import('./views/EntryManagementView.vue'),
+      props: true,
+    },
+    {
       path: '/sign-in',
       name: 'sign-in',
       component: () => import('./views/SignInView.vue'),

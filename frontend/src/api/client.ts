@@ -20,9 +20,10 @@ const apiPrefix = import.meta.env.VITE_API_PREFIX ?? '/api/v1'
 
 function csrfToken(path: string): string | undefined {
   if (typeof document === 'undefined') return undefined
-  const cookieName = path.startsWith('/participants/auth')
-    ? 'contestmaster_participant_csrf'
-    : 'contestmaster_csrf'
+  const cookieName =
+    path.startsWith('/participants/auth') || path.startsWith('/public/entries')
+      ? 'contestmaster_participant_csrf'
+      : 'contestmaster_csrf'
   const match = document.cookie.match(
     new RegExp(`(?:^|;\\s*)${cookieName}=([^;]+)`),
   )

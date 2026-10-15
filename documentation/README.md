@@ -19,7 +19,8 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 
 - Add, edit, and remove contacts through the application.
 - Upload logs through the participant interface and import or export them through format adapters, starting with Cabrillo where appropriate.
-- Report malformed rows and rule violations without silently discarding submitted data.
+- Report malformed rows and rule violations with source-line feedback and without partially accepting an invalid log. Preserve the exact submitted source, unknown headers, and unmapped fields.
+- Make upload retries idempotent per contest and content. Bound request and file sizes, sanitize filenames, and apply rate limits. Return an entry-scoped receipt token and store only its digest.
 - Detect likely duplicate contacts and show how each contact was credited during scoring.
 
 ### Contest administration
@@ -117,7 +118,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
 
 The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition.
 
@@ -142,6 +143,8 @@ erDiagram
     QSO ||--o{ QSO_DECISION : receives
     ENTRY ||--o{ SCORE_RUN : has
     ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
+    CONTEST ||--o{ LOG_SUBMISSION_REQUEST : deduplicates
+    ENTRY ||--o{ LOG_SUBMISSION_REQUEST : identifies
     ENTRY_REVISION ||--o{ SCORE_RUN : scores
     RULESET_VERSION ||--o{ SCORE_RUN : evaluates
     SCORE_RUN ||--o{ SCORE_RUN_MASTER_DATA_VERSION : records
@@ -229,7 +232,7 @@ erDiagram
         integer contest_id FK
         integer participant_id FK
         integer submitter_user_id FK
-        text category
+        text category_values_json
         text submitted_at_utc
         text status
     }
@@ -237,8 +240,13 @@ erDiagram
         integer id PK
         integer entry_id FK
         integer revision_number
+        text input_format
         text storage_key
+        text original_content
+        text import_metadata_json
         text content_sha256
+        integer received_by_participant_email_id FK
+        text received_via
         text submitted_at_utc
         text received_at_utc
     }
@@ -249,6 +257,14 @@ erDiagram
         text created_at_utc
         text expires_at_utc
         text revoked_at_utc
+    }
+    LOG_SUBMISSION_REQUEST {
+        integer id PK
+        integer contest_id FK
+        text key_sha256
+        text content_sha256
+        integer entry_id FK
+        text created_at_utc
     }
     STATION {
         integer id PK

@@ -32,13 +32,21 @@ The Vue development server is at `http://localhost:5173`; it proxies `/api` to t
 
 The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes.
 
+### Guest log submission
+
+The Vue upload workflow is available at `/submit-log`. It uploads multipart Cabrillo files to the public API and reports progress, import counts, line-level errors, and warnings. No privileged account is required. A successful upload displays the entry-scoped receipt token once; save it privately to edit or resubmit that entry. The original text and each accepted revision are retained in SQLite alongside normalized ORM-managed station and QSO rows.
+
+The API accepts UTF-8 `.log`, `.cbr`, `.cabrillo`, and `.txt` files up to 5 MiB, with up to 64 KiB multipart overhead. The initial single API process applies a per-source-address limit of 20 uploads per minute. The in-memory rate window is process-local; use a shared limiter before running multiple API replicas. Exact retries use the same `Idempotency-Key` and file content and return the same entry receipt without creating duplicate revisions. Production `ENTRY_RECEIPT_SECRET` must contain at least 32 random bytes and remain stable across restarts. Never commit this secret.
+
+Malformed logs are rejected as a whole with source-line diagnostics. Unknown header values and extra Cabrillo columns are preserved for review. Corrections append immutable `entry_revisions`; contact edits never overwrite earlier input. A valid receipt token or the associated verified participant session is required for entry details and corrections. Contest managers can expire, revoke, or rotate guest grants from their contest workflow.
+
 ## Privileged accounts and sessions
 
 Apply migrations before bootstrapping the first global administrator. The one-time command prompts for a password without echoing it, requires confirmation and a 12-character minimum, and refuses to run after any system account exists:
 
 ```sh
 uv run alembic upgrade head
-uv run contestmaster-admin create-first-admin \
+uv run python -m backend.app.identity_cli create-first-admin \
   --username admin \
   --email admin@example.org \
   --display-name "Site Administrator"

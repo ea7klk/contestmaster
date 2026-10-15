@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     email_smtp_password: str | None = None
     email_from_address: str | None = None
     frontend_base_url: str = "http://localhost:5173"
+    entry_receipt_secret: str = "development-only-change-before-deploy"
     master_data_scheduler_enabled: bool = True
     master_data_nightly_hour_utc: int = 2
 
@@ -43,6 +44,13 @@ class Settings(BaseSettings):
     def secure_cookies_required_in_production(cls, value: bool, info) -> bool:
         if info.data.get("app_env") == "production" and not value:
             raise ValueError("secure_cookies must be enabled in production")
+        return value
+
+    @field_validator("entry_receipt_secret")
+    @classmethod
+    def receipt_secret_must_be_strong_in_production(cls, value: str, info) -> str:
+        if info.data.get("app_env") == "production" and len(value.encode("utf-8")) < 32:
+            raise ValueError("entry_receipt_secret must contain at least 32 bytes in production")
         return value
 
 

@@ -51,6 +51,7 @@ watch(() => route.fullPath, refreshIdentity)
         <RouterLink to="/manage/contests">Manage contests</RouterLink>
         <RouterLink to="/rulesets/compose">Ruleset composer</RouterLink>
         <RouterLink to="/participant/access">Participant access</RouterLink>
+        <RouterLink to="/submit-log">Submit a log</RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"
           to="/admin/master-data"
