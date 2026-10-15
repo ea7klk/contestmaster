@@ -50,14 +50,14 @@ flowchart LR
     Participant[Log submitter; account optional] --> Web[Vue web application]
     PrivilegedUser[Global administrator or contest manager] --> Web
     Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
-    API --> Auth[Role and contest-scope authorization]
+    API -->|privileged actions| Auth[Role and contest-scope authorization]
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
     Domain --> Rules[Versioned contest rulesets]
     Domain --> Scoring[Integer scoring and adjudication]
     API --> Store[ORM persistence layer]
     Store -->|ORM-managed connection and session| DB[(SQLite)]
-    API --> Adapters[Import and export adapters]
+    API -->|account-free log upload| Adapters[Import and export adapters]
     Adapters --> Formats[Cabrillo and other log formats]
 ```
 
@@ -76,7 +76,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. System accounts are only for global administrators and contest managers; participant records are contest identities and do not require an account. An entry may have no system-account submitter when a participant uploads a log as a guest. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
+The model below is a starting point. System accounts are only for global administrators and contest managers; participant records are contest identities and do not require an account. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
 
 ```mermaid
 erDiagram
@@ -121,7 +121,7 @@ erDiagram
         integer id PK
         integer contest_id FK
         integer participant_id FK
-        integer submitter_user_id FK nullable
+        integer submitter_user_id FK
         text category
         text submitted_at_utc
         text status
