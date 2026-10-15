@@ -32,7 +32,7 @@ The Vue development server is at `http://localhost:5173`; it proxies `/api` to t
 
 The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes.
 
-The API checks enabled master-data sources immediately on startup when either required active version is missing, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Enabled sources currently include Big CTY and UNGEGN WGN country names/M49 identifiers. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run all adapters from CLI with `uv run contestmaster-master-data sync`, or one with `sync-cty` / `sync-ungegn`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
+The API checks enabled master-data sources immediately on startup when any required active version is missing, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Enabled sources currently include Big CTY, UNGEGN WGN country names/M49 identifiers, and the UNSD M49 country-or-area list. The M49 adapter stores published names and numeric codes as-is. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run all adapters from CLI with `uv run contestmaster-master-data sync`, or one with `sync-cty`, `sync-ungegn`, or `sync-m49`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
 
 ## Useful commands
 

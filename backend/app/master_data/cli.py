@@ -12,6 +12,7 @@ from sqlalchemy import desc, select
 from backend.app.db import SessionFactory
 from backend.app.master_data.jobs import (
     sync_cty,
+    sync_m49_country_areas,
     sync_ungegn_countries,
 )
 from backend.app.models import MasterDataSyncRun, MasterDataVersion, MasterDataVersionStatus
@@ -25,6 +26,7 @@ def _sync_enabled() -> tuple[dict[str, object], bool]:
     for dataset_key, importer in (
         ("cty", sync_cty),
         ("countries-ungegn-wgn", sync_ungegn_countries),
+        ("countries-unsd-m49", sync_m49_country_areas),
     ):
         try:
             outcomes.append({"dataset_key": dataset_key, **importer(SessionFactory)})
@@ -84,6 +86,9 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "sync-ungegn", help="Fetch and import the UNGEGN WGN country reference once"
     )
+    subparsers.add_parser(
+        "sync-m49", help="Fetch and import the official UNSD M49 country-or-area list once"
+    )
     subparsers.add_parser("status", help="Show active versions and recent sync runs")
     args = parser.parse_args(argv)
     try:
@@ -94,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
             failed = False
         elif args.command == "sync-ungegn":
             result = sync_ungegn_countries(SessionFactory)
+            failed = False
+        elif args.command == "sync-m49":
+            result = sync_m49_country_areas(SessionFactory)
             failed = False
         else:
             result = _status()

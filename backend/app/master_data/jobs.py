@@ -19,6 +19,25 @@ from backend.app.master_data.cty import (
     fetch_latest_archive,
     parse_archive,
 )
+from backend.app.master_data.m49 import (
+    DATASET_KEY as M49_DATASET_KEY,
+)
+from backend.app.master_data.m49 import (
+    PARSER_VERSION as M49_PARSER_VERSION,
+)
+from backend.app.master_data.m49 import (
+    SOURCE_KEY as M49_SOURCE_KEY,
+)
+from backend.app.master_data.m49 import (
+    SOURCE_URL as M49_SOURCE_URL,
+)
+from backend.app.master_data.m49 import (
+    USE_TERMS_URL as M49_USE_TERMS_URL,
+)
+from backend.app.master_data.m49 import (
+    M49CountryAreaData,
+    fetch_country_areas,
+)
 from backend.app.master_data.ungegn import (
     API_DOCS_URL as UNGEGN_API_DOCS_URL,
 )
@@ -261,6 +280,129 @@ def _persist_ungegn_data(
     run.finished_at = utc_now()
     run.error_summary = (
         "Changed country reference staged for global administrator review."
+        if changed
+        else None
+    )
+    return version
+
+
+def _create_m49_run(session_factory: sessionmaker[Session]) -> int:
+    with session_factory.begin() as session:
+        source = session.scalar(
+            select(MasterDataSource).where(MasterDataSource.source_key == M49_SOURCE_KEY)
+        )
+        if source is None:
+            source = MasterDataSource(
+                source_key=M49_SOURCE_KEY,
+                name="UN Statistics Division M49 country-or-area list",
+                canonical_url=M49_SOURCE_URL,
+                source_priority=70,
+                authority_role=MasterDataAuthorityRole.GAP_FILLING,
+                use_terms_url=M49_USE_TERMS_URL,
+                license_notice=(
+                    "UN M49 country-or-area names and numeric codes are used as published. "
+                    "See UN website terms of use."
+                ),
+                enabled=True,
+            )
+            session.add(source)
+            session.flush()
+        source.canonical_url = M49_SOURCE_URL
+        source.use_terms_url = M49_USE_TERMS_URL
+        source.license_notice = (
+            "UN M49 country-or-area names and numeric codes are used as published, without "
+            "modification or derived M49 classifications. See UN website terms of use."
+        )
+        source.enabled = True
+        active = session.scalar(
+            select(MasterDataSyncRun).where(
+                MasterDataSyncRun.source_id == source.id,
+                MasterDataSyncRun.dataset_key == M49_DATASET_KEY,
+                MasterDataSyncRun.status == MasterDataRunStatus.RUNNING,
+            )
+        )
+        now = utc_now()
+        if active is not None:
+            if active.started_at >= now - RUN_STALE_AFTER:
+                raise MasterDataError(f"An UN M49 sync run ({active.id}) is already running")
+            active.status = MasterDataRunStatus.FAILED
+            active.finished_at = now
+            active.error_summary = "Marked failed because its running lease exceeded six hours."
+        session.flush()
+        run = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key=M49_DATASET_KEY,
+            started_at=now,
+            parser_version=M49_PARSER_VERSION,
+            status=MasterDataRunStatus.RUNNING,
+        )
+        session.add(run)
+        session.flush()
+        return run.id
+
+
+def _persist_m49_data(
+    session: Session, run: MasterDataSyncRun, source_data: M49CountryAreaData
+) -> MasterDataVersion:
+    current = session.scalar(
+        select(MasterDataVersion).where(
+            MasterDataVersion.dataset_key == M49_DATASET_KEY,
+            MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
+        )
+    )
+    candidate = session.scalar(
+        select(MasterDataVersion).where(
+            MasterDataVersion.dataset_key == M49_DATASET_KEY,
+            MasterDataVersion.checksum == source_data.normalized_checksum,
+            MasterDataVersion.status == MasterDataVersionStatus.CANDIDATE,
+        )
+    )
+    run.retrieved_at = source_data.retrieved_at
+    run.source_url = M49_SOURCE_URL
+    run.source_release = "UNSD M49 overview current"
+    run.checksum = source_data.response_sha256
+    run.record_counts = {"country_areas": len(source_data.country_areas)}
+    if current is not None and current.checksum == source_data.normalized_checksum:
+        run.status = MasterDataRunStatus.SUCCEEDED
+        run.change_detected = False
+        run.finished_at = utc_now()
+        return current
+    if candidate is not None:
+        run.status = MasterDataRunStatus.SUCCEEDED
+        run.change_detected = False
+        run.finished_at = utc_now()
+        return candidate
+
+    changed = current is not None
+    version = MasterDataVersion(
+        sync_run_id=run.id,
+        dataset_key=M49_DATASET_KEY,
+        source_release="UNSD M49 overview current",
+        retrieved_at=source_data.retrieved_at,
+        checksum=source_data.normalized_checksum,
+        activated_at=None if changed else source_data.retrieved_at,
+        valid_from=source_data.retrieved_at,
+        status=(MasterDataVersionStatus.CANDIDATE if changed else MasterDataVersionStatus.ACTIVE),
+    )
+    session.add(version)
+    session.flush()
+    session.add_all(
+        [
+            ContestEntity(
+                version_id=version.id,
+                namespace="UN-M49",
+                authority_code=country_area.m49_code,
+                name=country_area.name,
+                entity_type=EntityType.OTHER,
+            )
+            for country_area in source_data.country_areas
+        ]
+    )
+    run.change_detected = True
+    run.status = MasterDataRunStatus.SUCCEEDED
+    run.finished_at = utc_now()
+    run.error_summary = (
+        "Changed country-or-area reference staged for global administrator review."
         if changed
         else None
     )
@@ -544,6 +686,33 @@ def sync_ungegn_countries(
     except Exception as exc:
         _finish_failed(session_factory, run_id, exc)
         logger.exception("ungegn_wgn_master_data_sync_failed", extra={"run_id": run_id})
+        raise
+
+
+def sync_m49_country_areas(
+    session_factory: sessionmaker[Session], fetch_data=fetch_country_areas
+) -> dict[str, int | str | bool | None]:
+    """Refresh the official UNSD M49 country-or-area reference as published."""
+    run_id = _create_m49_run(session_factory)
+    try:
+        source_data = fetch_data()
+        with session_factory.begin() as session:
+            run = session.get(MasterDataSyncRun, run_id)
+            if run is None:
+                raise MasterDataError(f"UN M49 sync run {run_id} disappeared")
+            version = _persist_m49_data(session, run, source_data)
+            result = {
+                "run_id": run_id,
+                "status": run.status.value,
+                "changed": run.change_detected,
+                "version_id": version.id,
+                **run.record_counts,
+            }
+        logger.info("unsd_m49_master_data_sync_finished", extra=result)
+        return result
+    except Exception as exc:
+        _finish_failed(session_factory, run_id, exc)
+        logger.exception("unsd_m49_master_data_sync_failed", extra={"run_id": run_id})
         raise
 
 

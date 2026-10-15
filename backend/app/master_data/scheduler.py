@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.app.master_data.jobs import (
     sync_cty,
+    sync_m49_country_areas,
     sync_ungegn_countries,
 )
 from backend.app.models import MasterDataVersion, MasterDataVersionStatus
@@ -30,7 +31,7 @@ def seconds_until_nightly_run(now: datetime, hour_utc: int) -> float:
     return (next_run - current).total_seconds()
 
 
-REQUIRED_DATASET_KEYS = ("cty", "countries-ungegn-wgn")
+REQUIRED_DATASET_KEYS = ("cty", "countries-ungegn-wgn", "countries-unsd-m49")
 
 
 def has_all_required_versions(session_factory: sessionmaker) -> bool:
@@ -54,6 +55,7 @@ async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock
         for dataset_key, importer in (
             ("cty", sync_cty),
             ("countries-ungegn-wgn", sync_ungegn_countries),
+            ("countries-unsd-m49", sync_m49_country_areas),
         ):
             try:
                 result = await asyncio.to_thread(importer, session_factory)

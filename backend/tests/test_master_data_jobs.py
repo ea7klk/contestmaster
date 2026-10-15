@@ -18,8 +18,10 @@ from backend.app.master_data.jobs import (
     activate_candidate,
     pin_contest_versions,
     sync_cty,
+    sync_m49_country_areas,
     sync_ungegn_countries,
 )
+from backend.app.master_data.m49 import parse_country_areas
 from backend.app.master_data.scheduler import (
     has_all_required_versions,
     run_master_data_sync,
@@ -81,10 +83,15 @@ def test_master_data_sync_attempts_each_source_when_one_fails(monkeypatch) -> No
         calls.append("ungegn")
         return {"changed": False}
 
+    def successful_m49(_factory):
+        calls.append("m49")
+        return {"changed": False}
+
     monkeypatch.setattr(scheduler, "sync_cty", broken_cty)
     monkeypatch.setattr(scheduler, "sync_ungegn_countries", successful_ungegn)
+    monkeypatch.setattr(scheduler, "sync_m49_country_areas", successful_m49)
     asyncio.run(run_master_data_sync(object(), asyncio.Lock()))
-    assert calls == ["cty", "ungegn"]
+    assert calls == ["cty", "ungegn", "m49"]
 
 
 @pytest.fixture
@@ -157,6 +164,25 @@ def ungegn_payload(name_suffix: str = "") -> bytes:
 def ungegn_fetcher(name_suffix: str = "", retrieved_at=None):
     payload = ungegn_payload(name_suffix)
     return lambda: parse_country_response(
+        payload, retrieved_at or datetime(2026, 9, 15, tzinfo=UTC)
+    )
+
+
+def m49_html(name_suffix: str = "", count: int = 248) -> bytes:
+    rows = [
+        "<table id='downloadTableEN'><thead>"
+        "<tr><th>Country or Area</th><th>M49 Code</th></tr></thead><tbody>"
+    ]
+    for index in range(count):
+        name = "Åland & Islands" if index == 0 else f"Area {index}{name_suffix}"
+        rows.append(f"<tr><td>{name}</td><td>{index + 1:03d}</td></tr>")
+    rows.append("</tbody></table>")
+    return "".join(rows).encode("utf-8")
+
+
+def m49_fetcher(name_suffix: str = "", retrieved_at=None):
+    payload = m49_html(name_suffix)
+    return lambda: parse_country_areas(
         payload, retrieved_at or datetime(2026, 9, 15, tzinfo=UTC)
     )
 
@@ -274,6 +300,113 @@ def test_ungegn_failed_import_preserves_active_version(session_factory) -> None:
         failed = session.scalar(
             select(MasterDataSyncRun)
             .where(MasterDataSyncRun.dataset_key == "countries-ungegn-wgn")
+            .order_by(MasterDataSyncRun.id.desc())
+        )
+        assert active is not None and active.id == first["version_id"]
+        assert failed is not None and failed.status == MasterDataRunStatus.FAILED
+
+
+def test_startup_required_versions_include_the_full_m49_dataset(session_factory) -> None:
+    assert has_all_required_versions(session_factory) is False
+    sync_cty(session_factory, fetcher(cty_text()))
+    sync_ungegn_countries(session_factory, ungegn_fetcher())
+    assert has_all_required_versions(session_factory) is False
+    sync_m49_country_areas(session_factory, m49_fetcher())
+    assert has_all_required_versions(session_factory) is True
+
+
+def test_m49_parser_preserves_published_country_area_names_and_codes() -> None:
+    data = parse_country_areas(
+        m49_html(),
+        datetime(2026, 9, 15, tzinfo=UTC),
+    )
+    assert len(data.country_areas) == 248
+    assert data.country_areas[0].m49_code == "001"
+    assert data.country_areas[0].name == "Åland & Islands"
+    assert data.normalized_checksum
+    assert data.response_sha256
+
+
+def test_m49_parser_rejects_partial_duplicate_and_malformed_tables() -> None:
+    moment = datetime(2026, 9, 15, tzinfo=UTC)
+    with pytest.raises(ValueError, match="incomplete"):
+        parse_country_areas(m49_html(count=239), moment)
+
+    duplicate = m49_html().replace(b"<td>002</td>", b"<td>001</td>", 1)
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_country_areas(duplicate, moment)
+
+    malformed = m49_html().replace(b"<td>001</td>", b"<td>1A1</td>", 1)
+    with pytest.raises(ValueError, match="invalid name or code"):
+        parse_country_areas(malformed, moment)
+
+
+def test_m49_sync_is_idempotent_and_stages_published_name_changes(session_factory) -> None:
+    first = sync_m49_country_areas(session_factory, m49_fetcher())
+    no_change = sync_m49_country_areas(session_factory, m49_fetcher())
+    changed = sync_m49_country_areas(session_factory, m49_fetcher(" revised"))
+
+    with session_factory() as session:
+        versions = list(
+            session.scalars(
+                select(MasterDataVersion)
+                .where(MasterDataVersion.dataset_key == "countries-unsd-m49")
+                .order_by(MasterDataVersion.id)
+            )
+        )
+        runs = list(
+            session.scalars(
+                select(MasterDataSyncRun)
+                .where(MasterDataSyncRun.dataset_key == "countries-unsd-m49")
+                .order_by(MasterDataSyncRun.id)
+            )
+        )
+        entities = list(
+            session.scalars(
+                select(ContestEntity).where(ContestEntity.version_id == versions[0].id)
+            )
+        )
+        assert len(versions) == 2
+        assert versions[0].status == MasterDataVersionStatus.ACTIVE
+        assert versions[1].status == MasterDataVersionStatus.CANDIDATE
+        assert len(entities) == 248
+        assert entities[0].namespace == "UN-M49"
+        assert entities[0].authority_code == "001"
+        assert entities[0].name == "Åland & Islands"
+        assert runs[1].change_detected is False
+        assert runs[1].record_counts == {"country_areas": 248}
+        source = session.scalar(
+            select(MasterDataSource).where(
+                MasterDataSource.source_key == "unsd-m49-country-areas"
+            )
+        )
+        assert source is not None
+        assert source.enabled is True
+        assert source.use_terms_url == "https://www.un.org/en/about-us/terms-of-use"
+    assert first["changed"] is True
+    assert no_change["changed"] is False
+    assert no_change["version_id"] == first["version_id"]
+    assert changed["changed"] is True
+
+
+def test_m49_failed_import_preserves_active_version(session_factory) -> None:
+    first = sync_m49_country_areas(session_factory, m49_fetcher())
+
+    def broken_feed():
+        raise ValueError("source unavailable")
+
+    with pytest.raises(ValueError, match="source unavailable"):
+        sync_m49_country_areas(session_factory, broken_feed)
+    with session_factory() as session:
+        active = session.scalar(
+            select(MasterDataVersion).where(
+                MasterDataVersion.dataset_key == "countries-unsd-m49",
+                MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
+            )
+        )
+        failed = session.scalar(
+            select(MasterDataSyncRun)
+            .where(MasterDataSyncRun.dataset_key == "countries-unsd-m49")
             .order_by(MasterDataSyncRun.id.desc())
         )
         assert active is not None and active.id == first["version_id"]
