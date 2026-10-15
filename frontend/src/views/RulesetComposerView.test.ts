@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import RulesetComposerView from './RulesetComposerView.vue'
 
 const requiredRules = [
@@ -55,6 +56,7 @@ describe('RulesetComposerView', () => {
     )
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
+    await expectAccessible(wrapper.element)
     const text = wrapper.text()
     expect(text).toContain('All contest times use UTC')
     expect(text).toContain('Daylight-saving clock folds')

@@ -89,3 +89,5 @@ The graphical composer uses UTC-only schedules with API-resolved recurrence prev
 ## Versioning
 
 Additive, backward-compatible fields and endpoints remain in the current API version. Removing or changing field meaning, response shape, or behavior incompatibly requires a new `/api/vN` route prefix and a documented deprecation/migration period. OpenAPI is the machine-readable contract for each version.
+
+Operational setup and recovery are documented in the [operator guide](../operations/README.md). The precise imported Cabrillo subset and current exports are listed in [supported formats](../formats/README.md).

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import OperatingCatalogAdminView from './OperatingCatalogAdminView.vue'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -39,6 +40,7 @@ describe('OperatingCatalogAdminView', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(OperatingCatalogAdminView)
     await flushPromises()
+    await expectAccessible(wrapper.element)
     expect(wrapper.text()).toContain('60 m')
     expect(wrapper.text()).toContain('Contest-free designation')
     expect(wrapper.text()).toContain('Active in ruleset composer')

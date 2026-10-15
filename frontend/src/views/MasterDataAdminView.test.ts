@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import MasterDataAdminView from './MasterDataAdminView.vue'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -81,6 +82,7 @@ async function mountView(role: 'global_administrator' | 'contest_manager') {
 describe('MasterDataAdminView', () => {
   it('loads provenance and no-change sync history for global administrators', async () => {
     const { wrapper, fetchMock } = await mountView('global_administrator')
+    await expectAccessible(wrapper.element)
 
     expect(wrapper.text()).toContain('Big CTY')
     expect(wrapper.text()).toContain('2026-01')

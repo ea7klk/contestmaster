@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ContestResultsManagerView from './ContestResultsManagerView.vue'
 
@@ -80,6 +81,7 @@ describe('ContestResultsManagerView', () => {
       global: { plugins: [router] },
     })
     await flushPromises()
+    await expectAccessible(wrapper.element)
 
     expect(wrapper.text()).toContain('Unresolved items (1)')
     await wrapper.get('#reason-22').setValue('Verified against the other submitted log.')

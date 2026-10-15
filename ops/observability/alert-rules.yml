@@ -1,0 +1,62 @@
+groups:
+  - name: contestmaster
+    rules:
+      - alert: ContestmasterApiUnavailable
+        expr: up{job="contestmaster"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Contestmaster API is unavailable
+          description: Prometheus cannot scrape the API metrics endpoint.
+          runbook: documentation/operations/README.md#service-outage
+
+      - alert: ContestmasterMasterDataSyncStale
+        expr: time() - contestmaster_master_data_sync_last_success_timestamp_seconds > 93600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Master-data sync has not succeeded for over 26 hours
+          description: "Dataset {{ $labels.dataset }} has no recent successful sync."
+          runbook: documentation/operations/README.md#master-data-refresh-failure
+
+      - alert: ContestmasterLogUploadFailures
+        expr: increase(contestmaster_log_uploads_total{outcome="failed"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Log upload requests are failing
+          description: One or more log upload requests ended in a server error.
+          runbook: documentation/operations/README.md#failed-upload-or-scoring
+
+      - alert: ContestmasterScoreRunFailures
+        expr: increase(contestmaster_score_runs_total{outcome="failed"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Contest score runs are failing
+          description: One or more score runs failed during the last 10 minutes.
+          runbook: documentation/operations/README.md#failed-upload-or-scoring
+
+      - alert: ContestmasterDatabaseErrors
+        expr: increase(contestmaster_database_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Database operations are raising errors
+          description: Check SQLite availability, disk space, permissions, and recent migrations.
+          runbook: documentation/operations/README.md#database-error-or-corruption
+
+      - alert: ContestmasterHighHttpServerErrorRate
+        expr: sum(rate(contestmaster_http_requests_total{status_class="5xx"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Contestmaster is returning sustained server errors
+          description: The API has returned more than 0.1 server errors per second for five minutes.
+          runbook: documentation/operations/README.md#service-outage

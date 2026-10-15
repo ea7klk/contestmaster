@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import ContestResultsView from './ContestResultsView.vue'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -71,6 +72,7 @@ describe('ContestResultsView', () => {
     )
     const wrapper = mount(ContestResultsView, { props: { slug: 'spring-sprint' } })
     await flushPromises()
+    await expectAccessible(wrapper.element)
 
     expect(wrapper.text()).toContain('Spring Sprint')
     expect(wrapper.text()).toContain('EA7AAA')

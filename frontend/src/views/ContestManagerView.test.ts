@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import ContestManagerView from './ContestManagerView.vue'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -58,6 +59,7 @@ describe('ContestManagerView', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountManager()
     await flushPromises()
+    await expectAccessible(wrapper.element)
 
     await wrapper.get('input').setValue('Spring Sprint')
     const textInputs = wrapper.findAll('input')

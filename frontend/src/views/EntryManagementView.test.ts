@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { expectAccessible } from '../test/a11y'
 import EntryManagementView from './EntryManagementView.vue'
 
 afterEach(() => {
@@ -69,6 +70,7 @@ describe('EntryManagementView', () => {
       global: { plugins: [router] },
     })
     await flushPromises()
+    await expectAccessible(wrapper.element)
 
     expect(wrapper.text()).toContain('F4ABC')
     await wrapper

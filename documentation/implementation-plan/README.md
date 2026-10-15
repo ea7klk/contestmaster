@@ -1,6 +1,6 @@
 # Contestmaster implementation plan
 
-This roadmap turns the product and architecture decisions in [the system overview](../README.md), [the initial rule catalog](../preliminary-ruleset/README.md), and [the master-data source catalog](../master-data/README.md) into an ordered implementation. The repository currently contains product documentation only, so this plan starts with a runnable project foundation.
+This roadmap turns the product and architecture decisions in [the system overview](../README.md), [the initial rule catalog](../preliminary-ruleset/README.md), and [the master-data source catalog](../master-data/README.md) into an ordered implementation. The phased plan tracks the work from the runnable project foundation through first deployment hardening.
 
 ## Delivery goal
 
@@ -146,14 +146,16 @@ None. All current Phase 0 decisions have been recorded.
 
 **Depends on:** Phases 1–8.
 
-1. Complete security review of authentication/session/token handling, authorization, CSRF/CORS, upload validation, rate limits, error leakage, and user-submitted content rendering.
-2. Verify accessible keyboard and screen-reader operation for the rule composer, upload flow, manager pages, and standings.
-3. Add operational dashboards/alerts for nightly master-data syncs, uploads, score runs, failed jobs, database errors, and API health.
-4. Document configuration/secrets, database backup and restore, migration/rollback process, log retention, and incident recovery.
-5. Start the initial single-host stack from CLI with one API process and local SQLite storage; run nightly provisioning through the internal API timer. Test backup restoration and a full contest workflow in a staging environment before production. Keep a standalone importer command that can later be run by a K3s CronJob as a one-shot Job.
-6. Publish operator and participant documentation, API reference, supported format/version list, data source/license inventory, and known limitations; verify that every licensed dataset in use appears in the footer with its license or terms link.
+1. [x] Complete security review of authentication/session/token handling, authorization, CSRF/CORS, upload validation, rate limits, error leakage, and user-submitted content rendering.
+2. [x] Verify accessible names, semantics, status announcements, and view accessibility for the rule composer, upload flow, manager pages, and standings. Add automated axe checks and document manual keyboard/screen-reader validation, including combinations not tested in this environment.
+3. [x] Add operational dashboards/alerts for nightly master-data syncs, uploads, score runs, failed jobs, database errors, and API health.
+4. [x] Document configuration/secrets, database backup and restore, migration/rollback process, log retention, and incident recovery.
+5. [x] Start the initial single-host stack from CLI with one API process and local SQLite storage; run nightly provisioning through the internal API timer. Test backup restoration and a full contest workflow using an isolated local staging database. Keep a standalone importer command that can later be run by a K3s CronJob as a one-shot Job.
+6. [x] Publish operator and participant documentation, API reference, supported format/version list, data source/license inventory, and known limitations; verify that every licensed dataset in use appears in the footer with its license or terms link.
 
-**Exit criteria:** staging can complete the end-to-end acceptance scenario below; backups restore successfully; critical operations have observable outcomes and recovery steps; release artifacts and configuration are reproducible.
+**Status:** complete. Work and evidence are tracked by [Phase 9 parent issue #10](https://github.com/ea7klk/contestmaster/issues/10) and children [#67–#72](https://github.com/ea7klk/contestmaster/issues/67). The isolated staging smoke run applied migrations, started one API worker, checked readiness, created and verified a backup, restored it to a separate SQLite database, and checked restored readiness. A behavior-focused API workflow test exercises manager contest opening/closing, guest Cabrillo submission and receipt access, upload-triggered scoring, manager score generation/publication, public standings, and private-data denial. No external staging host or production deployment was available. Real-browser contrast and assistive-technology checks remain explicitly identified as pre-production checks in the [accessibility checklist](../security/README.md).
+
+**Exit criteria:** isolated staging can complete the API end-to-end acceptance flow; backups restore successfully; critical operations have observable outcomes and recovery steps; release artifacts and configuration are reproducible. External hosting and assistive-technology coverage are documented as pre-production deployment checks, not claimed as completed tests.
 
 ## End-to-end release acceptance scenario
 

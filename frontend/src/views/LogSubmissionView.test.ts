@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import LogSubmissionView from './LogSubmissionView.vue'
 
 const responseBody = {
@@ -88,6 +89,7 @@ describe('LogSubmissionView', () => {
     )
     expect(wrapper.text()).toContain('one-time-entry-token')
     expect(wrapper.text()).toContain('Header was preserved.')
+    await expectAccessible(wrapper.element)
   })
 
   it('announces line-level parser errors as a rejected log', async () => {

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ParticipantAccessView from './ParticipantAccessView.vue'
 
@@ -41,9 +42,11 @@ describe('ParticipantAccessView', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     const { wrapper } = await mountParticipant('/participant/access')
+    await expectAccessible(wrapper.element)
     await wrapper.get('input[name="email"]').setValue('pilot@example.test')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
+    await expectAccessible(wrapper.element)
 
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(wrapper.get('[role="status"]').text()).toContain(

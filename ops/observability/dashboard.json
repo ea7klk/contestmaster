@@ -1,0 +1,77 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [{"expr": "sum by (method, status_class) (rate(contestmaster_http_requests_total[5m]))", "legendFormat": "{{method}} {{status_class}}"}],
+      "title": "API request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(contestmaster_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95"}],
+      "title": "API request latency (p95)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "id": 3,
+      "targets": [{"expr": "sum by (outcome) (increase(contestmaster_log_uploads_total[1h]))", "legendFormat": "{{outcome}}"}],
+      "title": "Log upload outcomes (1h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "id": 4,
+      "targets": [{"expr": "sum by (outcome) (increase(contestmaster_score_runs_total[1h]))", "legendFormat": "{{outcome}}"}],
+      "title": "Score runs (1h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "id": 5,
+      "targets": [{"expr": "contestmaster_master_data_sync_last_success_timestamp_seconds", "legendFormat": "{{dataset}}"}],
+      "title": "Last successful master-data sync",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "targets": [{"expr": "increase(contestmaster_database_errors_total[1h])", "legendFormat": "database errors"}],
+      "title": "Database errors (1h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "targets": [{"expr": "sum(rate(contestmaster_http_requests_total{status_class=\"5xx\"}[5m]))", "legendFormat": "5xx/s"}],
+      "title": "HTTP server errors",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["contestmaster", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "title": "Contestmaster operations",
+  "version": 1
+}

@@ -4,6 +4,8 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 For the ordered delivery sequence, task breakdown, and release acceptance criteria, see the [implementation plan](implementation-plan/README.md).
 
+Operational and user guides: [operators](operations/README.md), [participants](participants/README.md), [supported file formats](formats/README.md), and [security/accessibility review](security/README.md).
+
 ## Initial feature list
 
 ### Core platform
@@ -98,6 +100,9 @@ flowchart LR
     Adapters --> Formats[Cabrillo and other log formats]
     Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[Callable master-data import job]
     CLI[Operator CLI] -->|start stack or run import once| API
+    DBCLI[Database maintenance CLI] -->|offline backup, integrity check, restore| Store
+    API -->|low-cardinality metrics| Prometheus[Prometheus scraper]
+    Prometheus --> Dashboard[Operations dashboard and alerts]
     PublicSources[Public reference sources] --> MasterImport
     MasterImport -->|ORM-managed writes| Store
     Store --> ReferenceData[(Versioned master data)]
@@ -115,6 +120,7 @@ flowchart LR
 - **Master-data version governance:** each dataset version has an effective UTC interval. For a contest, pin the version of each required dataset whose interval contains the contest start instant; keep those references on the contest and each score run so later source updates cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. A global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
 - **Global administration:** add a master-data version management section visible and accessible only to global administrators. Contest managers and public visitors cannot list, activate, or delete master-data versions.
 - **Initial operations:** start the stack from CLI on one host with SQLite on local storage. Run one API process so the internal timer has a single owner; keep the nightly importer independent of HTTP startup and callable as a standalone job for future K3s scheduling.
+- **Observability and recovery:** expose a protected, optional Prometheus metrics endpoint with low-cardinality counters and timings. The starter scrape configuration, dashboard, and alert rules are under `ops/observability`. Use the offline `contestmaster-db` CLI for integrity checks, verified SQLite backups, and staged atomic restore; stop the API during database maintenance. See the [operations guide](operations/README.md), [security review/accessibility checklist](security/README.md), [participant guide](participants/README.md), and [supported format list](formats/README.md).
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance

@@ -48,6 +48,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Developers may install local toolchain managers required for project work (for example, `uv` in the user-local bin directory and nvm under the user's home directory); do not require a globally installed project toolchain.
 - Use the Node version recorded in `.nvmrc`. nvm is the recommended per-user Node version manager; document a direct Node.js installation as an alternative.
 - Keep HTTP handlers thin. Put domain validation and scoring in reusable services, and return consistent error responses with useful field-level details.
+- Enforce request-body size limits even when a client omits `Content-Length`; test both declared and streamed/chunked oversized request bodies.
 - Publish and maintain an OpenAPI schema. Use explicit API versioning for breaking changes; paginate collection endpoints and define stable sorting and filtering behavior.
 - Validate all client input on the server. Enforce authentication and authorization at the API boundary, including contest roles and ownership checks; never rely on frontend-only access control.
 - Use only two privileged system roles: global administrators, who have all system privileges, and contest managers, who can create and manage their own contests, configure those contests' rules, run result generation, and generate contest result lists. Keep contest-manager access scoped to contests they own.
@@ -69,6 +70,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - The footer must identify M49 separately from the UNGEGN WGN API: M49 numeric codes are used as published, without modification or derived geographic classifications, and the attribution links to the M49 standard and UN website terms.
 - Support log-file selection and upload through the shared API client. Show upload progress, import summaries, and actionable row-level errors; treat frontend checks as convenience and validate file contents, size, and format on the backend.
 - Represent loading, empty, success, validation-error, and server-error states explicitly. Preserve user input when a save fails and explain how to fix field errors.
+- Keep automated axe checks for core routes in the frontend test suite; document real-browser keyboard, contrast, and screen-reader checks and clearly distinguish combinations that were not manually tested.
 - Build accessible forms and tables: labels, keyboard operation, semantic markup, visible focus, and status announcements for asynchronous updates.
 - Keep contest, log, and standings views responsive and usable with large result sets. Prefer server-side filtering, sorting, and pagination when data grows.
 - Avoid duplicating backend rules in the browser. Frontend checks may improve feedback, but the server remains authoritative.
@@ -80,6 +82,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Use structured logs with request or correlation IDs, while excluding credentials, tokens, and unnecessary personal data.
 - Provide migrations for schema changes and keep configuration explicit across development, test, and production environments.
 - Make background imports, recalculations, and standings publication observable and safe to retry. Surface failures instead of silently publishing partial results.
+- For the initial single-host SQLite deployment, expose backup, restore, and integrity-check operations through the ORM-backed `contestmaster-db` CLI. Perform these offline with the API stopped, validate a staged restore before replacement, and document the restore test evidence.
 
 ## Changes and documentation
 
