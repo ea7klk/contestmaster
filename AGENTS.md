@@ -23,6 +23,9 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Make result recalculation a per-contest setting controlled by the contest manager. When enabled, a newly accepted log upload triggers result generation for that contest; failed or rejected uploads do not.
 - Treat imports and exports, including common interchange formats such as Cabrillo, as boundary adapters. Validate malformed input, report actionable row-level errors, and avoid losing fields that the engine does not interpret.
 - Use database constraints and transactions for invariants such as unique identifiers and atomic log/result updates. Represent points, bonuses, penalties, multipliers, intermediate scores, and final scores with integer values only; never use floating-point or decimal values for scoring. If a contest rule produces a fractional result, apply its specified rounding rule and keep the resulting scoring value an integer.
+- Store reusable geographic and callsign reference data in ORM-managed master tables for CQ zones, amateur-radio ITU zones, IARU regions, contest entities/countries, prefixes, and call districts. Keep these concepts distinct; an award entity is not necessarily a sovereign country, and IARU Regions are not CQ or ITU contest zones.
+- Refresh enabled master-data sources nightly through an observable, retryable import job. Record source URL, source/version date, retrieval time, checksum, license/use terms, and sync status. Preserve effective dates and historical versions so existing contest results remain reproducible.
+- Never replace valid master data with an empty or partial response. Validate imports before activation, retain the last good version on failure, and stage ambiguous or materially changed source data for review. Public availability does not imply permission to republish; enable feeds only when their terms allow the intended use or permission has been obtained.
 
 ## Python REST API
 

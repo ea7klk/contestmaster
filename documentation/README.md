@@ -65,6 +65,10 @@ flowchart LR
     API -->|account-free log upload| Adapters[Import and export adapters]
     Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo and other log formats]
+    Scheduler[Nightly master-data refresh] -->|fetch, validate, version| MasterImport[Master-data importer]
+    PublicSources[Public reference sources] --> MasterImport
+    MasterImport -->|ORM-managed writes| Store
+    Store --> ReferenceData[(Versioned master data)]
 ```
 
 ### Main boundaries
@@ -74,6 +78,7 @@ flowchart LR
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Contest managers author ruleset configuration through the graphical composer; the API validates and stores versioned configuration. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
+- **Master-data refresh:** a nightly scheduled importer checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Keep the last valid version active on failures and queue interpreted boundary changes for review.
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance
@@ -185,3 +190,189 @@ erDiagram
 - Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
 - Treat JSON configuration and exchange payloads as untrusted input. Validate their schema and preserve the original submitted exchange when a normalized interpretation is stored.
 - Add indexes based on actual query needs, especially for contacts by entry, time, band, and callsign. Keep uniqueness rules contest-aware; a duplicate definition can vary by ruleset.
+
+## Geographic and callsign master data
+
+Maintain reusable master data for CQ zones, amateur-radio ITU zones, IARU regions, ITU Radio Regions, countries/contest entities, callsign prefixes, and call districts. Keep contest-specific interpretation in the versioned ruleset. The distinction matters: CQ zones and amateur ITU zones are different contest systems; ITU Radio Regions are the three regulatory regions; IARU Regions are the corresponding amateur-radio organizations; and a contest entity such as a DXCC entity is not necessarily a sovereign country.
+
+Use normalized ORM tables and effective-dated assignments. An entity can span more than one zone, and a zone can include parts of several entities, so zone membership must not be a single zone column on the entity. A logged callsign, portable prefix, operating location, or a contest's own definitions may be needed to resolve the right zone. Call districts are jurisdiction-specific and must not be assumed to follow one worldwide numbering scheme. Keep international prefix-block allocation separate from the prefix rules a contest uses to parse a callsign.
+
+The source catalog in [Master data source recommendations](master-data/README.md) identifies the recommended public references, update approach, and known reuse limitations. The nightly importer should save retrieval metadata and checksums, validate a complete candidate dataset before activation, and retain prior versions. A timeout, parse error, empty response, or incomplete download must leave the last valid data active. Public availability does not grant permission to redistribute a dataset: source-specific terms must be checked before enabling automated ingestion or serving copied content.
+
+```mermaid
+erDiagram
+    MASTER_DATA_SOURCE ||--o{ MASTER_DATA_SYNC_RUN : supplies
+    MASTER_DATA_SYNC_RUN ||--o{ MASTER_DATA_VERSION : produces
+    MASTER_DATA_VERSION ||--o{ CQ_ZONE : versions
+    MASTER_DATA_VERSION ||--o{ ITU_ZONE : versions
+    MASTER_DATA_VERSION ||--o{ IARU_REGION : versions
+    MASTER_DATA_VERSION ||--o{ ITU_RADIO_REGION : versions
+    MASTER_DATA_VERSION ||--o{ CONTEST_ENTITY : versions
+    MASTER_DATA_VERSION ||--o{ CALLSIGN_PREFIX : versions
+    MASTER_DATA_VERSION ||--o{ CALL_DISTRICT : versions
+    CONTEST_ENTITY ||--o{ ENTITY_CQ_ZONE : assigned
+    CQ_ZONE ||--o{ ENTITY_CQ_ZONE : contains
+    CONTEST_ENTITY ||--o{ ENTITY_ITU_ZONE : assigned
+    ITU_ZONE ||--o{ ENTITY_ITU_ZONE : contains
+    CONTEST_ENTITY ||--o{ ENTITY_IARU_REGION : assigned
+    IARU_REGION ||--o{ ENTITY_IARU_REGION : contains
+    CONTEST_ENTITY ||--o{ ENTITY_ITU_RADIO_REGION : assigned
+    ITU_RADIO_REGION ||--o{ ENTITY_ITU_RADIO_REGION : contains
+    IARU_REGION ||--o{ IARU_ITU_REGION_MAP : corresponds
+    ITU_RADIO_REGION ||--o{ IARU_ITU_REGION_MAP : corresponds
+    CONTEST_ENTITY ||--o{ PREFIX_ASSIGNMENT : associated
+    CALLSIGN_PREFIX ||--o{ PREFIX_ASSIGNMENT : allocated
+    CALLSIGN_PREFIX ||--o{ PREFIX_CQ_ZONE_ASSIGNMENT : maps
+    CQ_ZONE ||--o{ PREFIX_CQ_ZONE_ASSIGNMENT : resolves
+    CALLSIGN_PREFIX ||--o{ PREFIX_ITU_ZONE_ASSIGNMENT : maps
+    ITU_ZONE ||--o{ PREFIX_ITU_ZONE_ASSIGNMENT : resolves
+    CONTEST_ENTITY ||--o{ CALL_DISTRICT : has
+
+    MASTER_DATA_SOURCE {
+        integer id PK
+        text source_key UK
+        text name
+        text canonical_url
+        text use_terms
+    }
+    MASTER_DATA_SYNC_RUN {
+        integer id PK
+        integer source_id FK
+        text dataset_key
+        text started_at_utc
+        text finished_at_utc
+        text status
+        text error_summary
+    }
+    MASTER_DATA_VERSION {
+        integer id PK
+        integer sync_run_id FK
+        text dataset_key
+        text source_release
+        text retrieved_at_utc
+        text checksum
+        text activated_at_utc
+    }
+    CQ_ZONE {
+        integer id PK
+        integer version_id FK
+        text code
+        text name
+        text definition
+    }
+    ITU_ZONE {
+        integer id PK
+        integer version_id FK
+        text code
+        text name
+        text definition
+    }
+    IARU_REGION {
+        integer id PK
+        integer version_id FK
+        text code
+        text name
+    }
+    ITU_RADIO_REGION {
+        integer id PK
+        integer version_id FK
+        text code
+        text name
+    }
+    CONTEST_ENTITY {
+        integer id PK
+        integer version_id FK
+        text namespace
+        text authority_code
+        text name
+        text entity_type "country, area, award_entity, contest_entity"
+        text valid_from
+        text valid_to
+    }
+    CALLSIGN_PREFIX {
+        integer id PK
+        integer version_id FK
+        text prefix_pattern
+        text allocation_type
+        text valid_from
+        text valid_to
+    }
+    PREFIX_ASSIGNMENT {
+        integer id PK
+        integer entity_id FK
+        integer prefix_id FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+    }
+    PREFIX_CQ_ZONE_ASSIGNMENT {
+        integer id PK
+        integer prefix_id FK
+        integer cq_zone_id FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+        text override_note
+    }
+    PREFIX_ITU_ZONE_ASSIGNMENT {
+        integer id PK
+        integer prefix_id FK
+        integer itu_zone_id FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+        text override_note
+    }
+    CALL_DISTRICT {
+        integer id PK
+        integer version_id FK
+        integer entity_id FK
+        text district_code
+        text name
+        text callsign_pattern
+        text valid_from
+        text valid_to
+    }
+    ENTITY_CQ_ZONE {
+        integer entity_id PK,FK
+        integer cq_zone_id PK,FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+        text boundary_note
+    }
+    ENTITY_ITU_ZONE {
+        integer entity_id PK,FK
+        integer itu_zone_id PK,FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+        text boundary_note
+    }
+    ENTITY_IARU_REGION {
+        integer entity_id PK,FK
+        integer iaru_region_id PK,FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+    }
+    ENTITY_ITU_RADIO_REGION {
+        integer entity_id PK,FK
+        integer itu_radio_region_id PK,FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+    }
+    IARU_ITU_REGION_MAP {
+        integer iaru_region_id PK,FK
+        integer itu_radio_region_id PK,FK
+        integer version_id FK
+        text valid_from
+        text valid_to
+        text mapping_note
+    }
+```
+
+The diagram is logical rather than a required physical schema. `namespace` and `entity_type` distinguish geographic country/area identities (such as M49) from award-defined entities (such as DXCC) and contest-specific entities. Join tables such as `ENTITY_CQ_ZONE`, `ENTITY_ITU_ZONE`, `ENTITY_IARU_REGION`, `ENTITY_ITU_RADIO_REGION`, `IARU_ITU_REGION_MAP`, `PREFIX_CQ_ZONE_ASSIGNMENT`, and `PREFIX_ITU_ZONE_ASSIGNMENT` should carry effective dates, source/version provenance, and optional boundary notes or geometry references. Prefix assignments should support more than one allocation target and time period. A prefix-based zone mapping from a lookup file such as Big CTY is an operational call-sign resolution aid; it does not replace entity-to-zone geography or a contest's published boundary rules. Preserve removed records as inactive or expired rows instead of deleting identifiers referenced by historical logs or score runs. All tables and sync operations use the Python ORM and ORM-managed transactions.
+
+Run one scheduled source check/import each night. Sources with published change feeds or daily transactions can be applied incrementally; static publications should be checked for a changed release, ETag, or checksum. Validate keys, counts, relationships, effective dates, and expected completeness before activation. Retain each prior version and associate score runs with the exact master-data version or snapshot used when the ruleset depends on it. For sources that require human interpretation, the nightly process should create a review candidate rather than silently changing contest classifications.
