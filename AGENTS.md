@@ -67,5 +67,12 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 
 - Before changing code, inspect the existing structure and follow established conventions.
 - Update API documentation and relevant user or operator documentation when behavior changes.
-- Add or update focused tests for domain rules, API contracts, import/export behavior, and important UI flows when implementing features.
+- Write meaningful tests alongside implementation. Prefer behavior-focused unit tests for domain rules, parsing, scoring, validation, and state transitions; cover boundary cases and failure paths. Add integration/API/UI tests where unit tests cannot verify cross-layer behavior. Run the relevant tests and record their exact commands and outcomes; do not add tests that only restate implementation details.
 - Keep changes scoped. Explain assumptions when a contest rule or product behavior is not defined; do not invent a universal rule where contest rules differ.
+
+## GitHub phase tracking
+
+- Track each phase in `documentation/implementation-plan/README.md` with one GitHub parent issue and a matching phase milestone. Create one linked GitHub sub-issue for every numbered implementation-plan item; Phase 0 decision bullets are child issues too and should reflect their already-recorded completion state.
+- Keep parent and child issue bodies aligned with the implementation plan, including acceptance criteria and relevant test expectations. Use GitHub's parent/sub-issue relationship, assign every issue to its phase milestone, and keep a parent checklist of its child issues.
+- Record implementation work and progress in comments on both the child issue and its parent. Comment when work starts, when a material implementation or scope change occurs, and when an item completes or is blocked. Include status, relevant commit/PR and paths, tests run with outcomes, and any remaining work or blocker. Update the parent comment when phase-level progress or exit criteria change.
+- Close a child only after its acceptance criteria are met and required tests pass. Close its parent and milestone only after all children are complete and the phase exit criteria are satisfied. Keep the issue comments as the progress history; do not rely only on local notes or commit messages.

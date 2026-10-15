@@ -161,7 +161,7 @@ None. All current Phase 0 decisions have been recorded.
 
 ## Cross-cutting verification gates
 
-Each phase should include focused automated tests for its domain and API contracts, plus manual UI checks where appropriate. Before release, verify:
+Each implementation issue must include meaningful, behavior-focused unit tests for the code it changes, including relevant boundary conditions and failure paths. Add integration/API/UI coverage where unit tests cannot establish the contract, and record test commands and outcomes in comments on the child and parent issues. Before release, verify:
 
 - All scoring values use integer types end-to-end, including API schemas, ORM columns, expressions, exports, and UI formatting.
 - UTC timestamps, cutoff boundaries, and resolved recurring schedules behave consistently at exact boundary times.
