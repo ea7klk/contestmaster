@@ -29,6 +29,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Validate all client input on the server. Enforce authentication and authorization at the API boundary, including contest roles and ownership checks; never rely on frontend-only access control.
 - Use only two privileged system roles: global administrators, who have all system privileges, and contest managers, who can create and manage their own contests, configure those contests' rules, run result generation, and generate contest result lists. Keep contest-manager access scoped to contests they own.
 - Do not require a system account for participants to submit logs. Keep participant identity separate from privileged system accounts and allow guest log submissions.
+- Make contest results and standings viewable in the Vue frontend without authentication. Keep result generation and contest-management actions protected by the appropriate privileged role.
 - Use a Python ORM for all application database access, including connection and session lifecycle; do not open direct sqlite3 connections or issue database operations outside the ORM. Keep ORM models and queries behind a persistence layer so domain services remain independent of storage. Use ORM-managed transactions for multi-step writes and make retryable operations safe where practical, such as with idempotency keys for log submission.
 - Keep secrets and credentials out of source, logs, and API responses. Configure allowed origins, secure cookies or tokens, rate limits, and request size limits deliberately.
 
