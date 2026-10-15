@@ -60,9 +60,7 @@ def downgrade() -> None:
         sa.ForeignKeyConstraint(
             ["itu_radio_region_id"], ["itu_radio_regions.id"], ondelete="RESTRICT"
         ),
-        sa.ForeignKeyConstraint(
-            ["version_id"], ["master_data_versions.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["version_id"], ["master_data_versions.id"], ondelete="RESTRICT"),
         sa.UniqueConstraint(
             "version_id",
             "entity_id",
@@ -104,9 +102,7 @@ def downgrade() -> None:
         sa.ForeignKeyConstraint(
             ["itu_radio_region_id"], ["itu_radio_regions.id"], ondelete="RESTRICT"
         ),
-        sa.ForeignKeyConstraint(
-            ["version_id"], ["master_data_versions.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["version_id"], ["master_data_versions.id"], ondelete="RESTRICT"),
         sa.UniqueConstraint(
             "version_id",
             "iaru_region_id",

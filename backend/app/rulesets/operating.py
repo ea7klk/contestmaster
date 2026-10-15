@@ -109,9 +109,7 @@ def evaluate_operating_constraints(
     if rule.maximum_band_changes is not None:
         window = timedelta(minutes=rule.band_change_window_minutes)
         for index, instant in enumerate(changes):
-            count = sum(
-                instant <= candidate < instant + window for candidate in changes[index:]
-            )
+            count = sum(instant <= candidate < instant + window for candidate in changes[index:])
             if count > rule.maximum_band_changes:
                 findings.append(
                     ConstraintFinding(

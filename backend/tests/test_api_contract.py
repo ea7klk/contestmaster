@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-from backend.app.db import get_session
+from backend.app.db import build_engine, get_session
 from backend.app.main import app
+from backend.app.metrics import DATABASE_ERRORS
 
 
 class FakeSession:
@@ -26,6 +28,9 @@ def test_request_id_is_echoed_and_error_is_enveloped():
     assert response.headers["X-Request-ID"] == "test-123"
     assert response.json()["error"]["code"] == "not_found"
     assert response.json()["error"]["request_id"] == "test-123"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cache-Control"] == "no-store"
 
 
 def test_invalid_request_id_is_replaced():
@@ -61,3 +66,40 @@ def test_readiness_checks_database_dependency():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "database": "ready"}
+
+
+def test_json_api_rejects_oversized_declared_body():
+    response = TestClient(app).post(
+        "/api/v1/auth/login",
+        content=b"{}",
+        headers={"Content-Length": str(1024 * 1024 + 1), "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+
+
+def test_json_api_rejects_oversized_chunked_body_without_content_length():
+    response = TestClient(app).post(
+        "/api/v1/auth/login",
+        content=iter([b"x" * (1024 * 1024), b"x"]),
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+
+
+def test_database_driver_failures_increment_operational_counter():
+    before = DATABASE_ERRORS._value.get()
+    test_engine = build_engine("sqlite:///:memory:")
+    try:
+        with test_engine.connect() as connection:
+            try:
+                connection.execute(text("SELECT * FROM missing_table"))
+            except Exception:
+                pass
+    finally:
+        test_engine.dispose()
+
+    assert DATABASE_ERRORS._value.get() == before + 1

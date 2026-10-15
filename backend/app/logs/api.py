@@ -5,7 +5,6 @@ from __future__ import annotations
 import hmac
 import json
 import re
-import threading
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
@@ -42,6 +41,7 @@ from backend.app.models import (
     RulesetVersion,
     Station,
 )
+from backend.app.rate_limit import enforce_rate_limit, limiter
 from backend.app.rulesets.persistence import load_ruleset_version
 from backend.app.rulesets.schema import SubmissionRule
 
@@ -49,34 +49,20 @@ router = APIRouter(tags=["log submissions"])
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 64 * 1024
 ALLOWED_SUFFIXES = {".log", ".cbr", ".cabrillo", ".txt"}
+_IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 RATE_LIMIT_COUNT = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
-_rate_lock = threading.Lock()
-_rate_windows: dict[str, list[float]] = {}
-_IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 def allow_submission(client_key: str, now: float) -> bool:
-    with _rate_lock:
-        retained = [
-            stamp
-            for stamp in _rate_windows.get(client_key, [])
-            if stamp > now - RATE_LIMIT_WINDOW_SECONDS
-        ]
-        if len(retained) >= RATE_LIMIT_COUNT:
-            _rate_windows[client_key] = retained
-            return False
-        retained.append(now)
-        _rate_windows[client_key] = retained
-        if len(_rate_windows) > 10_000:
-            expired = [
-                key
-                for key, stamps in _rate_windows.items()
-                if not stamps or stamps[-1] <= now - RATE_LIMIT_WINDOW_SECONDS
-            ]
-            for key in expired:
-                _rate_windows.pop(key, None)
-        return True
+    allowed, _retry = limiter.allow(
+        "guest-log-upload",
+        client_key,
+        limit=RATE_LIMIT_COUNT,
+        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
+        now=now,
+    )
+    return allowed
 
 
 def _message(message: ImportMessage) -> dict[str, object]:
@@ -259,11 +245,13 @@ async def submit_log(
     """Accept a complete Cabrillo log anonymously, atomically creating one entry."""
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
-    client_key = request.client.host if request.client else "unknown"
-    import time
-
-    if not allow_submission(client_key, time.monotonic()):
-        raise HTTPException(status_code=429, detail="Too many log submissions. Retry later.")
+    enforce_rate_limit(
+        request,
+        "guest-log-upload",
+        limit=RATE_LIMIT_COUNT,
+        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
+        message="Too many log submissions. Retry later.",
+    )
     content_bytes, upload_filename, content_type = await _read_upload(request)
     filename = _filename(upload_filename)
     suffix = PurePosixPath(filename).suffix.casefold()
@@ -390,6 +378,13 @@ async def resubmit_log(
     receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
     participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
 ) -> dict[str, object] | JSONResponse:
+    enforce_rate_limit(
+        request,
+        "entry-log-revision",
+        limit=60,
+        window_seconds=60,
+        message="Too many entry changes. Retry later.",
+    )
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
     content_bytes, upload_filename, content_type = await _read_upload(request)
@@ -590,6 +585,13 @@ def _entry_and_authorize(
     receipt: str | None,
     participant: ParticipantPrincipal | None = None,
 ) -> Entry:
+    enforce_rate_limit(
+        request,
+        "entry-access",
+        limit=120,
+        window_seconds=60,
+        message="Too many entry access attempts. Retry later.",
+    )
     entry = session.get(Entry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Entry not found.")

@@ -128,9 +128,7 @@ def clear_session_cookies(response: Response) -> None:
         (SESSION_COOKIE, True, "/api/v1"),
         (CSRF_COOKIE, False, "/"),
     ):
-        response.delete_cookie(
-            name, path=path, httponly=httponly, secure=secure, samesite="strict"
-        )
+        response.delete_cookie(name, path=path, httponly=httponly, secure=secure, samesite="strict")
 
 
 def require_authenticated_user(

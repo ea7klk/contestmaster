@@ -159,9 +159,10 @@ def test_master_data_admin_routes_are_global_admin_only_and_show_provenance(admi
     assert item["provenance"]["source_url"] == "https://example.test/data"
     assert item["provenance"]["status"] == "succeeded"
     assert item["can_delete"] is False
-    assert admin.get("/api/v1/admin/master-data/sync-runs").json()["items"][0][
-        "change_detected"
-    ] is False
+    assert (
+        admin.get("/api/v1/admin/master-data/sync-runs").json()["items"][0]["change_detected"]
+        is False
+    )
 
 
 def test_admin_can_activate_only_successful_candidate_and_preserves_effective_intervals(
@@ -206,9 +207,7 @@ def test_admin_deletes_unreferenced_snapshot_but_keeps_sync_and_audit_history(ad
             name="Spain",
             entity_type=EntityType.CONTEST_ENTITY,
         )
-        prefix = CallsignPrefix(
-            version_id=version.id, prefix_pattern="EA", allocation_type="exact"
-        )
+        prefix = CallsignPrefix(version_id=version.id, prefix_pattern="EA", allocation_type="exact")
         session.add_all([zone, itu_zone, entity, prefix])
         session.flush()
         session.add(
@@ -297,9 +296,7 @@ def _add_score_references(session, version: MasterDataVersion, owner_id: int):
 
 @pytest.mark.parametrize("reference", ["contest", "score_run", "qso"])
 def test_delete_is_rejected_for_each_historical_reference_type(admin_database, reference):
-    owner_id = add_system_user(
-        admin_database, SystemRole.CONTEST_MANAGER, f"owner-{reference}"
-    )
+    owner_id = add_system_user(admin_database, SystemRole.CONTEST_MANAGER, f"owner-{reference}")
     add_system_user(admin_database, SystemRole.GLOBAL_ADMINISTRATOR, "admin")
     with admin_database.begin() as session:
         version = create_version(
@@ -346,5 +343,3 @@ def test_delete_is_rejected_for_each_historical_reference_type(admin_database, r
     assert deleted.status_code == 409
     with admin_database() as session:
         assert session.get(MasterDataVersion, version_id) is not None
-
-

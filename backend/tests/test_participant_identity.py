@@ -130,16 +130,17 @@ def test_magic_link_verifies_email_and_scopes_session_to_participant_entries(
         assert link.token_hash != raw_token
         assert session.get(ParticipantEmail, link.participant_email_id).verified_at is None
 
-    consumed = client.post(
-        "/api/v1/participants/auth/consume-link", json={"token": raw_token}
-    )
+    consumed = client.post("/api/v1/participants/auth/consume-link", json={"token": raw_token})
     assert consumed.status_code == 200
     assert consumed.json()["participant"]["id"] == participant_id
-    assert "httponly" in next(
-        cookie
-        for cookie in consumed.headers.get_list("set-cookie")
-        if cookie.startswith("contestmaster_participant_session=")
-    ).lower()
+    assert (
+        "httponly"
+        in next(
+            cookie
+            for cookie in consumed.headers.get_list("set-cookie")
+            if cookie.startswith("contestmaster_participant_session=")
+        ).lower()
+    )
     assert client.get("/api/v1/participants/auth/me").json()["email"] == "pilot@example.test"
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.get("/api/v1/contests").status_code == 401
@@ -151,16 +152,15 @@ def test_magic_link_verifies_email_and_scopes_session_to_participant_entries(
         assert session.query(ParticipantEmail).one().verified_at is not None
         assert session.query(ParticipantSession).count() == 1
 
-    reused = client.post(
-        "/api/v1/participants/auth/consume-link", json={"token": raw_token}
-    )
+    reused = client.post("/api/v1/participants/auth/consume-link", json={"token": raw_token})
     assert reused.status_code == 401
     no_csrf = client.post("/api/v1/participants/auth/logout")
     assert no_csrf.status_code == 403
     csrf = client.cookies.get("contestmaster_participant_csrf")
-    assert client.post(
-        "/api/v1/participants/auth/logout", headers={"X-CSRF-Token": csrf}
-    ).status_code == 200
+    assert (
+        client.post("/api/v1/participants/auth/logout", headers={"X-CSRF-Token": csrf}).status_code
+        == 200
+    )
     assert client.get("/api/v1/participants/auth/me").status_code == 401
 
 
@@ -186,9 +186,7 @@ def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
         link.created_at = datetime.now(UTC) - timedelta(minutes=3)
         link.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     assert (
-        client.post(
-            "/api/v1/participants/auth/consume-link", json={"token": raw_token}
-        ).status_code
+        client.post("/api/v1/participants/auth/consume-link", json={"token": raw_token}).status_code
         == 401
     )
 
@@ -202,14 +200,15 @@ def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
     )
     assert failed.status_code == 503
     with participant_database() as session:
-        assert session.query(ParticipantEmail).filter_by(
-            email_normalized="rollback@example.test"
-        ).count() == 0
+        assert (
+            session.query(ParticipantEmail)
+            .filter_by(email_normalized="rollback@example.test")
+            .count()
+            == 0
+        )
 
 
-def test_magic_link_request_invalidates_an_older_unconsumed_link(
-    participant_database, monkeypatch
-):
+def test_magic_link_request_invalidates_an_older_unconsumed_link(participant_database, monkeypatch):
     delivered: list[tuple[str, str]] = []
     monkeypatch.setattr(
         participant_identity,
@@ -226,9 +225,35 @@ def test_magic_link_request_invalidates_an_older_unconsumed_link(
         )
     first_token = parse_qs(urlparse(delivered[0][1]).query)["token"][0]
     second_token = parse_qs(urlparse(delivered[1][1]).query)["token"][0]
-    assert client.post(
-        "/api/v1/participants/auth/consume-link", json={"token": first_token}
-    ).status_code == 401
-    assert client.post(
-        "/api/v1/participants/auth/consume-link", json={"token": second_token}
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/participants/auth/consume-link", json={"token": first_token}
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/v1/participants/auth/consume-link", json={"token": second_token}
+        ).status_code
+        == 200
+    )
+
+
+def test_magic_link_requests_are_rate_limited_per_email(participant_database, monkeypatch):
+    monkeypatch.setattr(
+        participant_identity,
+        "send_participant_magic_link",
+        lambda *_args: None,
+    )
+    client = TestClient(app)
+    payload = {"email": "limited@example.test"}
+
+    for _ in range(5):
+        assert (
+            client.post("/api/v1/participants/auth/request-link", json=payload).status_code == 202
+        )
+
+    rejected = client.post("/api/v1/participants/auth/request-link", json=payload)
+    assert rejected.status_code == 429
+    assert rejected.headers["Retry-After"]
+    assert "limited@example.test" not in rejected.text

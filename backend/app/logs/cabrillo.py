@@ -55,6 +55,9 @@ DEFAULT_QSO_COLUMNS = (
     "exchange_received",
 )
 HEADER_PATTERN = re.compile(r"^([A-Z0-9][A-Z0-9-]*):(?:\s*)(.*)$", re.IGNORECASE)
+MAX_LOG_LINES = 100_000
+MAX_CABRILLO_LINE_LENGTH = 8192
+MAX_LOG_QSOS = 50_000
 
 
 def _parse_timestamp(date_value: str, time_value: str) -> datetime:
@@ -74,6 +77,24 @@ def parse_cabrillo(
     header_fields: dict[str, str] | None = None,
 ) -> ParsedLog:
     """Parse one Cabrillo document without discarding source lines or extra columns."""
+    line_count = text.count("\n") + text.count("\r") - text.count("\r\n")
+    if text and not text.endswith(("\n", "\r")):
+        line_count += 1
+    if line_count > MAX_LOG_LINES:
+        return ParsedLog(
+            {},
+            [],
+            [],
+            [
+                ImportMessage(
+                    0,
+                    "too_many_lines",
+                    f"A log may contain at most {MAX_LOG_LINES} lines.",
+                )
+            ],
+            [],
+            [],
+        )
     lines = text.splitlines()
     headers: dict[str, list[str]] = {}
     unknown_headers: list[dict[str, Any]] = []
@@ -99,6 +120,15 @@ def parse_cabrillo(
     started = False
     ended = False
     for line_number, raw_line in enumerate(lines, 1):
+        if len(raw_line) > MAX_CABRILLO_LINE_LENGTH:
+            errors.append(
+                ImportMessage(
+                    line_number,
+                    "line_too_long",
+                    f"A Cabrillo line may not exceed {MAX_CABRILLO_LINE_LENGTH} characters.",
+                )
+            )
+            continue
         line = raw_line.strip()
         if not line:
             continue
@@ -130,6 +160,16 @@ def parse_cabrillo(
             )
             continue
         if upper.startswith("QSO:"):
+            if len(qsos) >= MAX_LOG_QSOS:
+                if not any(error.code == "too_many_qsos" for error in errors):
+                    errors.append(
+                        ImportMessage(
+                            line_number,
+                            "too_many_qsos",
+                            f"A log may contain at most {MAX_LOG_QSOS} QSO records.",
+                        )
+                    )
+                continue
             tokens = line.split()[1:]
             if len(tokens) < len(expected_columns):
                 errors.append(

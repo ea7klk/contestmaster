@@ -61,3 +61,15 @@ def test_contest_specific_header_template_maps_required_fields_without_losing_or
     assert parsed.headers["EVENT"] == ["test-contest"]
     assert parsed.header_aliases["callsign"] == "OPERATOR-CALL"
     assert parsed.warnings == []
+
+
+def test_cabrillo_parser_bounds_line_count_and_line_length():
+    from backend.app.logs.cabrillo import (
+        MAX_CABRILLO_LINE_LENGTH,
+        MAX_LOG_LINES,
+    )
+
+    too_many = parse_cabrillo("\n".join("x" for _ in range(MAX_LOG_LINES + 1)))
+    assert too_many.errors[0].code == "too_many_lines"
+    long_line = parse_cabrillo("START-OF-LOG\n" + ("x" * (MAX_CABRILLO_LINE_LENGTH + 1)))
+    assert any(error.code == "line_too_long" for error in long_line.errors)

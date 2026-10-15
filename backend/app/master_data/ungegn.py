@@ -58,9 +58,7 @@ def parse_country_response(payload: bytes, retrieved_at: datetime) -> WgnCountry
             iso3 = row["crIso3"].strip().upper()
             raw_iso2 = row.get("crIso2")
             iso2 = (
-                raw_iso2.strip().upper()
-                if isinstance(raw_iso2, str) and raw_iso2.strip()
-                else None
+                raw_iso2.strip().upper() if isinstance(raw_iso2, str) and raw_iso2.strip() else None
             )
         except (KeyError, AttributeError, TypeError) as exc:
             raise ValueError("UNGEGN WGN country record is missing required fields") from exc

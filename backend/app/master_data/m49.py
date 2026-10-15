@@ -123,9 +123,7 @@ def parse_country_areas(payload: bytes, retrieved_at: datetime) -> M49CountryAre
     if not MINIMUM_COUNTRY_AREAS <= len(country_areas) <= MAXIMUM_COUNTRY_AREAS:
         raise ValueError("UN M49 country-or-area response is incomplete or unexpectedly large")
     country_areas.sort(key=lambda item: item.m49_code)
-    canonical = [
-        {"m49_code": item.m49_code, "name": item.name} for item in country_areas
-    ]
+    canonical = [{"m49_code": item.m49_code, "name": item.name} for item in country_areas]
     normalized = json.dumps(canonical, ensure_ascii=False, separators=(",", ":")).encode()
     return M49CountryAreaData(
         country_areas=tuple(country_areas),

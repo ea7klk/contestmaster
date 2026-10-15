@@ -1,4 +1,4 @@
-.PHONY: setup setup-backend setup-frontend dev api frontend test lint format db-upgrade clean
+.PHONY: setup setup-backend setup-frontend dev api start-api frontend test lint format db-upgrade clean
 
 setup: setup-backend setup-frontend
 
@@ -13,6 +13,9 @@ dev:
 
 api:
 	uv run uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+
+start-api:
+	uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
 
 frontend:
 	cd frontend && npm run dev

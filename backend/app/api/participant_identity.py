@@ -27,6 +27,7 @@ from backend.app.models import (
     ParticipantMagicLink,
     ParticipantSession,
 )
+from backend.app.rate_limit import enforce_rate_limit, request_identity
 
 router = APIRouter(tags=["participant identity"])
 MAGIC_LINK_LIFETIME = timedelta(minutes=15)
@@ -124,12 +125,31 @@ def require_participant(
 @router.post("/request-link", status_code=202)
 def request_magic_link(
     payload: MagicLinkRequest,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     try:
         email_address = normalize_email(payload.email)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    peer = request_identity(request)
+    email_fingerprint = _hash_token(email_address)
+    enforce_rate_limit(
+        request,
+        "participant-link-ip",
+        limit=30,
+        window_seconds=60,
+        message="Too many sign-in link requests. Retry later.",
+    )
+    enforce_rate_limit(
+        request,
+        "participant-link-email",
+        identity=f"{peer}:{email_fingerprint}",
+        limit=5,
+        window_seconds=3600,
+        message="Too many sign-in link requests. Retry later.",
+    )
 
     email = session.scalar(
         select(ParticipantEmail).where(ParticipantEmail.email_normalized == email_address)
@@ -174,9 +194,17 @@ def request_magic_link(
 @router.post("/consume-link")
 def consume_magic_link(
     payload: MagicLinkConsume,
+    request: Request,
     response: Response,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
+    enforce_rate_limit(
+        request,
+        "participant-link-consume",
+        limit=20,
+        window_seconds=60,
+        message="Too many sign-in link attempts. Retry later.",
+    )
     now = datetime.now(UTC)
     link = session.scalar(
         select(ParticipantMagicLink).where(

@@ -74,6 +74,19 @@ def add_user(
         return user.id
 
 
+def test_privileged_login_is_rate_limited_by_peer_and_account(identity_database):
+    client = TestClient(app)
+    payload = {"email": "target@example.test", "password": "incorrect"}
+
+    for _ in range(10):
+        assert client.post("/api/v1/auth/login", json=payload).status_code == 401
+
+    rejected = client.post("/api/v1/auth/login", json=payload)
+    assert rejected.status_code == 429
+    assert int(rejected.headers["Retry-After"]) > 0
+    assert "target@example.test" not in rejected.text
+
+
 def test_password_hashing_is_salted_and_rejects_wrong_password():
     first = hash_password("Correct horse battery staple")
     second = hash_password("Correct horse battery staple")

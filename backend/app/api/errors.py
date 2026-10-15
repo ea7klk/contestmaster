@@ -50,7 +50,11 @@ def error_response(
 async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     code = "not_found" if exc.status_code == 404 else "http_error"
     message = exc.detail if isinstance(exc.detail, str) else "The request could not be completed."
-    return error_response(request, exc.status_code, code, message)
+    response = error_response(request, exc.status_code, code, message)
+    if exc.headers:
+        for name, value in exc.headers.items():
+            response.headers[name] = value
+    return response
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

@@ -68,12 +68,12 @@ def log_database():
             yield session
 
     app.dependency_overrides[get_session] = override_session
-    logs.api._rate_windows.clear()
+    logs.api.limiter.clear()
     try:
         yield factory
     finally:
         app.dependency_overrides.clear()
-        logs.api._rate_windows.clear()
+        logs.api.limiter.clear()
         Base.metadata.drop_all(engine)
         engine.dispose()
 
@@ -291,6 +291,7 @@ def test_verified_participant_identity_is_associated_and_can_use_its_session(log
 
 
 def test_fixed_window_rate_limiter_rejects_excess_requests():
+    logs.api.limiter.clear()
     for index in range(logs.api.RATE_LIMIT_COUNT):
         assert logs.api.allow_submission("station-test", float(index))
     assert not logs.api.allow_submission("station-test", 30.0)

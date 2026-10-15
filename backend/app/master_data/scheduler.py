@@ -14,6 +14,7 @@ from backend.app.master_data.jobs import (
     sync_m49_country_areas,
     sync_ungegn_countries,
 )
+from backend.app.metrics import record_master_data_sync
 from backend.app.models import MasterDataVersion, MasterDataVersionStatus
 
 logger = logging.getLogger("contestmaster.master_data.scheduler")
@@ -59,11 +60,16 @@ async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock
         ):
             try:
                 result = await asyncio.to_thread(importer, session_factory)
+                record_master_data_sync(
+                    dataset_key,
+                    "changed" if result.get("changed") else "unchanged",
+                )
                 logger.info(
                     "master_data_sync_observed",
                     extra={"dataset_key": dataset_key, **result},
                 )
             except Exception:
+                record_master_data_sync(dataset_key, "failed")
                 logger.exception("master_data_sync_error", extra={"dataset_key": dataset_key})
 
 

@@ -279,9 +279,7 @@ def _persist_ungegn_data(
     run.status = MasterDataRunStatus.SUCCEEDED
     run.finished_at = utc_now()
     run.error_summary = (
-        "Changed country reference staged for global administrator review."
-        if changed
-        else None
+        "Changed country reference staged for global administrator review." if changed else None
     )
     return version
 

@@ -182,9 +182,7 @@ def m49_html(name_suffix: str = "", count: int = 248) -> bytes:
 
 def m49_fetcher(name_suffix: str = "", retrieved_at=None):
     payload = m49_html(name_suffix)
-    return lambda: parse_country_areas(
-        payload, retrieved_at or datetime(2026, 9, 15, tzinfo=UTC)
-    )
+    return lambda: parse_country_areas(payload, retrieved_at or datetime(2026, 9, 15, tzinfo=UTC))
 
 
 def test_cty_parser_handles_prefix_overrides_exact_calls_and_continuations() -> None:
@@ -264,9 +262,7 @@ def test_ungegn_sync_is_idempotent_and_stages_country_name_changes(session_facto
             )
         )
         entities = list(
-            session.scalars(
-                select(ContestEntity).where(ContestEntity.version_id == versions[0].id)
-            )
+            session.scalars(select(ContestEntity).where(ContestEntity.version_id == versions[0].id))
         )
         assert len(versions) == 2
         assert versions[0].status == MasterDataVersionStatus.ACTIVE
@@ -362,9 +358,7 @@ def test_m49_sync_is_idempotent_and_stages_published_name_changes(session_factor
             )
         )
         entities = list(
-            session.scalars(
-                select(ContestEntity).where(ContestEntity.version_id == versions[0].id)
-            )
+            session.scalars(select(ContestEntity).where(ContestEntity.version_id == versions[0].id))
         )
         assert len(versions) == 2
         assert versions[0].status == MasterDataVersionStatus.ACTIVE
@@ -376,9 +370,7 @@ def test_m49_sync_is_idempotent_and_stages_published_name_changes(session_factor
         assert runs[1].change_detected is False
         assert runs[1].record_counts == {"country_areas": 248}
         source = session.scalar(
-            select(MasterDataSource).where(
-                MasterDataSource.source_key == "unsd-m49-country-areas"
-            )
+            select(MasterDataSource).where(MasterDataSource.source_key == "unsd-m49-country-areas")
         )
         assert source is not None
         assert source.enabled is True

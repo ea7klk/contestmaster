@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -24,6 +25,7 @@ from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
 from backend.app.models import SystemRole, SystemUser
+from backend.app.rate_limit import enforce_rate_limit, request_identity
 
 router = APIRouter(tags=["identity"])
 
@@ -57,9 +59,27 @@ def _user_response(user: SystemUser) -> dict[str, object]:
 @router.post("/login", responses=API_ERROR_RESPONSES)
 def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
+    peer = request_identity(request)
+    email_fingerprint = hashlib.sha256(payload.email.strip().casefold().encode()).hexdigest()
+    enforce_rate_limit(
+        request,
+        "privileged-login-ip",
+        limit=60,
+        window_seconds=60,
+        message="Too many sign-in attempts. Retry later.",
+    )
+    enforce_rate_limit(
+        request,
+        "privileged-login-account",
+        identity=f"{peer}:{email_fingerprint}",
+        limit=10,
+        window_seconds=900,
+        message="Too many sign-in attempts. Retry later.",
+    )
     try:
         user = authenticate_password(session, payload.email, payload.password)
     except ValueError:

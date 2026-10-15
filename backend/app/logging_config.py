@@ -21,7 +21,8 @@ class JsonFormatter(logging.Formatter):
             if hasattr(record, field):
                 payload[field] = getattr(record, field)
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            # Exception messages and tracebacks can contain request data or secrets.
+            payload["exception_type"] = record.exc_info[0].__name__
         return json.dumps(payload, separators=(",", ":"))
 
 

@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 import re
 import time
@@ -8,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -26,6 +29,7 @@ from backend.app.api.errors import (
 from backend.app.api.identity import router as identity_router
 from backend.app.api.master_data_admin import router as master_data_admin_router
 from backend.app.api.participant_identity import router as participant_identity_router
+from backend.app.body_limit import RequestBodyLimitMiddleware
 from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
@@ -36,6 +40,8 @@ from backend.app.master_data.scheduler import (
     nightly_master_data_timer,
     run_master_data_sync,
 )
+from backend.app.metrics import record_http_request, record_upload
+from backend.app.metrics import registry as metrics_registry
 from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
 from backend.app.results.api import public_router as public_results_router
@@ -47,6 +53,7 @@ settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger("contestmaster.http")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+MAX_JSON_REQUEST_BYTES = 1024 * 1024
 
 
 @asynccontextmanager
@@ -87,6 +94,11 @@ app.add_exception_handler(StarletteHTTPException, http_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, unexpected_error_handler)
 app.add_middleware(
+    RequestBodyLimitMiddleware,
+    json_limit=MAX_JSON_REQUEST_BYTES,
+    upload_limit=MAX_REQUEST_BYTES,
+)
+app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
@@ -126,33 +138,54 @@ async def request_logging(request: Request, call_next):
             and request.url.path.endswith("/logs")
         )
         content_length = request.headers.get("content-length")
-        if is_log_upload and content_length is not None:
+        if content_length is not None:
             try:
-                oversized = int(content_length) > MAX_REQUEST_BYTES
+                declared_length = int(content_length)
             except ValueError:
-                oversized = True
+                declared_length = MAX_JSON_REQUEST_BYTES + 1
+            request_limit = MAX_REQUEST_BYTES if is_log_upload else MAX_JSON_REQUEST_BYTES
+            oversized = declared_length < 0 or declared_length > request_limit
             if oversized:
+                message = (
+                    "Log upload requests may not exceed 5 MiB plus multipart overhead."
+                    if is_log_upload
+                    else "JSON API requests may not exceed 1 MiB."
+                )
                 response = error_response(
                     request,
                     413,
                     "request_too_large",
-                    "Log upload requests may not exceed 5 MiB plus multipart overhead.",
+                    message,
                 )
                 response.headers["X-Request-ID"] = request_id
+                _add_security_headers(response)
+                record_http_request(request.method, 413, time.perf_counter() - started)
+                if is_log_upload:
+                    record_upload(413)
                 return response
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        _add_security_headers(response)
+        duration = time.perf_counter() - started
+        record_http_request(request.method, response.status_code, duration)
+        if is_log_upload or (
+            request.method in {"POST", "PUT"}
+            and request.url.path.startswith(f"{settings.api_prefix}/public/entries/")
+            and request.url.path.endswith("/log")
+        ):
+            record_upload(response.status_code)
         logger.info(
             "http_request",
             extra={
                 "method": request.method,
                 "path": request.url.path,
                 "status_code": response.status_code,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "duration_ms": round(duration * 1000, 2),
             },
         )
         return response
     except Exception:
+        record_http_request(request.method, 500, time.perf_counter() - started)
         logger.error(
             "http_request",
             extra={
@@ -166,9 +199,21 @@ async def request_logging(request: Request, call_next):
             request, 500, "internal_error", "An unexpected server error occurred."
         )
         response.headers["X-Request-ID"] = request_id
+        _add_security_headers(response)
         return response
     finally:
         request_id_var.reset(token)
+
+
+def _add_security_headers(response) -> None:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cache-Control", "no-store")
+    if settings.app_env in {"staging", "production"}:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
 
 
 @app.get(f"{settings.api_prefix}/health/live", tags=["health"], responses=API_ERROR_RESPONSES)
@@ -180,6 +225,25 @@ def liveness() -> dict[str, str]:
 def readiness(session: Session = Depends(get_session)) -> dict[str, str]:  # noqa: B008
     session.execute(text("SELECT 1"))
     return {"status": "ready", "database": "ready"}
+
+
+@app.get("/internal/metrics", include_in_schema=False)
+def operational_metrics(request: Request) -> Response:
+    if not settings.metrics_enabled or settings.metrics_bearer_token is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Not found.")
+    expected = f"Bearer {settings.metrics_bearer_token.get_secret_value()}"
+    supplied = request.headers.get("authorization", "")
+    if not hmac.compare_digest(supplied, expected):
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=401,
+            detail="Metrics authorization is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return Response(generate_latest(metrics_registry), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get(f"{settings.api_prefix}/master-data/status", tags=["master-data"])

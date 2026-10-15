@@ -19,14 +19,8 @@ def upgrade() -> None:
     op.drop_table("call_districts")
 
     # Purge the unused FCC dataset and its references before deleting its version rows.
-    op.execute(
-        "DELETE FROM contest_master_data_versions "
-        "WHERE dataset_key = 'call-districts-us'"
-    )
-    op.execute(
-        "DELETE FROM score_run_master_data_versions "
-        "WHERE dataset_key = 'call-districts-us'"
-    )
+    op.execute("DELETE FROM contest_master_data_versions WHERE dataset_key = 'call-districts-us'")
+    op.execute("DELETE FROM score_run_master_data_versions WHERE dataset_key = 'call-districts-us'")
     fcc_entity_ids = (
         "SELECT id FROM contest_entities WHERE version_id IN "
         "(SELECT id FROM master_data_versions WHERE dataset_key = 'call-districts-us')"

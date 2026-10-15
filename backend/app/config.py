@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,8 @@ class Settings(BaseSettings):
     entry_receipt_secret: str = "development-only-change-before-deploy"
     master_data_scheduler_enabled: bool = True
     master_data_nightly_hour_utc: int = 2
+    metrics_enabled: bool = False
+    metrics_bearer_token: SecretStr | None = None
 
     @field_validator("sqlite_busy_timeout_ms")
     @classmethod
@@ -39,19 +42,57 @@ class Settings(BaseSettings):
             raise ValueError("master_data_nightly_hour_utc must be between 0 and 23")
         return value
 
-    @field_validator("secure_cookies")
-    @classmethod
-    def secure_cookies_required_in_production(cls, value: bool, info) -> bool:
-        if info.data.get("app_env") == "production" and not value:
-            raise ValueError("secure_cookies must be enabled in production")
-        return value
+    @model_validator(mode="after")
+    def validate_deployment_settings(self) -> "Settings":
+        if self.app_env not in {"development", "test", "staging", "production"}:
+            raise ValueError("app_env must be development, test, staging, or production")
 
-    @field_validator("entry_receipt_secret")
-    @classmethod
-    def receipt_secret_must_be_strong_in_production(cls, value: str, info) -> str:
-        if info.data.get("app_env") == "production" and len(value.encode("utf-8")) < 32:
-            raise ValueError("entry_receipt_secret must contain at least 32 bytes in production")
-        return value
+        if self.metrics_enabled and (
+            self.metrics_bearer_token is None
+            or len(self.metrics_bearer_token.get_secret_value().encode("utf-8")) < 32
+        ):
+            raise ValueError(
+                "metrics_bearer_token must contain at least 32 bytes when metrics are enabled"
+            )
+
+        if self.app_env in {"staging", "production"}:
+            if not self.secure_cookies:
+                raise ValueError("secure_cookies must be enabled in staging and production")
+            if (
+                len(self.entry_receipt_secret.encode("utf-8")) < 32
+                or self.entry_receipt_secret == "development-only-change-before-deploy"
+            ):
+                raise ValueError(
+                    "entry_receipt_secret must be a unique secret of at least 32 bytes"
+                )
+            if not self.allowed_origins:
+                raise ValueError("allowed_origins must contain the deployed frontend origin")
+            for origin in self.allowed_origins:
+                parsed = urlsplit(origin)
+                if (
+                    parsed.scheme != "https"
+                    or not parsed.netloc
+                    or parsed.path not in {"", "/"}
+                    or parsed.query
+                    or parsed.fragment
+                    or "*" in origin
+                ):
+                    raise ValueError(
+                        "staging and production allowed_origins must be exact HTTPS origins"
+                    )
+            frontend = urlsplit(self.frontend_base_url)
+            if frontend.scheme != "https" or not frontend.netloc:
+                raise ValueError("frontend_base_url must be an HTTPS URL in staging and production")
+            if not self.email_smtp_host or not self.email_from_address:
+                raise ValueError(
+                    "email_smtp_host and email_from_address are required in staging and production"
+                )
+            if not self.master_data_scheduler_enabled:
+                raise ValueError(
+                    "master_data_scheduler_enabled must be enabled in staging and production"
+                )
+
+        return self
 
 
 @lru_cache

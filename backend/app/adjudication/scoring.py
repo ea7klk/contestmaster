@@ -20,6 +20,7 @@ from backend.app.adjudication.domain import (
     resolve_cty_callsign,
 )
 from backend.app.master_data.jobs import MissingContestMasterData
+from backend.app.metrics import record_score_run
 from backend.app.models import (
     Contest,
     ContestMasterDataVersion,
@@ -604,6 +605,7 @@ def score_entry_revision(
     run.status = ScoreRunStatus.COMPLETED
     run.completed_at = utc_now()
     session.flush()
+    record_score_run("completed")
     return run
 
 
@@ -694,4 +696,5 @@ def _record_failed_run(
         run.completed_at = utc_now()
         run.master_data_snapshot = {"error": str(error)}
     session.flush()
+    record_score_run("failed")
     return run

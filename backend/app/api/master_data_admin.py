@@ -41,31 +41,31 @@ router = APIRouter(prefix="/admin/master-data", tags=["master-data administratio
 def _reference_counts(session: Session, version_id: int) -> dict[str, int]:
     return {
         "contest": session.scalar(
-            select(func.count()).select_from(ContestMasterDataVersion).where(
-                ContestMasterDataVersion.master_data_version_id == version_id
-            )
+            select(func.count())
+            .select_from(ContestMasterDataVersion)
+            .where(ContestMasterDataVersion.master_data_version_id == version_id)
         )
         or 0,
         "score_run": (
             session.scalar(
-                select(func.count()).select_from(ScoreRunMasterDataVersion).where(
-                    ScoreRunMasterDataVersion.master_data_version_id == version_id
-                )
+                select(func.count())
+                .select_from(ScoreRunMasterDataVersion)
+                .where(ScoreRunMasterDataVersion.master_data_version_id == version_id)
             )
             or 0
         )
         + (
             session.scalar(
-                select(func.count()).select_from(ScoreRun).where(
-                    ScoreRun.master_data_version_id == version_id
-                )
+                select(func.count())
+                .select_from(ScoreRun)
+                .where(ScoreRun.master_data_version_id == version_id)
             )
             or 0
         ),
         "qso_resolution": session.scalar(
-            select(func.count()).select_from(Qso).where(
-                Qso.resolved_master_data_version_id == version_id
-            )
+            select(func.count())
+            .select_from(Qso)
+            .where(Qso.resolved_master_data_version_id == version_id)
         )
         or 0,
     }
@@ -99,7 +99,8 @@ def list_master_data_versions(
     versions = list(
         session.scalars(
             select(MasterDataVersion).order_by(
-                MasterDataVersion.dataset_key, MasterDataVersion.valid_from.desc(),
+                MasterDataVersion.dataset_key,
+                MasterDataVersion.valid_from.desc(),
                 MasterDataVersion.id.desc(),
             )
         )

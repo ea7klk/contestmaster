@@ -6,6 +6,7 @@ from sqlalchemy import Engine, MetaData, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.app.config import ensure_sqlite_parent, get_settings
+from backend.app.metrics import record_database_error
 
 
 class Base(DeclarativeBase):
@@ -31,6 +32,11 @@ def build_engine(database_url: str | None = None, busy_timeout_ms: int | None = 
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False, "timeout": timeout_ms / 1000}
     engine = create_engine(url, **kwargs)
+
+    @event.listens_for(engine, "handle_error")
+    def record_engine_error(_exception_context: Any) -> None:
+        record_database_error()
+
     if url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")
