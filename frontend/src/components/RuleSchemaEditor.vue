@@ -12,8 +12,9 @@ const props = withDefaults(
     label?: string
     path?: string
     depth?: number
+    hiddenProperties?: string[]
   }>(),
-  { label: '', path: '', depth: 0 },
+  { label: '', path: '', depth: 0, hiddenProperties: () => [] },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
@@ -248,7 +249,10 @@ function onEnumInput(event: Event) {
         v-for="(childSchema, key) in effectiveSchema.properties"
         :key="key"
       >
-        <div v-if="key !== 'eligible_if'" class="schema-field">
+        <div
+          v-if="key !== 'eligible_if' && !hiddenProperties.includes(key)"
+          class="schema-field"
+        >
           <label v-if="!isRequired(key)" class="schema-enable">
             <input
               type="checkbox"
@@ -275,6 +279,7 @@ function onEnumInput(event: Event) {
             "
             :path="`${path}-${key}`"
             :depth="depth + 1"
+            :hidden-properties="hiddenProperties"
             @update:model-value="updateProperty(key, $event)"
           />
         </div>

@@ -10,9 +10,9 @@
       "rule": {
         "kind": "schedule",
         "timezone": "UTC",
-        "start_local_time": "00:00:00",
         "duration_minutes": 2880,
-        "fixed_start_utc": "2026-10-24T00:00:00Z"
+        "fixed_start_utc": "2026-10-24T00:00:00Z",
+        "start_time_utc": "00:00:00"
       }
     },
     {

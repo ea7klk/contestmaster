@@ -74,11 +74,26 @@ NotCondition.model_rebuild(_types_namespace={"Condition": Condition})
 
 
 class Recurrence(StrictModel):
-    frequency: Literal["annual_date", "nth_weekday", "first_full_weekend"]
-    month: Annotated[int, Field(strict=True, ge=1, le=12)]
-    day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = None
-    weekday: Annotated[int, Field(strict=True, ge=0, le=6)] | None = None
-    occurrence: Annotated[int, Field(strict=True, ge=-1, le=5)] | None = None
+    frequency: Literal["annual_date", "nth_weekday", "first_full_weekend"] = Field(
+        description=(
+            "Choose an annual date, an occurrence of a weekday, or the first complete "
+            "Saturday–Sunday weekend."
+        )
+    )
+    month: Annotated[int, Field(strict=True, ge=1, le=12)] = Field(
+        description="UTC calendar month in which this edition starts."
+    )
+    day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = Field(
+        default=None,
+        description="Day of month for annual_date; not used by other recurrence types.",
+    )
+    weekday: Annotated[int, Field(strict=True, ge=0, le=6)] | None = Field(
+        default=None, description="Weekday for nth_weekday, Monday=0 through Sunday=6."
+    )
+    occurrence: Annotated[int, Field(strict=True, ge=-1, le=5)] | None = Field(
+        default=None,
+        description="Occurrence 1–5, or -1 for the last matching weekday in the month.",
+    )
 
     @model_validator(mode="after")
     def validate_shape(self) -> Recurrence:
@@ -98,13 +113,27 @@ class Recurrence(StrictModel):
 
 
 class ScheduleRule(StrictModel):
-    kind: Literal["schedule"]
-    timezone: Annotated[str, StringConstraints(min_length=1, max_length=80)]
-    start_local_time: time
-    duration_minutes: PositiveInteger
-    fixed_start_utc: datetime | None = None
-    recurrence: Recurrence | None = None
-    ambiguous_time_fold: Literal[0, 1] | None = None
+    kind: Literal["schedule"] = Field(description="Contest schedule definition.")
+    timezone: Literal["UTC"] = Field(
+        default="UTC", description="All contest schedules are UTC; this value cannot be changed."
+    )
+    start_time_utc: time = Field(
+        default=time(0, 0),
+        description=(
+            "Start time of recurring editions, expressed in UTC. Fixed schedules use "
+            "fixed_start_utc."
+        ),
+    )
+    duration_minutes: PositiveInteger = Field(
+        description="Contest duration in whole minutes, measured from the resolved UTC start."
+    )
+    fixed_start_utc: datetime | None = Field(
+        default=None,
+        description="One specific timezone-aware instant. Use this or recurrence, never both.",
+    )
+    recurrence: Recurrence | None = Field(
+        default=None, description="Rule for deriving an edition's UTC calendar date."
+    )
 
     @model_validator(mode="after")
     def require_one_schedule_source(self) -> ScheduleRule:
@@ -119,11 +148,30 @@ class ScheduleRule(StrictModel):
 
 class SubmissionRule(StrictModel):
     kind: Literal["submission"]
-    cutoff_mode: Literal["at_utc", "minutes_after_contest"]
-    cutoff_utc: datetime | None = None
-    minutes_after_contest: Integer | None = None
-    late_policy: Literal["reject", "accept_late", "checklog"]
-    manager_extension_allowed: bool = False
+    cutoff_mode: Literal["at_utc", "minutes_after_contest"] = Field(
+        description="Choose a fixed UTC deadline or a whole-minute offset after contest end."
+    )
+    cutoff_utc: datetime | None = Field(
+        default=None,
+        description="Absolute timezone-aware UTC submission cutoff; distinct from contest end.",
+    )
+    minutes_after_contest: Integer | None = Field(
+        default=None,
+        description=(
+            "Whole minutes after contest end when relative cutoff is selected. Negative "
+            "values close submission before contest end."
+        ),
+    )
+    late_policy: Literal["reject", "accept_late", "checklog"] = Field(
+        description=(
+            "How a submission after the cutoff is classified. A manager extension is "
+            "separately controlled below."
+        )
+    )
+    manager_extension_allowed: bool = Field(
+        default=False,
+        description="Whether a contest manager may explicitly extend the configured cutoff.",
+    )
 
     @model_validator(mode="after")
     def validate_cutoff(self) -> SubmissionRule:
@@ -144,8 +192,16 @@ class CategoryChoice(StrictModel):
 
 
 class CategoryDimension(StrictModel):
-    key: Identifier
-    label: Annotated[str, StringConstraints(min_length=1, max_length=160)]
+    key: Identifier = Field(
+        description=(
+            "Stable identifier for this entry-classification dimension, such as operator or power."
+        )
+    )
+    label: Annotated[str, StringConstraints(min_length=1, max_length=160)] = Field(
+        description=(
+            "Human-readable name shown to participants; changing it does not change the stable key."
+        )
+    )
     required: bool = True
     choices: list[CategoryChoice] = Field(min_length=1, max_length=200)
 
@@ -158,8 +214,19 @@ class CategoryDimension(StrictModel):
 
 class CategoryRule(StrictModel):
     kind: Literal["categories"]
-    dimensions: list[CategoryDimension] = Field(min_length=1, max_length=40)
-    mutually_exclusive: list[list[Identifier]] = Field(default_factory=list, max_length=40)
+    dimensions: list[CategoryDimension] = Field(
+        min_length=1,
+        max_length=40,
+        description=(
+            "Each dimension is one classification axis (for example operator, power, "
+            "or band); choices are the values allowed on that axis."
+        ),
+    )
+    mutually_exclusive: list[list[Identifier]] = Field(
+        default_factory=list,
+        max_length=40,
+        description="Groups of dimension keys that cannot be configured together.",
+    )
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> CategoryRule:
@@ -173,10 +240,22 @@ class CategoryRule(StrictModel):
 
 
 class ExchangeField(StrictModel):
-    key: Identifier
-    label: Annotated[str, StringConstraints(min_length=1, max_length=160)]
-    value_type: Literal["text", "integer", "callsign", "serial", "enum", "grid", "zone"]
-    direction: Literal["sent", "received", "both", "entry"] = "both"
+    key: Identifier = Field(
+        description="Stable key used to store and reference this exchange value."
+    )
+    label: Annotated[str, StringConstraints(min_length=1, max_length=160)] = Field(
+        description="Human-readable field name; editing the label does not change the key."
+    )
+    value_type: Literal["text", "integer", "callsign", "serial", "enum", "grid", "zone"] = Field(
+        description="Validation type for the submitted exchange value."
+    )
+    direction: Literal["sent", "received", "both", "entry"] = Field(
+        default="both",
+        description=(
+            "Whether this value is sent, received, exchanged both ways, or declared "
+            "once for the entry."
+        ),
+    )
     required: bool = True
     pattern: Annotated[str, StringConstraints(max_length=256)] | None = None
     max_length: Annotated[int, Field(strict=True, ge=1, le=2048)] = 256
@@ -189,6 +268,27 @@ class ExchangeField(StrictModel):
 
     @model_validator(mode="after")
     def validate_field(self) -> ExchangeField:
+        standard_types = {
+            "rst": ("text", {"sent", "received", "both"}),
+            "serial": ("serial", {"sent", "received", "both"}),
+            "cq_zone": ("zone", {"received", "both"}),
+            "itu_zone": ("zone", {"received", "both"}),
+            "section": ("text", {"received", "both", "entry"}),
+            "grid": ("grid", {"received", "both"}),
+            "state": ("text", {"received", "both", "entry"}),
+            "province": ("text", {"received", "both", "entry"}),
+            "check": ("integer", {"received", "both", "entry"}),
+            "precedence": ("enum", {"received", "both", "entry"}),
+            "call_area": ("text", {"received", "both", "entry"}),
+            "power": ("enum", {"received", "both", "entry"}),
+        }
+        if self.key in standard_types:
+            expected_type, allowed_directions = standard_types[self.key]
+            if self.value_type != expected_type or self.direction not in allowed_directions:
+                raise ValueError(
+                    f"standard exchange field {self.key} requires type {expected_type} "
+                    f"and direction in {sorted(allowed_directions)}"
+                )
         if self.value_type == "enum" and not self.choices:
             raise ValueError("enum exchange fields require choices")
         if self.value_type != "enum" and self.choices:
@@ -203,7 +303,11 @@ class ExchangeField(StrictModel):
 
 class ExchangeRule(StrictModel):
     kind: Literal["exchange"]
-    fields: list[ExchangeField] = Field(min_length=1, max_length=80)
+    fields: list[ExchangeField] = Field(
+        min_length=1,
+        max_length=80,
+        description="Ordered fields that make up the contest exchange and their validation rules.",
+    )
 
     @model_validator(mode="after")
     def unique_fields(self) -> ExchangeRule:
@@ -215,8 +319,22 @@ class ExchangeRule(StrictModel):
 class EligibilityRule(StrictModel):
     kind: Literal["eligibility"]
     eligible_if: Condition | None = None
-    allowed_bands: list[str] = Field(default_factory=list, max_length=100)
-    allowed_modes: list[str] = Field(default_factory=list, max_length=100)
+    allowed_bands: list[str] = Field(
+        default_factory=list,
+        max_length=100,
+        description=(
+            "When non-empty, only these catalog bands are eligible. An empty list "
+            "means no band restriction."
+        ),
+    )
+    allowed_modes: list[str] = Field(
+        default_factory=list,
+        max_length=100,
+        description=(
+            "When non-empty, only these catalog modes are eligible. An empty list "
+            "means no mode restriction."
+        ),
+    )
     reject_self_contacts: bool = True
     reject_out_of_period: bool = True
     reject_missing_required_exchange: bool = True

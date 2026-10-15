@@ -2,10 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 import ConditionEditor from '../components/ConditionEditor.vue'
 import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
+import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
+import EligibilityCatalogEditor from '../components/EligibilityCatalogEditor.vue'
+import {
+  getOperatingCatalog,
+  type OperatingCatalogItem,
+} from '../api/operatingCatalog'
 import {
   getRuleCatalog,
   RulesetApiError,
   saveRulesetVersion,
+  previewSchedule,
   validateRuleset,
   type JsonSchema,
   type RulesetDraft,
@@ -21,6 +28,7 @@ interface ConfiguredRuleDraft {
 }
 
 const catalog = ref<RuleTypeDescriptor[]>([])
+const operatingCatalog = ref<OperatingCatalogItem[]>([])
 const rules = ref<ConfiguredRuleDraft[]>([])
 const rulesetKey = ref('my-contest')
 const version = ref('1')
@@ -35,6 +43,9 @@ const validation = ref<RulesetValidationResponse | null>(null)
 const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const previewYear = ref(new Date().getUTCFullYear())
+const schedulePreview = ref('')
+const schedulePreviewError = ref('')
 
 const optionalTypes = computed(() =>
   catalog.value.filter((type) => !type.required),
@@ -172,6 +183,62 @@ function updateRule(rule: ConfiguredRuleDraft, value: unknown) {
   clearValidation()
 }
 
+function updateSchedule(
+  rule: ConfiguredRuleDraft,
+  value: Record<string, unknown>,
+) {
+  rule.rule = { ...rule.rule, ...value }
+  clearValidation()
+  schedulePreview.value = ''
+  schedulePreviewError.value = ''
+}
+
+function selectedValues(
+  rule: ConfiguredRuleDraft,
+  key: 'allowed_bands' | 'allowed_modes',
+) {
+  return Array.isArray(rule.rule[key]) ? (rule.rule[key] as string[]) : []
+}
+
+function setSelectedValues(
+  rule: ConfiguredRuleDraft,
+  key: 'allowed_bands' | 'allowed_modes',
+  values: string[] | undefined,
+) {
+  const next = { ...rule.rule }
+  if (values) next[key] = values
+  else delete next[key]
+  rule.rule = next
+  clearValidation()
+}
+
+async function loadSchedulePreview(rule: ConfiguredRuleDraft) {
+  schedulePreview.value = ''
+  schedulePreviewError.value = ''
+  try {
+    const preview = await previewSchedule(rule.rule, previewYear.value)
+    schedulePreview.value = `${preview.starts_at} – ${preview.ends_at}`
+  } catch (error) {
+    schedulePreviewError.value =
+      error instanceof Error
+        ? error.message
+        : 'Schedule date could not be previewed.'
+  }
+}
+
+const helpText: Record<string, string> = {
+  submission:
+    'The log deadline is a separate UTC instant or a whole-minute offset after contest end. Late policy controls submissions beyond that cutoff; a manager extension is available only when enabled.',
+  duplicates:
+    'The scope combines the worked callsign with any selected band, mode, grid, or transmitter values. A wider scope permits repeat contacts when one of those selected values differs. The effect says whether a repeat is ignored, uncredited, penalized, or held for review.',
+  points:
+    'QSO points are non-negative integers. Fixed points apply to every eligible contact; lookup points use the selected contact fact and exact configured value. The optional default handles values absent from that lookup.',
+  score_formula:
+    'Start with an integer variable or constant, then apply steps from top to bottom. Addition, subtraction, and multiplication keep integer values. Division requires an explicit integer operation and rounding rule. Example: 120 points × 8 multipliers + 10 bonus − 5 penalty = 965.',
+  format_mapping:
+    'This adapter maps a supported import/export format into canonical QSO fields and category values. Unknown input fields can be preserved for later review. The mapping describes configuration; parser support is limited to formats implemented by the application.',
+}
+
 function buildDraft(): RulesetDraft {
   const draft: RulesetDraft = {
     schema_version: 1,
@@ -285,8 +352,12 @@ function displayIssue(issue: RulesetIssue) {
 onMounted(async () => {
   const controller = new AbortController()
   try {
-    const response = await getRuleCatalog(controller.signal)
+    const [response, operating] = await Promise.all([
+      getRuleCatalog(controller.signal),
+      getOperatingCatalog(controller.signal),
+    ])
     catalog.value = response.rule_types
+    operatingCatalog.value = operating.items
     seedRequiredRules()
   } catch (error) {
     generalError.value =
@@ -429,15 +500,383 @@ onMounted(async () => {
             />
           </label>
           <RuleSchemaEditor
+            v-if="
+              !['categories', 'exchange', 'schedule'].includes(
+                String(configured.rule.kind),
+              )
+            "
             :schema="descriptorFor(String(configured.rule.kind))?.schema ?? {}"
             :root-schema="
               descriptorFor(String(configured.rule.kind))?.schema ?? {}
             "
             :model-value="configured.rule"
+            :hidden-properties="
+              configured.rule.kind === 'eligibility'
+                ? ['allowed_bands', 'allowed_modes']
+                : []
+            "
             :label="`${configured.rule.kind} rule settings`"
             :path="`rules-${index}`"
             @update:model-value="updateRule(configured, $event)"
           />
+          <CategoryExchangeEditor
+            v-if="
+              configured.rule.kind === 'categories' ||
+              configured.rule.kind === 'exchange'
+            "
+            :kind="configured.rule.kind"
+            :model-value="configured.rule"
+            @update:model-value="updateRule(configured, $event)"
+          />
+          <template v-if="configured.rule.kind === 'schedule'">
+            <p class="rule-explanation">
+              All contest times use UTC. A local start time adds no information
+              because the contest start instant is stored and compared in UTC.
+              Daylight-saving clock folds happen only in local civil time, so
+              this UTC schedule has no ambiguous-time fold setting.
+            </p>
+            <fieldset class="schedule-controls">
+              <legend>UTC schedule</legend>
+              <p>
+                Choose a single exact start instant or a recurring UTC calendar
+                date and UTC time. Recurrence types: annual date (for example
+                January 15), nth weekday (for example the third Saturday or last
+                Sunday), or first full weekend (the first Saturday–Sunday pair
+                entirely within the month).
+              </p>
+              <label
+                >Schedule type<select
+                  :value="configured.rule.recurrence ? 'recurring' : 'fixed'"
+                  @change="
+                    updateSchedule(
+                      configured,
+                      ($event.target as HTMLSelectElement).value === 'recurring'
+                        ? {
+                            fixed_start_utc: null,
+                            recurrence: {
+                              frequency: 'annual_date',
+                              month: 1,
+                              day: 1,
+                            },
+                            start_time_utc: '00:00:00',
+                          }
+                        : {
+                            fixed_start_utc: '2026-01-01T00:00:00Z',
+                            recurrence: null,
+                          },
+                    )
+                  "
+                >
+                  <option value="fixed">One fixed UTC start</option>
+                  <option value="recurring">Recurring UTC schedule</option>
+                </select></label
+              >
+              <label v-if="!configured.rule.recurrence"
+                >Fixed start UTC (ISO 8601)<input
+                  :value="String(configured.rule.fixed_start_utc ?? '')"
+                  placeholder="2026-01-01T00:00:00Z"
+                  @input="
+                    updateSchedule(configured, {
+                      fixed_start_utc: ($event.target as HTMLInputElement)
+                        .value,
+                    })
+                  "
+              /></label>
+              <template v-else>
+                <label
+                  >Recurrence<select
+                    :value="
+                      String(
+                        (configured.rule.recurrence as Record<string, unknown>)
+                          ?.frequency ?? 'annual_date',
+                      )
+                    "
+                    @change="
+                      updateSchedule(configured, {
+                        recurrence: {
+                          frequency: ($event.target as HTMLSelectElement).value,
+                          month: 1,
+                          ...(($event.target as HTMLSelectElement).value ===
+                          'annual_date'
+                            ? { day: 1 }
+                            : ($event.target as HTMLSelectElement).value ===
+                                'nth_weekday'
+                              ? { weekday: 5, occurrence: 1 }
+                              : {}),
+                        },
+                      })
+                    "
+                  >
+                    <option value="annual_date">
+                      Annual date — same UTC month/day each year
+                    </option>
+                    <option value="nth_weekday">
+                      Nth weekday — for example third Saturday or last Sunday
+                    </option>
+                    <option value="first_full_weekend">
+                      First full weekend — first complete Saturday–Sunday pair
+                    </option>
+                  </select></label
+                >
+                <label
+                  >UTC month<select
+                    :value="
+                      Number(
+                        (configured.rule.recurrence as Record<string, unknown>)
+                          ?.month ?? 1,
+                      )
+                    "
+                    @change="
+                      updateSchedule(configured, {
+                        recurrence: {
+                          ...(configured.rule.recurrence as Record<
+                            string,
+                            unknown
+                          >),
+                          month: Number(
+                            ($event.target as HTMLSelectElement).value,
+                          ),
+                        },
+                      })
+                    "
+                  >
+                    <option v-for="month in 12" :key="month" :value="month">
+                      {{
+                        new Date(Date.UTC(2020, month - 1, 1)).toLocaleString(
+                          'en',
+                          { month: 'long', timeZone: 'UTC' },
+                        )
+                      }}
+                    </option>
+                  </select></label
+                >
+                <label
+                  v-if="
+                    (configured.rule.recurrence as Record<string, unknown>)
+                      ?.frequency === 'annual_date'
+                  "
+                  >UTC day of month<input
+                    type="number"
+                    min="1"
+                    max="31"
+                    :value="
+                      Number(
+                        (configured.rule.recurrence as Record<string, unknown>)
+                          ?.day ?? 1,
+                      )
+                    "
+                    @input="
+                      updateSchedule(configured, {
+                        recurrence: {
+                          ...(configured.rule.recurrence as Record<
+                            string,
+                            unknown
+                          >),
+                          day: Number(
+                            ($event.target as HTMLInputElement).value,
+                          ),
+                        },
+                      })
+                    "
+                /></label>
+                <template
+                  v-if="
+                    (configured.rule.recurrence as Record<string, unknown>)
+                      ?.frequency === 'nth_weekday'
+                  "
+                  >
+<label
+                    >Weekday<select
+                      :value="
+                        Number(
+                          (
+                            configured.rule.recurrence as Record<
+                              string,
+                              unknown
+                            >
+                          )?.weekday ?? 5,
+                        )
+                      "
+                      @change="
+                        updateSchedule(configured, {
+                          recurrence: {
+                            ...(configured.rule.recurrence as Record<
+                              string,
+                              unknown
+                            >),
+                            weekday: Number(
+                              ($event.target as HTMLSelectElement).value,
+                            ),
+                          },
+                        })
+                      "
+                    >
+                      <option
+                        v-for="(weekday, weekdayIndex) in [
+                          'Monday',
+                          'Tuesday',
+                          'Wednesday',
+                          'Thursday',
+                          'Friday',
+                          'Saturday',
+                          'Sunday',
+                        ]"
+                        :key="weekday"
+                        :value="weekdayIndex"
+                      >
+                        {{ weekday }}
+                      </option>
+                    </select></label
+                  ><label
+                    >Occurrence<select
+                      :value="
+                        Number(
+                          (
+                            configured.rule.recurrence as Record<
+                              string,
+                              unknown
+                            >
+                          )?.occurrence ?? 1,
+                        )
+                      "
+                      @change="
+                        updateSchedule(configured, {
+                          recurrence: {
+                            ...(configured.rule.recurrence as Record<
+                              string,
+                              unknown
+                            >),
+                            occurrence: Number(
+                              ($event.target as HTMLSelectElement).value,
+                            ),
+                          },
+                        })
+                      "
+                    >
+                      <option v-for="n in [1, 2, 3, 4, 5]" :key="n" :value="n">
+                        {{
+                          ['first', 'second', 'third', 'fourth', 'fifth'][n - 1]
+                        }}
+                      </option>
+                      <option :value="-1">Last</option>
+                    </select></label
+                  >
+</template
+                >
+                <label
+                  >Start time UTC<input
+                    type="time"
+                    :value="
+                      String(
+                        configured.rule.start_time_utc ?? '00:00:00',
+                      ).slice(0, 5)
+                    "
+                    @input="
+                      updateSchedule(configured, {
+                        start_time_utc: `${($event.target as HTMLInputElement).value}:00`,
+                      })
+                    "
+                /></label>
+                <label
+                  >Preview year<input
+                    v-model.number="previewYear"
+                    type="number"
+                    min="1900"
+                    max="2200"
+                /></label>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  @click="loadSchedulePreview(configured)"
+                >
+                  Preview resolved UTC dates
+                </button>
+                <p v-if="schedulePreview" role="status">
+                  {{ schedulePreview }}
+                </p>
+                <p v-if="schedulePreviewError" role="alert">
+                  {{ schedulePreviewError }}
+                </p>
+              </template>
+              <label
+                >Duration (whole minutes)<input
+                  type="number"
+                  min="1"
+                  :value="Number(configured.rule.duration_minutes ?? 1)"
+                  @input="
+                    updateSchedule(configured, {
+                      duration_minutes: Number(
+                        ($event.target as HTMLInputElement).value,
+                      ),
+                    })
+                  "
+              /></label>
+            </fieldset>
+          </template>
+          <p
+            v-if="helpText[String(configured.rule.kind)]"
+            class="rule-explanation"
+          >
+            {{ helpText[String(configured.rule.kind)] }}
+          </p>
+          <template v-if="configured.rule.kind === 'eligibility'">
+            <p class="rule-explanation">
+              Eligibility controls which contacts can be credited. Empty band or
+              mode selections mean no restriction for that dimension. Band
+              contest-free markings are advisory labels from the shared catalog;
+              they never silently change scoring.
+            </p>
+            <EligibilityCatalogEditor
+              v-if="Array.isArray(configured.rule.allowed_bands)"
+              kind="band"
+              :items="operatingCatalog.filter((item) => item.kind === 'band')"
+              :selected="selectedValues(configured, 'allowed_bands')"
+              @update:selected="
+                setSelectedValues(configured, 'allowed_bands', $event)
+              "
+            />
+            <label
+              ><input
+                type="checkbox"
+                :checked="Array.isArray(configured.rule.allowed_bands)"
+                @change="
+                  setSelectedValues(
+                    configured,
+                    'allowed_bands',
+                    ($event.target as HTMLInputElement).checked
+                      ? []
+                      : undefined,
+                  )
+                "
+              />
+              Configure allowed bands</label
+            >
+            <EligibilityCatalogEditor
+              v-if="Array.isArray(configured.rule.allowed_modes)"
+              kind="mode"
+              :items="operatingCatalog.filter((item) => item.kind === 'mode')"
+              :selected="selectedValues(configured, 'allowed_modes')"
+              @update:selected="
+                setSelectedValues(configured, 'allowed_modes', $event)
+              "
+            />
+            <label
+              ><input
+                type="checkbox"
+                :checked="Array.isArray(configured.rule.allowed_modes)"
+                @change="
+                  setSelectedValues(
+                    configured,
+                    'allowed_modes',
+                    ($event.target as HTMLInputElement).checked
+                      ? []
+                      : undefined,
+                  )
+                "
+              />
+              Configure allowed modes</label
+            >
+          </template>
           <div
             v-if="configured.rule.kind === 'eligibility'"
             class="condition-toggle"

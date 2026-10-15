@@ -127,4 +127,14 @@ export async function saveRulesetVersion(
     signal,
   })
 }
+
+export function previewSchedule(
+  schedule: Record<string, unknown>,
+  year: number,
+): Promise<{ starts_at: string; ends_at: string }> {
+  return request('/rulesets/schedule-preview', {
+    method: 'POST',
+    body: JSON.stringify({ schedule, year }),
+  })
+}
 import { ApiError, apiRequest, type ApiIssue } from './client'

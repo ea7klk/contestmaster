@@ -69,6 +69,10 @@ After an entry exists, its manager may call `PUT /api/v1/contests/{contest_id}/e
 
 ## Ruleset authoring
 
+The graphical composer uses UTC-only schedules with API-resolved recurrence previews. See [Ruleset composer guidance](../ruleset-composer/README.md) for schedule, category, exchange, eligibility catalog, scoring, and format explanations. Active shared band/mode choices are available at `GET /api/v1/rulesets/operating-catalog`. Global administrators manage them at `/api/v1/rulesets/admin/operating-catalog`; managers cannot modify this catalog. Eligibility keys must refer to active catalog items when a ruleset is validated or saved. Catalog edits are audited, and referenced keys cannot be renamed or deleted (deactivate them instead).
+
+`POST /api/v1/rulesets/schedule-preview` accepts `{ "year": 2026, "schedule": { ... } }` with a typed UTC `ScheduleRule`; it returns `starts_at` and `ends_at` as UTC ISO 8601 instants. Unsupported or nonexistent dates return 422 validation errors.
+
 - `GET /api/v1/rulesets/catalog` returns the typed schemas, labels, and execution expectations for the built-in rule types used by the graphical composer.
 - `POST /api/v1/rulesets/validate` accepts a proposed declarative ruleset but does not save or activate it. A valid response includes the normalized metadata, configured rule-type list, readable summary, and integer-only worked formula example. Invalid configurations return the standard error envelope with rule paths and messages.
 - `GET /api/v1/rulesets/versions` lists immutable saved versions for authenticated administrators and managers. `POST /api/v1/rulesets/versions` stores a validated version, is idempotent for identical content, and rejects attempts to reuse a key/version with different content.

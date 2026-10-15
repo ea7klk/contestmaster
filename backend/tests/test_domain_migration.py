@@ -86,6 +86,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "ruleset_activations",
         "result_publications",
         "result_publication_entries",
+        "operating_catalog_items",
     } <= tables
     assert "call_districts" not in tables
     assert "iaru_regions" not in tables
@@ -96,8 +97,22 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0013_result_publications"
+        seeded_bands = connection.exec_driver_sql(
+            "SELECT count(*) FROM operating_catalog_items WHERE kind = 'band' AND is_active = 1"
+        ).scalar_one()
+        highest_band = connection.exec_driver_sql(
+            "SELECT frequency_range FROM operating_catalog_items WHERE kind = 'band' "
+            "ORDER BY sort_order DESC LIMIT 1"
+        ).scalar_one()
+        ft8 = connection.exec_driver_sql(
+            "SELECT count(*) FROM operating_catalog_items "
+            "WHERE kind = 'mode' AND key = 'FT8' AND is_active = 1"
+        ).scalar_one()
+    assert version == "0014_operating_catalog"
     assert foreign_keys == 1
+    assert seeded_bands >= 30
+    assert highest_band == "1.4 THz"
+    assert ft8 == 1
     assert {"category_values", "is_late"} <= {
         column["name"] for column in inspector.get_columns("entries")
     }

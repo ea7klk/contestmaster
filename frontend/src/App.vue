@@ -59,6 +59,12 @@ watch(() => route.fullPath, refreshIdentity)
         >
           Master data
         </RouterLink>
+        <RouterLink
+          v-if="staffUser?.role === 'global_administrator'"
+          to="/admin/operating-catalog"
+        >
+          Bands and modes
+        </RouterLink>
         <RouterLink v-if="!staffUser" to="/sign-in">Staff sign-in</RouterLink>
         <button
           v-else

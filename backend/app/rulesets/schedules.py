@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from backend.app.rulesets.schema import Recurrence, ScheduleRule, SubmissionRule
 
@@ -18,7 +17,7 @@ class ResolvedSchedule:
     starts_at: datetime
     ends_at: datetime
     timezone: str
-    local_start: datetime
+    utc_start: datetime
 
 
 @dataclass(frozen=True)
@@ -64,41 +63,24 @@ def _recurrence_date(recurrence: Recurrence, year: int) -> date:
     return first_saturday
 
 
-def _resolve_local(naive: datetime, zone: ZoneInfo, fold: int | None) -> datetime:
-    candidate = naive.replace(tzinfo=zone, fold=fold or 0)
-    round_trip = candidate.astimezone(UTC).astimezone(zone).replace(tzinfo=None)
-    if round_trip != naive:
-        raise ScheduleResolutionError(
-            "Local schedule time does not exist because of a DST transition"
-        )
-    first = naive.replace(tzinfo=zone, fold=0).utcoffset()
-    second = naive.replace(tzinfo=zone, fold=1).utcoffset()
-    if first != second and fold is None:
-        raise ScheduleResolutionError("Ambiguous local time requires an explicit fold policy")
-    return candidate.astimezone(UTC)
-
-
 def resolve_schedule(rule: ScheduleRule, year: int | None = None) -> ResolvedSchedule:
     """Resolve a fixed instant or recurrence and return the UTC instants to persist."""
-    try:
-        zone = ZoneInfo(rule.timezone)
-    except Exception as exc:
-        raise ScheduleResolutionError(f"Unknown timezone: {rule.timezone}") from exc
+    if rule.timezone != "UTC":
+        raise ScheduleResolutionError("Contest schedules use UTC only")
     if rule.fixed_start_utc is not None:
         starts_at = rule.fixed_start_utc.astimezone(UTC)
-        local_start = starts_at.astimezone(zone)
+        utc_start = starts_at
     else:
         if rule.recurrence is None or year is None:
             raise ScheduleResolutionError("Recurring schedule requires an edition year")
         local_date = _recurrence_date(rule.recurrence, year)
-        naive = datetime.combine(local_date, rule.start_local_time)
-        starts_at = _resolve_local(naive, zone, rule.ambiguous_time_fold)
-        local_start = naive.replace(tzinfo=zone, fold=rule.ambiguous_time_fold or 0)
+        utc_start = datetime.combine(local_date, rule.start_time_utc, tzinfo=UTC)
+        starts_at = utc_start
     return ResolvedSchedule(
         starts_at=starts_at,
         ends_at=starts_at + timedelta(minutes=rule.duration_minutes),
         timezone=rule.timezone,
-        local_start=local_start,
+        utc_start=utc_start,
     )
 
 

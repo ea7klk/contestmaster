@@ -28,7 +28,8 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
         condition = " [conditional]" if configured.when is not None else ""
         if rule.kind == "schedule":
             summary = (
-                f"Schedule in {rule.timezone}, duration {rule.duration_minutes} minutes"
+                f"Recurring UTC schedule at {rule.start_time_utc.isoformat()}, "
+                f"duration {rule.duration_minutes} minutes"
                 if rule.recurrence
                 else f"Fixed schedule starting {rule.fixed_start_utc.isoformat()}"
             )

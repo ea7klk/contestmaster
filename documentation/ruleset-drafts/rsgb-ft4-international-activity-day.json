@@ -10,14 +10,14 @@
       "rule": {
         "kind": "schedule",
         "timezone": "UTC",
-        "start_local_time": "12:00:00",
         "duration_minutes": 1440,
         "recurrence": {
           "frequency": "nth_weekday",
           "month": 4,
           "weekday": 5,
           "occurrence": 2
-        }
+        },
+        "start_time_utc": "12:00:00"
       }
     },
     {
