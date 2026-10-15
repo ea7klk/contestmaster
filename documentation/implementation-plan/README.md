@@ -16,10 +16,10 @@ Record the selected choices in a short architecture decision log before implemen
 
 - **Python REST framework and validation/schema library:** FastAPI + Pydantic. This fits the API-first design and provides typed request/response schemas with generated OpenAPI.
 - **ORM and migration tools:** SQLAlchemy 2.x + Alembic. This provides the required ORM-managed SQLite access and explicit schema migrations.
+- **Vue toolchain and component strategy:** Vue 3 + TypeScript + Vite + Vue Router + Pinia, with a small set of accessible application components. Use typed component boundaries and semantic HTML; avoid introducing a full UI framework until the workflows demonstrate a need.
 
 ### Decisions remaining
 
-- Vue toolchain and component strategy. Proposed default: Vue 3, TypeScript, Vite, and a small accessible component set.
 - Authentication method, account recovery, and initial global-administrator provisioning.
 - How a guest entrant securely corrects or withdraws a submitted log and manages individual contacts after upload. Proposed default: allow a revised log submission tied to the same entry using a time-limited, unguessable receipt token; do not require a participant system account.
 - Deployment and nightly scheduler mechanism. Keep the first deployment to one API instance and local SQLite storage.
