@@ -14,6 +14,17 @@ describe('SiteFooter', () => {
     expect(license.text()).toBe('license and use terms')
     expect(license.attributes('target')).toBe('_blank')
     expect(license.attributes('rel')).toContain('noreferrer')
+
+    const fccTerms = wrapper.get('a[href="https://www.usa.gov/government-works"]')
+    expect(fccTerms.text()).toBe('license and use terms')
+    const ungegnTerms = wrapper.get(
+      'a[href="https://unstats.un.org/unsd/ungegn/meetings/Bureau_Divisions/documents/UNGEGN_Bureau_WGN_November_2023_updated.pdf"]',
+    )
+    expect(ungegnTerms.text()).toBe('open access terms')
+    for (const link of [fccTerms, ungegnTerms]) {
+      expect(link.attributes('target')).toBe('_blank')
+      expect(link.attributes('rel')).toContain('noreferrer')
+    }
   })
 
   it('is part of the shared shell on the routed application page', async () => {
@@ -22,5 +33,6 @@ describe('SiteFooter', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia(), router] } })
 
     expect(wrapper.get('footer').text()).toContain('license and use terms')
+    expect(wrapper.get('footer').text()).toContain('open access terms')
   })
 })

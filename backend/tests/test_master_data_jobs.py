@@ -20,12 +20,14 @@ from backend.app.master_data.jobs import (
     pin_contest_versions,
     sync_cty,
     sync_fcc_call_districts,
+    sync_ungegn_countries,
 )
 from backend.app.master_data.scheduler import (
     has_all_required_versions,
     run_master_data_sync,
     seconds_until_nightly_run,
 )
+from backend.app.master_data.ungegn import parse_country_response
 from backend.app.models import (
     CallDistrict,
     CallsignPrefix,
@@ -82,10 +84,15 @@ def test_master_data_sync_attempts_each_source_when_one_fails(monkeypatch) -> No
         calls.append("fcc")
         return {"changed": False}
 
+    def successful_ungegn(_factory):
+        calls.append("ungegn")
+        return {"changed": False}
+
     monkeypatch.setattr(scheduler, "sync_cty", broken_cty)
     monkeypatch.setattr(scheduler, "sync_fcc_call_districts", successful_fcc)
+    monkeypatch.setattr(scheduler, "sync_ungegn_countries", successful_ungegn)
     asyncio.run(run_master_data_sync(object(), asyncio.Lock()))
-    assert calls == ["cty", "fcc"]
+    assert calls == ["cty", "fcc", "ungegn"]
 
 
 @pytest.fixture
@@ -153,6 +160,36 @@ def fcc_fetcher(districts=range(10)):
     )
 
 
+def ungegn_payload(name_suffix: str = "") -> bytes:
+    import json
+
+    def alpha_code(index: int, width: int) -> str:
+        chars = []
+        for _ in range(width):
+            chars.append(chr(65 + index % 26))
+            index //= 26
+        return "".join(reversed(chars))
+
+    return json.dumps(
+        [
+            {
+                "crM49": index,
+                "countryName": f"Country {index}{name_suffix}",
+                "crIso3": alpha_code(index, 3),
+                "crIso2": alpha_code(index, 2),
+            }
+            for index in range(1, 194)
+        ]
+    ).encode()
+
+
+def ungegn_fetcher(name_suffix: str = "", retrieved_at=None):
+    payload = ungegn_payload(name_suffix)
+    return lambda: parse_country_response(
+        payload, retrieved_at or datetime(2026, 9, 15, tzinfo=UTC)
+    )
+
+
 def test_cty_parser_handles_prefix_overrides_exact_calls_and_continuations() -> None:
     parsed = parse_cty_dat("Example: 5: 8: EU: 40: -3: -1: EA:\n EA,EA2(6)[9],=EA7ABC;\n")
     assert parsed[0].name == "Example"
@@ -203,6 +240,85 @@ def test_fcc_parser_aggregates_only_us_call_district_codes() -> None:
     assert data.district_codes == tuple(str(code) for code in range(10))
     assert data.license_record_count == 100
     assert data.normalized_checksum
+
+
+def test_ungegn_parser_normalizes_m49_and_rejects_incomplete_or_duplicate_data() -> None:
+    data = parse_country_response(ungegn_payload(), datetime(2026, 9, 15, tzinfo=UTC))
+    assert len(data.countries) == 193
+    assert data.countries[0].m49_code == "001"
+    assert data.countries[0].name == "Country 1"
+    assert data.normalized_checksum
+    import json
+
+    with pytest.raises(ValueError, match="incomplete"):
+        parse_country_response(json.dumps([]).encode(), datetime(2026, 9, 15, tzinfo=UTC))
+    duplicate = json.loads(ungegn_payload())
+    duplicate[-1]["crM49"] = duplicate[0]["crM49"]
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_country_response(json.dumps(duplicate).encode(), datetime(2026, 9, 15, tzinfo=UTC))
+
+
+def test_ungegn_sync_is_idempotent_and_stages_country_name_changes(session_factory) -> None:
+    first = sync_ungegn_countries(session_factory, ungegn_fetcher())
+    no_change = sync_ungegn_countries(session_factory, ungegn_fetcher())
+    changed = sync_ungegn_countries(session_factory, ungegn_fetcher(" updated"))
+
+    with session_factory() as session:
+        versions = list(
+            session.scalars(
+                select(MasterDataVersion)
+                .where(MasterDataVersion.dataset_key == "countries-ungegn-wgn")
+                .order_by(MasterDataVersion.id)
+            )
+        )
+        runs = list(
+            session.scalars(
+                select(MasterDataSyncRun)
+                .where(MasterDataSyncRun.dataset_key == "countries-ungegn-wgn")
+                .order_by(MasterDataSyncRun.id)
+            )
+        )
+        entities = list(
+            session.scalars(
+                select(ContestEntity).where(ContestEntity.version_id == versions[0].id)
+            )
+        )
+        assert len(versions) == 2
+        assert versions[0].status == MasterDataVersionStatus.ACTIVE
+        assert versions[1].status == MasterDataVersionStatus.CANDIDATE
+        assert len(entities) == 193
+        assert entities[0].namespace == "UN-M49"
+        assert entities[0].authority_code == "001"
+        assert runs[1].change_detected is False
+        assert len(runs[1].record_counts) == 1
+    assert first["changed"] is True
+    assert no_change["changed"] is False
+    assert no_change["version_id"] == first["version_id"]
+    assert changed["changed"] is True
+
+
+def test_ungegn_failed_import_preserves_active_version(session_factory) -> None:
+    first = sync_ungegn_countries(session_factory, ungegn_fetcher())
+
+    def broken_feed():
+        raise ValueError("source unavailable")
+
+    with pytest.raises(ValueError, match="source unavailable"):
+        sync_ungegn_countries(session_factory, broken_feed)
+    with session_factory() as session:
+        active = session.scalar(
+            select(MasterDataVersion).where(
+                MasterDataVersion.dataset_key == "countries-ungegn-wgn",
+                MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
+            )
+        )
+        failed = session.scalar(
+            select(MasterDataSyncRun)
+            .where(MasterDataSyncRun.dataset_key == "countries-ungegn-wgn")
+            .order_by(MasterDataSyncRun.id.desc())
+        )
+        assert active is not None and active.id == first["version_id"]
+        assert failed is not None and failed.status == MasterDataRunStatus.FAILED
 
 
 def test_fcc_import_requires_official_public_domain_metadata(monkeypatch) -> None:

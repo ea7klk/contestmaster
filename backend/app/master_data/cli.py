@@ -10,7 +10,11 @@ import sys
 from sqlalchemy import desc, select
 
 from backend.app.db import SessionFactory
-from backend.app.master_data.jobs import sync_cty, sync_fcc_call_districts
+from backend.app.master_data.jobs import (
+    sync_cty,
+    sync_fcc_call_districts,
+    sync_ungegn_countries,
+)
 from backend.app.models import MasterDataSyncRun, MasterDataVersion, MasterDataVersionStatus
 
 logger = logging.getLogger("contestmaster.master_data.cli")
@@ -22,6 +26,7 @@ def _sync_enabled() -> tuple[dict[str, object], bool]:
     for dataset_key, importer in (
         ("cty", sync_cty),
         ("call-districts-us", sync_fcc_call_districts),
+        ("countries-ungegn-wgn", sync_ungegn_countries),
     ):
         try:
             outcomes.append({"dataset_key": dataset_key, **importer(SessionFactory)})
@@ -79,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("sync", help="Fetch and import all enabled master-data sources")
     subparsers.add_parser("sync-cty", help="Fetch and import the latest Big CTY release once")
     subparsers.add_parser("sync-fcc", help="Fetch and import FCC ULS call-district data once")
+    subparsers.add_parser(
+        "sync-ungegn", help="Fetch and import the UNGEGN WGN country reference once"
+    )
     subparsers.add_parser("status", help="Show active versions and recent sync runs")
     args = parser.parse_args(argv)
     try:
@@ -89,6 +97,9 @@ def main(argv: list[str] | None = None) -> int:
             failed = False
         elif args.command == "sync-fcc":
             result = sync_fcc_call_districts(SessionFactory)
+            failed = False
+        elif args.command == "sync-ungegn":
+            result = sync_ungegn_countries(SessionFactory)
             failed = False
         else:
             result = _status()

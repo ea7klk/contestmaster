@@ -9,7 +9,11 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.master_data.jobs import sync_cty, sync_fcc_call_districts
+from backend.app.master_data.jobs import (
+    sync_cty,
+    sync_fcc_call_districts,
+    sync_ungegn_countries,
+)
 from backend.app.models import MasterDataVersion, MasterDataVersionStatus
 
 logger = logging.getLogger("contestmaster.master_data.scheduler")
@@ -27,7 +31,7 @@ def seconds_until_nightly_run(now: datetime, hour_utc: int) -> float:
     return (next_run - current).total_seconds()
 
 
-REQUIRED_DATASET_KEYS = ("cty", "call-districts-us")
+REQUIRED_DATASET_KEYS = ("cty", "call-districts-us", "countries-ungegn-wgn")
 
 
 def has_all_required_versions(session_factory: sessionmaker) -> bool:
@@ -51,6 +55,7 @@ async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock
         for dataset_key, importer in (
             ("cty", sync_cty),
             ("call-districts-us", sync_fcc_call_districts),
+            ("countries-ungegn-wgn", sync_ungegn_countries),
         ):
             try:
                 result = await asyncio.to_thread(importer, session_factory)

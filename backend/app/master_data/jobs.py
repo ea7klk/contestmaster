@@ -39,6 +39,28 @@ from backend.app.master_data.fcc import (
     fetch_amateur_archive,
     parse_amateur_archive,
 )
+from backend.app.master_data.ungegn import (
+    API_DOCS_URL as UNGEGN_API_DOCS_URL,
+)
+from backend.app.master_data.ungegn import (
+    DATASET_KEY as UNGEGN_DATASET_KEY,
+)
+from backend.app.master_data.ungegn import (
+    PARSER_VERSION as UNGEGN_PARSER_VERSION,
+)
+from backend.app.master_data.ungegn import (
+    SOURCE_KEY as UNGEGN_SOURCE_KEY,
+)
+from backend.app.master_data.ungegn import (
+    SOURCE_URL as UNGEGN_SOURCE_URL,
+)
+from backend.app.master_data.ungegn import (
+    USE_TERMS_URL as UNGEGN_USE_TERMS_URL,
+)
+from backend.app.master_data.ungegn import (
+    WgnCountryData,
+    fetch_countries,
+)
 from backend.app.models import (
     CallDistrict,
     CallsignPrefix,
@@ -190,6 +212,129 @@ def _create_fcc_run(session_factory: sessionmaker[Session]) -> int:
         session.add(run)
         session.flush()
         return run.id
+
+
+def _create_ungegn_run(session_factory: sessionmaker[Session]) -> int:
+    with session_factory.begin() as session:
+        source = session.scalar(
+            select(MasterDataSource).where(MasterDataSource.source_key == UNGEGN_SOURCE_KEY)
+        )
+        if source is None:
+            source = MasterDataSource(
+                source_key=UNGEGN_SOURCE_KEY,
+                name="UNGEGN World Geographical Names country reference",
+                canonical_url=UNGEGN_SOURCE_URL,
+                source_priority=60,
+                authority_role=MasterDataAuthorityRole.GAP_FILLING,
+                use_terms_url=UNGEGN_USE_TERMS_URL,
+                license_notice=(
+                    "UNGEGN describes WGN API data as open access, publicly available "
+                    "without restriction."
+                ),
+                enabled=True,
+            )
+            session.add(source)
+            session.flush()
+        source.canonical_url = UNGEGN_SOURCE_URL
+        source.use_terms_url = UNGEGN_USE_TERMS_URL
+        source.license_notice = (
+            "UNGEGN describes WGN API data as open access, publicly available without restriction. "
+            f"API specification: {UNGEGN_API_DOCS_URL}"
+        )
+        source.enabled = True
+        active = session.scalar(
+            select(MasterDataSyncRun).where(
+                MasterDataSyncRun.source_id == source.id,
+                MasterDataSyncRun.dataset_key == UNGEGN_DATASET_KEY,
+                MasterDataSyncRun.status == MasterDataRunStatus.RUNNING,
+            )
+        )
+        now = utc_now()
+        if active is not None:
+            if active.started_at >= now - RUN_STALE_AFTER:
+                raise MasterDataError(f"An UNGEGN WGN sync run ({active.id}) is already running")
+            active.status = MasterDataRunStatus.FAILED
+            active.finished_at = now
+            active.error_summary = "Marked failed because its running lease exceeded six hours."
+        session.flush()
+        run = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key=UNGEGN_DATASET_KEY,
+            started_at=now,
+            parser_version=UNGEGN_PARSER_VERSION,
+            status=MasterDataRunStatus.RUNNING,
+        )
+        session.add(run)
+        session.flush()
+        return run.id
+
+
+def _persist_ungegn_data(
+    session: Session, run: MasterDataSyncRun, source_data: WgnCountryData
+) -> MasterDataVersion:
+    current = session.scalar(
+        select(MasterDataVersion).where(
+            MasterDataVersion.dataset_key == UNGEGN_DATASET_KEY,
+            MasterDataVersion.status == MasterDataVersionStatus.ACTIVE,
+        )
+    )
+    candidate = session.scalar(
+        select(MasterDataVersion).where(
+            MasterDataVersion.dataset_key == UNGEGN_DATASET_KEY,
+            MasterDataVersion.checksum == source_data.normalized_checksum,
+            MasterDataVersion.status == MasterDataVersionStatus.CANDIDATE,
+        )
+    )
+    run.retrieved_at = source_data.retrieved_at
+    run.source_url = UNGEGN_SOURCE_URL
+    run.source_release = "WGN API current"
+    run.checksum = source_data.response_sha256
+    run.record_counts = {"countries": len(source_data.countries)}
+    if current is not None and current.checksum == source_data.normalized_checksum:
+        run.status = MasterDataRunStatus.SUCCEEDED
+        run.change_detected = False
+        run.finished_at = utc_now()
+        return current
+    if candidate is not None:
+        run.status = MasterDataRunStatus.SUCCEEDED
+        run.change_detected = False
+        run.finished_at = utc_now()
+        return candidate
+
+    changed = current is not None
+    version = MasterDataVersion(
+        sync_run_id=run.id,
+        dataset_key=UNGEGN_DATASET_KEY,
+        source_release="WGN API current",
+        retrieved_at=source_data.retrieved_at,
+        checksum=source_data.normalized_checksum,
+        activated_at=None if changed else source_data.retrieved_at,
+        valid_from=source_data.retrieved_at,
+        status=(MasterDataVersionStatus.CANDIDATE if changed else MasterDataVersionStatus.ACTIVE),
+    )
+    session.add(version)
+    session.flush()
+    session.add_all(
+        [
+            ContestEntity(
+                version_id=version.id,
+                namespace="UN-M49",
+                authority_code=country.m49_code,
+                name=country.name,
+                entity_type=EntityType.OTHER,
+            )
+            for country in source_data.countries
+        ]
+    )
+    run.change_detected = True
+    run.status = MasterDataRunStatus.SUCCEEDED
+    run.finished_at = utc_now()
+    run.error_summary = (
+        "Changed country reference staged for global administrator review."
+        if changed
+        else None
+    )
+    return version
 
 
 def _persist_fcc_data(
@@ -560,6 +705,33 @@ def sync_fcc_call_districts(
     except Exception as exc:
         _finish_failed(session_factory, run_id, exc)
         logger.exception("fcc_master_data_sync_failed", extra={"run_id": run_id})
+        raise
+
+
+def sync_ungegn_countries(
+    session_factory: sessionmaker[Session], fetch_data=fetch_countries
+) -> dict[str, int | str | bool | None]:
+    """Refresh the UNGEGN WGN reference for UN member-country names and M49 codes."""
+    run_id = _create_ungegn_run(session_factory)
+    try:
+        source_data = fetch_data()
+        with session_factory.begin() as session:
+            run = session.get(MasterDataSyncRun, run_id)
+            if run is None:
+                raise MasterDataError(f"UNGEGN WGN sync run {run_id} disappeared")
+            version = _persist_ungegn_data(session, run, source_data)
+            result = {
+                "run_id": run_id,
+                "status": run.status.value,
+                "changed": run.change_detected,
+                "version_id": version.id,
+                **run.record_counts,
+            }
+        logger.info("ungegn_wgn_master_data_sync_finished", extra=result)
+        return result
+    except Exception as exc:
+        _finish_failed(session_factory, run_id, exc)
+        logger.exception("ungegn_wgn_master_data_sync_failed", extra={"run_id": run_id})
         raise
 
 
