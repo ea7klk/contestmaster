@@ -11,6 +11,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Model common concepts such as contests, participants, stations, contacts (QSOs), exchanges, bands, modes, logs, and results without assuming every contest uses every field or the same rules.
 - Implement contest-specific behavior behind a documented ruleset interface or configuration. Avoid scattered contest-name conditionals and hidden defaults.
 - Let contest managers create and edit ruleset configuration with a simple graphical rule composer in the Vue frontend. Validate the composed configuration on the backend, version it, and keep executable contest logic behind the ruleset interface.
+- Treat the checked “Initial reusable rule catalog of the system” in `documentation/preliminary-ruleset/README.md` as the initial baseline of rule types supported by Contestmaster. Distinguish this built-in capability catalog from each contest's configured and versioned ruleset values.
 - Prefer small, composable changes that preserve existing public API and data compatibility. Document intentional breaking changes and migrations.
 
 ## Contest data and scoring

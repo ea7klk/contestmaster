@@ -42,6 +42,24 @@ The system has two privileged account roles. A participant is a contest identity
 - Add live or near-live standings, multi-operator workflows, and richer log checking as requirements become clear.
 - Add integrations such as external log submission or radio logging software only when a concrete interoperability need is defined.
 
+## Initial system ruleset
+
+The checked items in [Initial reusable rule catalog of the system](preliminary-ruleset/README.md#initial-reusable-rule-catalog-of-the-system) are adopted as Contestmaster's initial built-in reusable rule catalog. The Vue rule composer and Python ruleset interface should support these rule types from the initial implementation:
+
+- Contest schedule and UTC log submission cutoff.
+- Entry category dimensions and compatibility constraints.
+- Declarative exchange schemas and field validators.
+- QSO eligibility predicates and configurable duplicate scope.
+- Integer QSO-point rules and integer-only score composition.
+- Multiplier source, uniqueness scope, and eligibility.
+- Bonus and penalty rules with thresholds, caps, ordering, and evidence requirements.
+- Operating-time, off-time, band-change, and transmitter constraints.
+- Log import/export schemas and category mapping.
+- Cross-log checks, review decisions, publication, and award eligibility.
+- Ruleset edition/source provenance and immutable score-run explanations.
+
+This is the system's set of reusable rule capabilities, not one universal contest configuration. A contest manager configures the parameters and selects applicable types for each contest; the published rules for that contest govern. Each saved configuration is validated and versioned, and each score run records the exact ruleset version and explanation used.
+
 ## Architecture overview
 
 The Vue application handles contest setup, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
@@ -128,6 +146,9 @@ erDiagram
         integer id PK
         text ruleset_key
         text version
+        text source_url
+        text source_edition
+        text rule_type_keys_json
         text configuration_json
     }
     ENTRY {

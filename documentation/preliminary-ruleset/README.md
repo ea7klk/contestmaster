@@ -117,7 +117,9 @@ Cabrillo is a common interchange format, but its category header describes entry
 
 Official judging policies vary even where the event calculation is similar: CQ and ARRL materials distinguish duplicate contacts, exchange errors, busted calls/NILs, penalties, appeals, and category reclassification. Make these independent policy settings and retain a human-review path. [CQ WW rules](https://www.cqww.com/rules/), [CQ WPX rules](https://cqwpx.com/rules/), [IARU HF rules](https://contests.arrl.org/ContestRules/IARU-HF-Rules.pdf)
 
-## Initial reusable rule types suggested by the survey
+## Initial reusable rule catalog of the system
+
+The checked items below are adopted as the system's initial reusable ruleset catalog. They define the rule types Contestmaster must support in its rule composer and backend ruleset interface. They are not a single contest's configured rule values: each contest manager supplies and versions the parameters, and each contest's published rules determine which types and values apply. The detailed survey sections above provide the supporting requirements and examples for this initial catalog.
 
 - [x] Schedule and UTC submission cutoff.
 - [x] Category dimensions and compatibility constraints.
