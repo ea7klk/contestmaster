@@ -25,7 +25,11 @@ Collection endpoints use one-based `page` (default `1`) and `page_size` (default
 
 ## Authentication boundary
 
-Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Privileged and participant operations declare authentication dependencies in the API layer and enforce ownership/role checks in services. The foundation provides the dependency boundary; the account/session implementation is planned for Phase 5. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts.
+Privileged accounts use `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and `GET /api/v1/auth/me`. Login uses email/password and issues an opaque server-side session in an `HttpOnly`, `SameSite=Strict` cookie. Mutating authenticated requests require the matching `X-CSRF-Token` header. `POST /api/v1/auth/admin/users` lets only global administrators create contest-manager accounts. Managers cannot provision users or acquire a privileged role through participant identity flows.
+
+`/api/v1/contests` supports authenticated, paginated contest listing and manager-owned contest create/read/update operations. Manager list and detail access are filtered by owner in the API; a foreign contest ID is reported as not found. Global administrators can view all contests. New contests start in `draft`; status publication transitions and results are separate operations. Contest times must include UTC offsets, while submission cutoff remains separate from contest end.
+
+Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts. Participant magic-link authentication is still planned.
 
 ## Ruleset authoring
 

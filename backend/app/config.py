@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
     allowed_origins: list[str] = ["http://localhost:5173"]
+    secure_cookies: bool = True
     master_data_scheduler_enabled: bool = True
     master_data_nightly_hour_utc: int = 2
 
@@ -29,6 +30,13 @@ class Settings(BaseSettings):
     def nightly_hour_must_be_valid(cls, value: int) -> int:
         if not 0 <= value <= 23:
             raise ValueError("master_data_nightly_hour_utc must be between 0 and 23")
+        return value
+
+    @field_validator("secure_cookies")
+    @classmethod
+    def secure_cookies_required_in_production(cls, value: bool, info) -> bool:
+        if info.data.get("app_env") == "production" and not value:
+            raise ValueError("secure_cookies must be enabled in production")
         return value
 
 

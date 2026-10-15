@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 contestmaster-master-data = "backend.app.master_data.cli:main"
+contestmaster-admin = "backend.app.identity_cli:main"
 
 [dependency-groups]
 dev = [

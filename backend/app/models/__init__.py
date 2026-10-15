@@ -14,6 +14,7 @@ from backend.app.models.domain import (
     RulesetVersion,
     ScoreRun,
     Station,
+    SystemSession,
     SystemUser,
 )
 from backend.app.models.enums import (
@@ -86,6 +87,7 @@ __all__ = [
     "ScoreRunMasterDataVersion",
     "ScoreRunStatus",
     "Station",
+    "SystemSession",
     "SystemRole",
     "SystemUser",
     "UTCDateTime",

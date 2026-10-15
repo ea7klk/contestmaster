@@ -32,6 +32,20 @@ The Vue development server is at `http://localhost:5173`; it proxies `/api` to t
 
 The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes.
 
+## Privileged accounts and sessions
+
+Apply migrations before bootstrapping the first global administrator. The one-time command prompts for a password without echoing it, requires confirmation and a 12-character minimum, and refuses to run after any system account exists:
+
+```sh
+uv run alembic upgrade head
+uv run contestmaster-admin create-first-admin \
+  --username admin \
+  --email admin@example.org \
+  --display-name "Site Administrator"
+```
+
+Passwords are stored as salted scrypt hashes. Sign in through `POST /api/v1/auth/login`; the API returns the current user's non-secret profile and sets a short-lived server-side session cookie (`HttpOnly`, `SameSite=Strict`) plus a CSRF cookie. Send the CSRF value in `X-CSRF-Token` for mutations. `POST /api/v1/auth/logout` revokes the server-side session. The session cookie is secure by default. `.env.example` turns `SECURE_COOKIES` off only for local plain-HTTP development; production configuration rejects that setting. A global administrator can provision contest-manager accounts through the protected `/api/v1/auth/admin/users` endpoint. Contest managers cannot create system accounts.
+
 The API checks enabled master-data sources immediately on startup when any required active version is missing, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Enabled sources currently include Big CTY, UNGEGN WGN country names/M49 identifiers, and the UNSD M49 country-or-area list. The M49 adapter stores published names and numeric codes as-is. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run all adapters from CLI with `uv run contestmaster-master-data sync`, or one with `sync-cty`, `sync-ungegn`, or `sync-m49`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
 
 ## Useful commands

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
+from backend.app.api.contests import router as contest_router
 from backend.app.api.errors import (
     API_ERROR_RESPONSES,
     error_response,
@@ -20,6 +21,7 @@ from backend.app.api.errors import (
     unexpected_error_handler,
     validation_error_handler,
 )
+from backend.app.api.identity import router as identity_router
 from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
@@ -83,6 +85,8 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Request-ID", "X-CSRF-Token"],
 )
 app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
+app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
+app.include_router(contest_router, prefix=f"{settings.api_prefix}/contests")
 
 
 @app.middleware("http")

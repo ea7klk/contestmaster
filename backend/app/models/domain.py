@@ -63,6 +63,27 @@ class SystemUser(Base):
     )
 
 
+class SystemSession(Base):
+    """Opaque privileged browser session; credentials are stored only as hashes."""
+
+    __tablename__ = "system_sessions"
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 64", name="session_token_hash_length"),
+        CheckConstraint("length(csrf_token_hash) = 64", name="session_csrf_hash_length"),
+        CheckConstraint("expires_at > created_at", name="session_expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("system_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
 class Participant(Base):
     __tablename__ = "participants"
 
