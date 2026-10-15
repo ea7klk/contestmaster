@@ -46,7 +46,7 @@ flowchart LR
     Domain --> Validation[Log and exchange validation]
     Domain --> Rules[Versioned contest rulesets]
     Domain --> Scoring[Integer scoring and adjudication]
-    API --> Store[Persistence layer]
+    API --> Store[ORM persistence layer]
     Store --> DB[(SQLite)]
     API --> Adapters[Import and export adapters]
     Adapters --> Formats[Cabrillo and other log formats]
@@ -55,11 +55,11 @@ flowchart LR
 ### Main boundaries
 
 - **Vue frontend:** presents workflows, sends typed API requests, and lets participants select and upload log files. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
-- **Python REST API:** owns the external API contract, input validation, authorization, and transaction boundaries. Publish an OpenAPI description.
+- **Python REST API:** owns the external API contract, input validation, authorization, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for database access. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
-- **SQLite:** stores application state for the initial low-concurrency deployment. Use migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
+- **SQLite:** stores application state for the initial low-concurrency deployment through the ORM. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance
 
