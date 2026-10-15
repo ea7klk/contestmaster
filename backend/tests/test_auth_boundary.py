@@ -129,6 +129,12 @@ def test_login_issues_http_only_session_and_csrf_cookie_then_me_returns_role(ide
     assert response.status_code == 200
     assert response.json()["user"]["role"] == "global_administrator"
     assert "httponly" in response.headers.get_list("set-cookie")[0].lower()
+    csrf_header = next(
+        cookie
+        for cookie in response.headers.get_list("set-cookie")
+        if cookie.startswith("contestmaster_csrf=")
+    )
+    assert "path=/;" in csrf_header.lower()
     session_cookie = client.cookies.get("contestmaster_session")
     csrf_cookie = client.cookies.get("contestmaster_csrf")
     assert session_cookie and csrf_cookie

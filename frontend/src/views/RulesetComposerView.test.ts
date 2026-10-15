@@ -129,4 +129,57 @@ describe('RulesetComposerView', () => {
     expect(wrapper.get('.error-list').text()).toContain('Schedule is required')
     expect(wrapper.find('.validation-panel').exists()).toBe(false)
   })
+
+  it('persists a validated immutable ruleset version', async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/rulesets/catalog')) {
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        }
+        if (String(input).endsWith('/rulesets/validate')) {
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              ruleset_key: 'my-contest',
+              version: '1',
+              rule_types: requiredRules,
+              summary: 'my-contest version 1.',
+              worked_score_example: { final_score: 120, steps: [] },
+            }),
+            { status: 200 },
+          )
+        }
+        expect(String(input)).toMatch(/\/rulesets\/versions$/)
+        expect(init?.method).toBe('POST')
+        const saved = JSON.parse(String(init?.body))
+        expect(saved.ruleset_key).toBe('my-contest')
+        return new Response(
+          JSON.stringify({
+            id: 3,
+            ruleset_key: 'my-contest',
+            version: '1',
+            rule_type_keys: requiredRules,
+            created: true,
+            created_at: '2026-01-01T00:00:00Z',
+          }),
+          { status: 201 },
+        )
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    await wrapper.get('button.primary-button').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button.primary-button')[1]?.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Saved my-contest version 1',
+    )
+  })
 })

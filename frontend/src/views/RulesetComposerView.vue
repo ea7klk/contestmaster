@@ -5,6 +5,7 @@ import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
 import {
   getRuleCatalog,
   RulesetApiError,
+  saveRulesetVersion,
   validateRuleset,
   type JsonSchema,
   type RulesetDraft,
@@ -28,6 +29,8 @@ const sourceEdition = ref('')
 const selectedType = ref('')
 const catalogLoading = ref(true)
 const validating = ref(false)
+const savingVersion = ref(false)
+const savedMessage = ref('')
 const validation = ref<RulesetValidationResponse | null>(null)
 const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
@@ -191,6 +194,7 @@ async function validateDraft() {
   generalError.value = ''
   issues.value = []
   validation.value = null
+  savedMessage.value = ''
   try {
     validation.value = await validateRuleset(buildDraft())
   } catch (error) {
@@ -205,10 +209,33 @@ async function validateDraft() {
   }
 }
 
+async function persistDraft() {
+  if (savingVersion.value) return
+  savingVersion.value = true
+  generalError.value = ''
+  savedMessage.value = ''
+  try {
+    const persisted = await saveRulesetVersion(buildDraft())
+    savedMessage.value = persisted.created
+      ? `Saved ${persisted.ruleset_key} version ${persisted.version}. Assign it from the contest manager.`
+      : `This exact ${persisted.ruleset_key} version ${persisted.version} is already saved.`
+  } catch (error) {
+    if (error instanceof RulesetApiError) {
+      generalError.value = error.message
+      issues.value = error.issues
+    } else {
+      generalError.value = 'The ruleset version could not be saved.'
+    }
+  } finally {
+    savingVersion.value = false
+  }
+}
+
 function clearValidation() {
   validation.value = null
   issues.value = []
   generalError.value = ''
+  savedMessage.value = ''
 }
 
 function exportDraft() {
@@ -538,9 +565,19 @@ onMounted(async () => {
           Formula preview: {{ validation.worked_score_example.error }}
         </p>
         <p class="draft-note">
-          This page validates and exports drafts. Contest assignment and
-          activation are protected manager actions provided with the Phase 5
-          account workflow.
+          Saving creates an immutable version. Assign it to one of your draft
+          contests from the contest manager.
+        </p>
+        <button
+          type="button"
+          class="primary-button"
+          :disabled="savingVersion"
+          @click="persistDraft"
+        >
+          {{ savingVersion ? 'Saving…' : 'Save validated ruleset version' }}
+        </button>
+        <p v-if="savedMessage" role="status" class="notice">
+          {{ savedMessage }}
         </p>
       </section>
     </template>

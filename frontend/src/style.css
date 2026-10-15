@@ -54,11 +54,36 @@ a:focus-visible {
   font-size: 0.9rem;
 }
 .site-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
   margin-left: auto;
 }
 .site-navigation a {
   color: #075a83;
   font-weight: 650;
+}
+.sign-out-button {
+  padding: 0;
+  border: 0;
+  color: #075a83;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.sign-out-button:focus-visible {
+  outline: 3px solid #eea63a;
+  outline-offset: 3px;
+}
+.shell-error {
+  margin: 0;
+  padding: 0.6rem 1.25rem;
+  color: #7a1d1d;
+  background: #fff0f0;
+  text-align: center;
 }
 .main-content {
   width: min(1080px, calc(100% - 2rem));

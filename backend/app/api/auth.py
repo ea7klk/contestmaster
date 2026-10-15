@@ -115,16 +115,21 @@ def set_session_cookies(response: Response, session_token: str, csrf_token: str)
         httponly=False,
         secure=secure,
         samesite="strict",
-        path="/api/v1",
+        # The Vue application runs at `/`; the readable anti-CSRF cookie must be
+        # visible there so the shared client can copy it into the request header.
+        path="/",
         max_age=int(SESSION_LIFETIME.total_seconds()),
     )
 
 
 def clear_session_cookies(response: Response) -> None:
     secure = get_settings().secure_cookies
-    for name, httponly in ((SESSION_COOKIE, True), (CSRF_COOKIE, False)):
+    for name, httponly, path in (
+        (SESSION_COOKIE, True, "/api/v1"),
+        (CSRF_COOKIE, False, "/"),
+    ):
         response.delete_cookie(
-            name, path="/api/v1", httponly=httponly, secure=secure, samesite="strict"
+            name, path=path, httponly=httponly, secure=secure, samesite="strict"
         )
 
 

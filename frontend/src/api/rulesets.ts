@@ -47,11 +47,7 @@ export interface RulesetDraft {
   }>
 }
 
-export interface RulesetIssue {
-  location: Array<string | number>
-  message: string
-  type: string
-}
+export type RulesetIssue = ApiIssue
 
 export interface RulesetValidationResponse {
   valid: true
@@ -67,48 +63,22 @@ export interface RulesetValidationResponse {
   }
 }
 
-export class RulesetApiError extends Error {
-  readonly issues: RulesetIssue[]
-
+export class RulesetApiError extends ApiError {
   constructor(message: string, issues: RulesetIssue[] = []) {
-    super(message)
+    super(message, issues)
     this.name = 'RulesetApiError'
-    this.issues = issues
   }
 }
 
-const apiPrefix = import.meta.env.VITE_API_PREFIX ?? '/api/v1'
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response
   try {
-    response = await fetch(`${apiPrefix}${path}`, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
-    })
-  } catch {
-    throw new RulesetApiError(
-      'The API could not be reached. Check the connection and try again.',
-    )
+    return await apiRequest<T>(path, init)
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw new RulesetApiError(error.message, error.issues)
+    }
+    throw error
   }
-
-  const payload = (await response.json().catch(() => null)) as
-    { error?: { message?: string; details?: RulesetIssue[] } } | T | null
-  if (!response.ok) {
-    const error =
-      payload !== null && typeof payload === 'object' && 'error' in payload
-        ? (
-            payload as {
-              error?: { message?: string; details?: RulesetIssue[] }
-            }
-          ).error
-        : undefined
-    throw new RulesetApiError(
-      error?.message ?? `The API returned HTTP ${response.status}.`,
-      error?.details ?? [],
-    )
-  }
-  return payload as T
 }
 
 export function getRuleCatalog(
@@ -130,3 +100,31 @@ export function validateRuleset(
     signal,
   })
 }
+export interface SavedRulesetVersion {
+  id: number
+  ruleset_key: string
+  version: string
+  source_url: string | null
+  source_edition: string | null
+  rule_type_keys: string[]
+  created_by_user_id: number | null
+  created_at: string
+}
+
+export async function listRulesetVersions(
+  signal?: AbortSignal,
+): Promise<{ items: SavedRulesetVersion[] }> {
+  return request('/rulesets/versions', { method: 'GET', signal })
+}
+
+export async function saveRulesetVersion(
+  draft: RulesetDraft,
+  signal?: AbortSignal,
+): Promise<SavedRulesetVersion & { created: boolean }> {
+  return request('/rulesets/versions', {
+    method: 'POST',
+    body: JSON.stringify(draft),
+    signal,
+  })
+}
+import { ApiError, apiRequest, type ApiIssue } from './client'
