@@ -342,6 +342,40 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
         assert events[1].event_metadata == {"changed_fields": ["name"]}
 
 
+def test_contest_mutations_require_session_and_csrf_and_ignore_client_owner(identity_database):
+    admin_id = add_user(identity_database)
+    client = TestClient(app)
+    payload = {
+        "name": "Boundary contest",
+        "slug": "boundary-contest",
+        "starts_at": "2026-05-01T00:00:00Z",
+        "ends_at": "2026-05-01T06:00:00Z",
+        "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
+        "owner_user_id": admin_id + 500,
+    }
+    assert client.get("/api/v1/contests").status_code == 401
+    assert client.post("/api/v1/contests", json=payload).status_code == 401
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    csrf = client.cookies.get("contestmaster_csrf")
+    assert client.post("/api/v1/contests", json=payload).status_code == 403
+    rejected_owner_override = client.post(
+        "/api/v1/contests", headers={"X-CSRF-Token": csrf}, json=payload
+    )
+    assert rejected_owner_override.status_code == 422
+    payload.pop("owner_user_id")
+    created = client.post(
+        "/api/v1/contests", headers={"X-CSRF-Token": csrf}, json=payload
+    )
+    assert created.status_code == 201
+    assert created.json()["owner_user_id"] == admin_id
+
+
 @pytest.mark.parametrize(
     "start,end",
     [

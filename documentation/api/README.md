@@ -29,6 +29,8 @@ Privileged accounts use `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, a
 
 `/api/v1/contests` supports authenticated, paginated contest listing and manager-owned contest create/read/update operations. Manager list and detail access are filtered by owner in the API; a foreign contest ID is reported as not found. Global administrators can view all contests. List filters include exact `status`; supported sort keys are `id`, `name`, `slug`, `starts_at`, `ends_at`, and `created_at`, with a stable ID tie-breaker. New contests start in `draft`; status publication transitions and results are separate operations. Contest times must include UTC offsets, while submission cutoff remains separate from contest end.
 
+Contest creation never accepts an owner identity from the request; the API assigns the authenticated account. All mutating privileged operations require both a valid session and CSRF token. Result generation and result-list endpoints are not yet implemented; when added, each must use the same contest-owner authorization dependency.
+
 Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts. Participant magic-link authentication is still planned.
 
 Contest managers may change an owned contest through `draft → open → closed → published`; a closed contest may be reopened, and a published contest may be withdrawn to closed. Opening or publishing requires a saved ruleset that still validates. `GET /api/v1/public/contests` and `GET /api/v1/public/contests/{slug}` expose only published contest metadata.
