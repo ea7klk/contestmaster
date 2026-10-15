@@ -17,10 +17,10 @@ Record the selected choices in a short architecture decision log before implemen
 - **Python REST framework and validation/schema library:** FastAPI + Pydantic. This fits the API-first design and provides typed request/response schemas with generated OpenAPI.
 - **ORM and migration tools:** SQLAlchemy 2.x + Alembic. This provides the required ORM-managed SQLite access and explicit schema migrations.
 - **Vue toolchain and component strategy:** Vue 3 + TypeScript + Vite + Vue Router + Pinia, with a small set of accessible application components. Use typed component boundaries and semantic HTML; avoid introducing a full UI framework until the workflows demonstrate a need.
+- **Authentication, account recovery, and first administrator:** use app-managed accounts for the initial release. Hash passwords with Argon2id; use server-side sessions in `Secure`, `HttpOnly`, and `SameSite` cookies; provide single-use, expiring email reset links; and provision the first global administrator through a one-time CLI command with no default password. Design an extension point for common OIDC providers that can each be configured and activated independently in a later release. Keep local authorization roles explicit; an external identity must not gain global-administrator privileges through automatic registration or an unreviewed claim mapping. This follows [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), and [password reset](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html) guidance.
 
 ### Decisions remaining
 
-- Authentication method, account recovery, and initial global-administrator provisioning.
 - How a guest entrant securely corrects or withdraws a submitted log and manages individual contacts after upload. Proposed default: allow a revised log submission tied to the same entry using a time-limited, unguessable receipt token; do not require a participant system account.
 - Deployment and nightly scheduler mechanism. Keep the first deployment to one API instance and local SQLite storage.
 - Which national call-district sources are in the first release, and what review workflow to use where no public machine-readable source exists.
