@@ -34,6 +34,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 
 - Use Vue components for presentation and composition; keep contest rules and authoritative score calculations on the backend.
 - Keep API calls in a shared client layer with typed request/response models, consistent error handling, and cancellation for stale requests.
+- Support log-file selection and upload through the shared API client. Show upload progress, import summaries, and actionable row-level errors; treat frontend checks as convenience and validate file contents, size, and format on the backend.
 - Represent loading, empty, success, validation-error, and server-error states explicitly. Preserve user input when a save fails and explain how to fix field errors.
 - Build accessible forms and tables: labels, keyboard operation, semantic markup, visible focus, and status announcements for asynchronous updates.
 - Keep contest, log, and standings views responsive and usable with large result sets. Prefer server-side filtering, sorting, and pagination when data grows.
