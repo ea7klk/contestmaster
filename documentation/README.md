@@ -6,7 +6,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ### Core platform
 
-- Create and configure contests with a name, schedule, supported entry categories, and a selected ruleset and version.
+- Create and configure contests with a name, operating start/end times, a separate log submission cutoff, supported entry categories, and a selected ruleset and version.
 - Create participant and station records from contest entry details; participants can submit logs without registering for a system account.
 - Record contacts (QSOs) with UTC time, callsigns, band, mode, and contest-specific exchange data.
 - Validate entries and contacts against the active contest ruleset, with clear field-level feedback.
@@ -22,7 +22,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ### Contest administration
 
-- Configure ruleset options, contest dates, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
+- Configure ruleset options, contest operating times, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Track adjudication decisions and score changes for later review.
@@ -107,6 +107,7 @@ erDiagram
         text name
         text starts_at_utc
         text ends_at_utc
+        text log_submission_cutoff_at_utc
         text status
         integer ruleset_version_id FK
         integer auto_recalculate_on_upload
@@ -176,7 +177,7 @@ erDiagram
 
 ### Data and scoring conventions
 
-- Use UTC timestamps with a documented, consistent precision. SQLite can store them as ISO 8601 text; convert to local time at display or file-format boundaries.
+- Store contest start, end, and log submission cutoff as separate UTC timestamps with a documented, consistent precision. The cutoff is independent of the operating end time and governs acceptance of new log submissions. SQLite can store them as ISO 8601 text; convert to local time at display or file-format boundaries.
 - Use integer values only for points, bonuses, penalties, multipliers, intermediate score values, and final scores. Never use floating-point or decimal values for scoring. If a published rule yields a fractional result, apply its specified rounding rule and keep the stored result an integer.
 - Keep each score run immutable or auditable: a changed log or ruleset should produce a new run, not silently rewrite the prior explanation.
 - Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
