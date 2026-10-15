@@ -31,6 +31,10 @@ Privileged accounts use `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, a
 
 Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts. Participant magic-link authentication is still planned.
 
+Contest managers may change an owned contest through `draft → open → closed → published`; a closed contest may be reopened, and a published contest may be withdrawn to closed. Opening or publishing requires a saved ruleset that still validates. `GET /api/v1/public/contests` and `GET /api/v1/public/contests/{slug}` expose only published contest metadata.
+
+After an entry exists, its manager may call `PUT /api/v1/contests/{contest_id}/entries/{entry_id}/access-grant` with `operation` set to `create`, `set_expiry`, `revoke`, or `rotate`. Grant expiry is optional and must be a timezone-aware future instant when set. Create and rotate return an opaque `receipt_token` once; only its SHA-256 digest is retained. The route verifies both contest ownership and that the entry belongs to that contest. These operations are audited without storing the secret token.
+
 ## Ruleset authoring
 
 - `GET /api/v1/rulesets/catalog` returns the typed schemas, labels, and execution expectations for the built-in rule types used by the graphical composer.

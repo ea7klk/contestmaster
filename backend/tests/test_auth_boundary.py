@@ -17,7 +17,16 @@ from backend.app.api.auth import (
 )
 from backend.app.db import Base, get_session
 from backend.app.main import app
-from backend.app.models import AuditEvent, SystemRole, SystemSession, SystemUser
+from backend.app.models import (
+    AuditEvent,
+    Contest,
+    Entry,
+    EntryAccessGrant,
+    Participant,
+    SystemRole,
+    SystemSession,
+    SystemUser,
+)
 
 
 @pytest.fixture
@@ -472,3 +481,218 @@ def test_invalid_ruleset_cannot_be_persisted(identity_database):
     assert response.json()["error"]["code"] == "invalid_ruleset"
     with identity_database() as session:
         assert session.query(RulesetVersion).count() == 0
+
+
+def test_contest_status_requires_ruleset_and_public_routes_only_show_published(
+    identity_database,
+):
+    from backend.tests.test_rulesets import valid_payload
+
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="status-manager",
+        email="status@example.test",
+    )
+    with identity_database.begin() as session:
+        contest = Contest(
+            owner_user_id=manager_id,
+            name="Status contest",
+            slug="status-contest",
+            starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 1, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        contest_id = contest.id
+
+    client = TestClient(app)
+    assert client.get("/api/v1/public/contests").json()["items"] == []
+    assert client.get("/api/v1/public/contests/status-contest").status_code == 404
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "status@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    headers = {"X-CSRF-Token": client.cookies.get("contestmaster_csrf")}
+
+    blocked = client.put(
+        f"/api/v1/contests/{contest_id}/status",
+        headers=headers,
+        json={"status": "open"},
+    )
+    assert blocked.status_code == 409
+
+    saved = client.post("/api/v1/rulesets/versions", headers=headers, json=valid_payload())
+    assert saved.status_code == 201
+    selected = client.put(
+        f"/api/v1/contests/{contest_id}/ruleset",
+        headers=headers,
+        json={"ruleset_version_id": saved.json()["id"]},
+    )
+    assert selected.status_code == 200
+    opened = client.put(
+        f"/api/v1/contests/{contest_id}/status",
+        headers=headers,
+        json={"status": "open", "audit_reason": "Registration opened"},
+    )
+    assert opened.status_code == 200
+    assert opened.json()["status"] == "open"
+    assert client.put(
+        f"/api/v1/contests/{contest_id}/status",
+        headers=headers,
+        json={"status": "published"},
+    ).status_code == 409
+    closed = client.put(
+        f"/api/v1/contests/{contest_id}/status",
+        headers=headers,
+        json={"status": "closed"},
+    )
+    assert closed.status_code == 200
+    published = client.put(
+        f"/api/v1/contests/{contest_id}/status",
+        headers=headers,
+        json={"status": "published"},
+    )
+    assert published.status_code == 200
+    public_list = client.get("/api/v1/public/contests")
+    assert public_list.status_code == 200
+    assert [item["slug"] for item in public_list.json()["items"]] == ["status-contest"]
+    assert client.get("/api/v1/public/contests/status-contest").json()["status"] == "published"
+    with identity_database() as session:
+        assert [event.action for event in session.query(AuditEvent).all()] == [
+            "ruleset_version.created",
+            "contest.ruleset_activated",
+            "contest.status_changed",
+            "contest.status_changed",
+            "contest.status_changed",
+        ]
+
+
+def test_manager_can_create_rotate_and_revoke_entry_receipt_grants(identity_database):
+    from backend.app.api.contests import _token_digest
+
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="grant-manager",
+        email="grant@example.test",
+    )
+    with identity_database.begin() as session:
+        participant = Participant(callsign_submitted="EA7KLK")
+        session.add(participant)
+        session.flush()
+        contest = Contest(
+            owner_user_id=manager_id,
+            name="Grant contest",
+            slug="grant-contest",
+            starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 1, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        entry = Entry(contest_id=contest.id, participant_id=participant.id, entry_key="ea7klk")
+        session.add(entry)
+        session.flush()
+        contest_id, entry_id = contest.id, entry.id
+
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "grant@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    headers = {"X-CSRF-Token": client.cookies.get("contestmaster_csrf")}
+    endpoint = f"/api/v1/contests/{contest_id}/entries/{entry_id}/access-grant"
+    created = client.put(endpoint, headers=headers, json={"operation": "create"})
+    assert created.status_code == 200
+    first_token = created.json()["receipt_token"]
+    assert first_token
+    with identity_database() as session:
+        grant = session.query(EntryAccessGrant).one()
+        assert grant.token_hash == _token_digest(first_token)
+        assert first_token not in grant.token_hash
+
+    duplicate = client.put(endpoint, headers=headers, json={"operation": "create"})
+    assert duplicate.status_code == 409
+    expiry = "2027-01-01T00:00:00Z"
+    extended = client.put(
+        endpoint,
+        headers=headers,
+        json={"operation": "set_expiry", "expires_at": expiry},
+    )
+    assert extended.status_code == 200
+    assert extended.json()["expires_at"] == expiry
+
+    rotated = client.put(endpoint, headers=headers, json={"operation": "rotate"})
+    assert rotated.status_code == 200
+    second_token = rotated.json()["receipt_token"]
+    assert second_token and second_token != first_token
+    assert rotated.json()["active"] is True
+    revoked = client.put(endpoint, headers=headers, json={"operation": "revoke"})
+    assert revoked.status_code == 200
+    assert revoked.json()["active"] is False
+    with identity_database() as session:
+        grants = session.query(EntryAccessGrant).order_by(EntryAccessGrant.id).all()
+        assert grants[0].revoked_at is not None
+        assert grants[1].revoked_at is not None
+        assert {event.action for event in session.query(AuditEvent).all()} == {
+            "entry_access_grant.create",
+            "entry_access_grant.set_expiry",
+            "entry_access_grant.rotate",
+            "entry_access_grant.revoke",
+        }
+
+
+def test_entry_receipt_grants_are_contest_scoped_and_manager_scoped(identity_database):
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="grant-owner",
+        email="owner@example.test",
+    )
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="grant-outsider",
+        email="outsider@example.test",
+    )
+    with identity_database.begin() as session:
+        participant = Participant()
+        session.add(participant)
+        session.flush()
+        contest = Contest(
+            owner_user_id=manager_id,
+            name="Scoped contest",
+            slug="scoped-contest",
+            starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 1, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        entry = Entry(contest_id=contest.id, participant_id=participant.id, entry_key="guest")
+        session.add(entry)
+        session.flush()
+        contest_id, entry_id = contest.id, entry.id
+
+    outsider = TestClient(app)
+    assert (
+        outsider.post(
+            "/api/v1/auth/login",
+            json={"email": "outsider@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    denied = outsider.put(
+        f"/api/v1/contests/{contest_id}/entries/{entry_id}/access-grant",
+        headers={"X-CSRF-Token": outsider.cookies.get("contestmaster_csrf")},
+        json={"operation": "create"},
+    )
+    assert denied.status_code == 404

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+import hashlib
+import secrets
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,13 +18,22 @@ from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
-from backend.app.models import Contest, ContestStatus, SystemRole
+from backend.app.models import (
+    Contest,
+    ContestStatus,
+    Entry,
+    EntryAccessGrant,
+    RulesetVersion,
+    SystemRole,
+)
 from backend.app.rulesets.persistence import (
     RulesetPersistenceError,
     activate_ruleset,
+    load_ruleset_version,
 )
 
 router = APIRouter(tags=["contests"])
+public_router = APIRouter(tags=["public contests"])
 
 
 class ContestWrite(BaseModel):
@@ -52,6 +63,32 @@ class RulesetSelection(BaseModel):
 
     ruleset_version_id: int = Field(strict=True, ge=1)
     audit_reason: str | None = Field(default=None, max_length=2000)
+
+
+class ContestStatusChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: ContestStatus
+    audit_reason: str | None = Field(default=None, max_length=2000)
+
+
+class EntryGrantChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation: Literal["create", "set_expiry", "revoke", "rotate"]
+    expires_at: datetime | None = None
+    audit_reason: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_expiry(self) -> EntryGrantChange:
+        if self.expires_at is not None and (
+            self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None
+        ):
+            raise ValueError("Grant expiry must include an explicit timezone offset")
+        if self.operation in {"create", "rotate"} and self.expires_at is not None:
+            if self.expires_at <= datetime.now(self.expires_at.tzinfo):
+                raise ValueError("Grant expiry must be in the future")
+        return self
 
 
 def contest_output(contest: Contest) -> dict[str, object]:
@@ -249,3 +286,215 @@ def select_contest_ruleset(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     session.refresh(contest)
     return contest_output(contest)
+
+
+@router.put("/{contest_id}/status", responses=API_ERROR_RESPONSES)
+def change_contest_status(
+    payload: ContestStatusChange,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    allowed = {
+        ContestStatus.DRAFT: {ContestStatus.OPEN},
+        ContestStatus.OPEN: {ContestStatus.CLOSED},
+        ContestStatus.CLOSED: {ContestStatus.OPEN, ContestStatus.PUBLISHED},
+        ContestStatus.PUBLISHED: {ContestStatus.CLOSED},
+    }
+    if payload.status is contest.status:
+        return contest_output(contest)
+    if payload.status not in allowed[contest.status]:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Contest cannot transition from {contest.status.value} "
+                f"to {payload.status.value}."
+            ),
+        )
+    if payload.status in {ContestStatus.OPEN, ContestStatus.PUBLISHED}:
+        if contest.ruleset_version_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="A validated ruleset must be selected before the contest is made available.",
+            )
+        ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        if ruleset is None:
+            raise HTTPException(status_code=409, detail="The selected ruleset version is missing.")
+        try:
+            load_ruleset_version(ruleset)
+        except RulesetPersistenceError as exc:
+            raise HTTPException(status_code=409, detail="The selected ruleset is invalid.") from exc
+    previous = contest.status
+    contest.status = payload.status
+    record_audit_event(
+        session,
+        actor_user_id=principal.user_id,
+        action="contest.status_changed",
+        target_type="contest",
+        target_id=contest.id,
+        reason=payload.audit_reason,
+        metadata={"from": previous.value, "to": payload.status.value},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    session.refresh(contest)
+    return contest_output(contest)
+
+
+def _token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_entry_grant(
+    session: Session,
+    *,
+    entry_id: int,
+    actor_user_id: int,
+    expires_at: datetime | None,
+) -> tuple[EntryAccessGrant, str]:
+    token = secrets.token_urlsafe(32)
+    grant = EntryAccessGrant(
+        entry_id=entry_id,
+        token_hash=_token_digest(token),
+        expires_at=expires_at,
+        created_by_user_id=actor_user_id,
+    )
+    session.add(grant)
+    session.flush()
+    return grant, token
+
+
+@router.put("/{contest_id}/entries/{entry_id}/access-grant", responses=API_ERROR_RESPONSES)
+def manage_entry_access_grant(
+    payload: EntryGrantChange,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    entry_id: int,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    entry = session.scalar(
+        select(Entry).where(Entry.id == entry_id, Entry.contest_id == contest.id)
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    now = datetime.now(UTC)
+    grants = list(
+        session.scalars(
+            select(EntryAccessGrant)
+            .where(EntryAccessGrant.entry_id == entry.id)
+            .order_by(EntryAccessGrant.created_at.desc(), EntryAccessGrant.id.desc())
+        )
+    )
+    live_grants = [
+        grant
+        for grant in grants
+        if grant.revoked_at is None and (grant.expires_at is None or grant.expires_at > now)
+    ]
+    token: str | None = None
+    grant: EntryAccessGrant | None = None
+    if payload.operation == "create":
+        if live_grants:
+            raise HTTPException(
+                status_code=409, detail="Entry already has active guest access."
+            )
+        grant, token = _issue_entry_grant(
+            session,
+            entry_id=entry.id,
+            actor_user_id=principal.user_id,
+            expires_at=payload.expires_at,
+        )
+    elif payload.operation == "rotate":
+        for active in live_grants:
+            active.revoked_at = now
+            active.revoked_by_user_id = principal.user_id
+        grant, token = _issue_entry_grant(
+            session,
+            entry_id=entry.id,
+            actor_user_id=principal.user_id,
+            expires_at=payload.expires_at,
+        )
+    elif payload.operation == "revoke":
+        if not live_grants:
+            raise HTTPException(
+                status_code=409, detail="Entry has no active guest access to revoke."
+            )
+        for active in live_grants:
+            active.revoked_at = now
+            active.revoked_by_user_id = principal.user_id
+        grant = live_grants[0]
+    else:
+        if payload.expires_at is not None and payload.expires_at <= now:
+            raise HTTPException(status_code=422, detail="Grant expiry must be in the future.")
+        if not live_grants:
+            raise HTTPException(
+                status_code=409, detail="Entry has no active guest access to update."
+            )
+        grant = live_grants[0]
+        grant.expires_at = payload.expires_at
+
+    record_audit_event(
+        session,
+        actor_user_id=principal.user_id,
+        action=f"entry_access_grant.{payload.operation}",
+        target_type="entry_access_grant",
+        target_id=grant.id,
+        reason=payload.audit_reason,
+        metadata={"entry_id": entry.id, "contest_id": contest.id},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    session.refresh(grant)
+    return {
+        "id": grant.id,
+        "entry_id": grant.entry_id,
+        "created_at": grant.created_at,
+        "expires_at": grant.expires_at,
+        "revoked_at": grant.revoked_at,
+        "active": grant.revoked_at is None and (grant.expires_at is None or grant.expires_at > now),
+        "receipt_token": token,
+    }
+
+
+def public_contest_output(contest: Contest) -> dict[str, object]:
+    return {
+        "id": contest.id,
+        "name": contest.name,
+        "slug": contest.slug,
+        "description": contest.description,
+        "starts_at": contest.starts_at,
+        "ends_at": contest.ends_at,
+        "log_submission_cutoff_at": contest.log_submission_cutoff_at,
+        "status": contest.status.value,
+    }
+
+
+@public_router.get("", responses=API_ERROR_RESPONSES)
+def list_published_contests(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    contests = list(
+        session.scalars(
+            select(Contest)
+            .where(Contest.status == ContestStatus.PUBLISHED)
+            .order_by(Contest.starts_at.desc(), Contest.id.asc())
+        )
+    )
+    return {"items": [public_contest_output(contest) for contest in contests]}
+
+
+@public_router.get("/{slug}", responses=API_ERROR_RESPONSES)
+def get_published_contest(
+    slug: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    contest = session.scalar(
+        select(Contest).where(
+            Contest.slug == slug,
+            Contest.status == ContestStatus.PUBLISHED,
+        )
+    )
+    if contest is None:
+        raise HTTPException(status_code=404, detail="Contest not found.")
+    return public_contest_output(contest)
