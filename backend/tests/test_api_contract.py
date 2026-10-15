@@ -40,6 +40,25 @@ def test_invalid_request_id_is_replaced():
     assert response.headers["X-Request-ID"] != "bad id\n"
 
 
+def test_cors_only_reflects_configured_frontend_origin():
+    client = TestClient(app)
+    allowed = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    denied = client.options(
+        "/api/v1/auth/login",
+        headers={"Origin": "https://untrusted.example", "Access-Control-Request-Method": "POST"},
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert "Access-Control-Allow-Origin" not in denied.headers
+
+
 def test_unexpected_failure_returns_generic_error_and_keeps_request_id():
     def fail():
         raise RuntimeError("database secret should not be exposed")
