@@ -21,10 +21,11 @@ Record the selected choices in a short architecture decision log before implemen
 - **Guest and registered participant access:** guests receive an entry-scoped receipt token for correction/resubmission and contact management; registered contest participants use email magic links to access only entries associated with their verified participant identity. Participant access does not create a privileged system role. Store only hashes of guest receipt tokens; let contest managers set expiry and close/revoke or rotate a grant. Preserve every accepted change as a new log revision. Display/download the guest secret at submission time, and never write it to application logs.
 - **Initial startup and master-data scheduling:** start the stack from CLI on one host with SQLite on local storage. Run nightly master-data provisioning through an internal API timer, and trigger an immediate initial import at API startup if no active master-data version exists. Keep the importer callable as an independent job, expose provisioning status, and require valid master data for dependent scoring. Run a single API process initially; make imports idempotent and prevent overlapping runs. Prepare the same importer entry point for a future managed container platform, using K3s CronJobs to create one-shot Jobs.
 - **National call-district coverage:** integrate official machine-readable regulator sources for every jurisdiction whose call districts are supported at launch. Call-district capability is enabled per jurisdiction only when an official feed exists and its terms allow the intended use; countries without such a feed are not included in launch call-district coverage.
+- **DXCC reference data licensing:** exclude the ARRL DXCC list from the hosted service indefinitely; do not download, ingest, copy, or redistribute that list. Continue using permitted Big CTY `cty.dat` operational mappings with its required license notice, and use each contest's published rules as the authority for scoring. Do not use ADIF enumerations as a licensing workaround.
 
 ### Decisions remaining
 
-- Whether ARRL DXCC data can be used in the hosted service. ARRL's published text list requires permission for uses beyond personal use; obtain permission before ingesting or redistributing it. Big CTY is the designated primary operational feed for the data it contains.
+None. All current Phase 0 decisions have been recorded.
 
 **Exit criteria:** decisions are recorded, supported local development commands are documented, and the repository has a clear frontend/backend layout and coding conventions.
 
@@ -57,7 +58,7 @@ Record the selected choices in a short architecture decision log before implemen
 
 **Depends on:** Phase 2 master-data schema and ORM layer.
 
-1. Implement a versioned `cty.dat` parser and import Big CTY as the primary operational source for callsign prefixes, DXCC entities, and callsign-based CQ/ITU zone mappings.
+1. Implement a versioned `cty.dat` parser and import Big CTY as the permitted primary operational source for callsign prefixes, DXCC mappings, and callsign-based CQ/ITU zone mappings. Preserve its applicable copyright/license notice; never ingest the separate ARRL DXCC list.
 2. Keep CQ zones, amateur ITU zones, ITU Radio Regions, and IARU Regions in separate namespaces/tables. Add entity-zone and prefix-zone mappings with effective dates and source/version provenance.
 3. Add official/public gap-filling imports for country/area identifiers and IARU/ITU regions. Integrate an official machine-readable regulator source for every jurisdiction whose call districts are supported at launch; do not substitute manual seed data where that requirement is unmet, and do not infer one global call-district format.
 4. Implement the master-data source-check/import as an idempotent callable job and CLI command. Capture source URL, release marker, fetched-at time, checksum, parser version, use terms, counts, and status for every run.
