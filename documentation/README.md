@@ -25,7 +25,7 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 
 ### Contest administration
 
-- Create and configure contest rulesets with a simple graphical rule composer. Configure contest operating times, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
+- Create and configure contest rulesets with a simple graphical rule composer. Configure UTC contest schedules and recurrence, the separate log submission cutoff, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation. Global administrators maintain the shared band/mode catalog; contest managers select eligible values in their rulesets.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Let contest managers review unresolved scoring items, generate result lists, and publish immutable numbered result snapshots. Public standings expose aggregate score explanations and configured entry categories, not raw QSOs or private review data.
@@ -121,7 +121,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
 
-The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition.
+The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. The shared band/mode choice catalog is an ORM-managed `operating_catalog_items` table. Global administrators manage its items; eligibility rules store selected stable keys in the immutable ruleset configuration.
 
 ```mermaid
 erDiagram
@@ -223,6 +223,17 @@ erDiagram
         text source_edition
         text rule_type_keys_json
         text configuration_json
+    }
+    OPERATING_CATALOG_ITEM {
+        integer id PK
+        text kind
+        text key
+        text label
+        text description
+        text frequency_range
+        integer sort_order
+        integer is_active
+        integer contest_free
     }
     RULESET_ACTIVATION {
         integer id PK

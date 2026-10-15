@@ -41,6 +41,7 @@ from backend.app.request_context import request_id_var
 from backend.app.results.api import public_router as public_results_router
 from backend.app.results.api import router as results_router
 from backend.app.rulesets.api import router as ruleset_router
+from backend.app.rulesets.operating_catalog_api import router as operating_catalog_router
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -99,6 +100,7 @@ app.add_middleware(
     ],
 )
 app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
+app.include_router(operating_catalog_router, prefix=f"{settings.api_prefix}/rulesets")
 app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
 app.include_router(participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth")
 app.include_router(log_router, prefix=f"{settings.api_prefix}/public")

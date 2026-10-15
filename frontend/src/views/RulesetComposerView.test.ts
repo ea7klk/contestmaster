@@ -31,14 +31,51 @@ function catalogResponse() {
   }
 }
 
+function operatingCatalogResponse() {
+  return { items: [] }
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('RulesetComposerView', () => {
+  it('explains UTC scheduling and the configurable rule sections', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (String(input).endsWith('/rulesets/operating-catalog'))
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${String(input)}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('All contest times use UTC')
+    expect(text).toContain('Daylight-saving clock folds')
+    expect(text).toContain('classification axes')
+    expect(text).toContain('Exchange schema')
+    expect(text).toContain('combines the worked callsign')
+    expect(text).toContain('non-negative integers')
+    expect(text).toContain('apply steps from top to bottom')
+    expect(text).toContain('Unknown input fields can be preserved')
+  })
+
   it('loads required rule types and sends the configured draft for validation', async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).endsWith('/rulesets/catalog')) {
           return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        }
+        if (String(input).endsWith('/rulesets/operating-catalog')) {
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
             status: 200,
           })
         }
@@ -90,7 +127,7 @@ describe('RulesetComposerView', () => {
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(wrapper.get('[role="status"]').text()).toContain('Ruleset is valid')
     expect(wrapper.text()).toContain('Worked integer score example')
   })
@@ -99,6 +136,11 @@ describe('RulesetComposerView', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith('/rulesets/catalog')) {
         return new Response(JSON.stringify(catalogResponse()), { status: 200 })
+      }
+      if (String(input).endsWith('/rulesets/operating-catalog')) {
+        return new Response(JSON.stringify(operatingCatalogResponse()), {
+          status: 200,
+        })
       }
       return new Response(
         JSON.stringify({
@@ -135,6 +177,11 @@ describe('RulesetComposerView', () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).endsWith('/rulesets/catalog')) {
           return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        }
+        if (String(input).endsWith('/rulesets/operating-catalog')) {
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
             status: 200,
           })
         }
@@ -177,7 +224,7 @@ describe('RulesetComposerView', () => {
     await wrapper.findAll('button.primary-button')[1]?.trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(wrapper.get('[role="status"]').text()).toContain(
       'Saved my-contest version 1',
     )

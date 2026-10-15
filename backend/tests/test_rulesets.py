@@ -10,7 +10,6 @@ from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.engine import RuleExecutionError, ScoringEntry, score_entry
 from backend.app.rulesets.operating import evaluate_operating_constraints
 from backend.app.rulesets.schedules import (
-    ScheduleResolutionError,
     classify_submission,
     resolve_schedule,
     resolve_submission,
@@ -42,7 +41,7 @@ def valid_payload() -> dict[str, object]:
                 "rule": {
                     "kind": "schedule",
                     "timezone": "UTC",
-                    "start_local_time": "00:00:00",
+                    "start_time_utc": "00:00:00",
                     "duration_minutes": 120,
                     "fixed_start_utc": "2026-01-01T00:00:00Z",
                 },
@@ -194,6 +193,11 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
         "workflow_hook",
     }
     assert "eval" not in str(catalog)
+    schedule = next(item for item in catalog if item["key"] == "schedule")["schema"]
+    assert schedule["properties"]["timezone"]["const"] == "UTC"
+    assert "start_local_time" not in schedule["properties"]
+    assert "ambiguous_time_fold" not in schedule["properties"]
+    assert "description" in schedule["properties"]["start_time_utc"]
 
 
 def test_validation_endpoint_returns_summary_and_integer_worked_example():
@@ -277,8 +281,7 @@ def test_ruleset_validator_rejects_duplicate_keys_unsafe_patterns_and_bad_fact_p
     with pytest.raises(RulesetValidationError) as error:
         validate_ruleset(payload)
     assert any(
-        "unsupported or undefined fact" in str(issue["message"])
-        for issue in error.value.errors
+        "unsupported or undefined fact" in str(issue["message"]) for issue in error.value.errors
     )
 
 
@@ -407,12 +410,12 @@ def test_scoring_emits_structured_pending_workflow_actions():
     assert result.outcome == "needs_review"
 
 
-def test_schedule_recurrence_resolves_to_persistable_utc_and_handles_dst_boundaries():
+def test_schedule_recurrence_is_resolved_in_utc_without_local_time_or_dst_fold():
     rule = ScheduleRule.model_validate(
         {
             "kind": "schedule",
-            "timezone": "Europe/London",
-            "start_local_time": "08:00:00",
+            "timezone": "UTC",
+            "start_time_utc": "08:00:00",
             "duration_minutes": 90,
             "recurrence": {"frequency": "first_full_weekend", "month": 1},
         }
@@ -421,26 +424,71 @@ def test_schedule_recurrence_resolves_to_persistable_utc_and_handles_dst_boundar
     assert resolved.starts_at == datetime(2025, 1, 4, 8, tzinfo=UTC)
     assert resolved.ends_at == datetime(2025, 1, 4, 9, 30, tzinfo=UTC)
 
-    ambiguous = ScheduleRule.model_validate(
+    annual = ScheduleRule.model_validate(
         {
             "kind": "schedule",
-            "timezone": "Europe/Berlin",
-            "start_local_time": "02:30:00",
+            "timezone": "UTC",
+            "start_time_utc": "02:30:00",
             "duration_minutes": 60,
             "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
         }
     )
-    with pytest.raises(ScheduleResolutionError, match="Ambiguous"):
-        resolve_schedule(ambiguous, 2025)
-    assert resolve_schedule(
-        ambiguous.model_copy(update={"ambiguous_time_fold": 1}), 2025
-    ).starts_at == datetime(2025, 10, 26, 1, 30, tzinfo=UTC)
+    assert resolve_schedule(annual, 2025).starts_at == datetime(2025, 10, 26, 2, 30, tzinfo=UTC)
+    with pytest.raises(ValidationError, match="UTC"):
+        ScheduleRule.model_validate(
+            {
+                "kind": "schedule",
+                "timezone": "Europe/Berlin",
+                "start_time_utc": "02:30:00",
+                "duration_minutes": 60,
+                "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
+            }
+        )
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        ScheduleRule.model_validate(
+            {
+                "kind": "schedule",
+                "start_local_time": "02:30:00",
+                "ambiguous_time_fold": 1,
+                "duration_minutes": 60,
+                "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
+            }
+        )
 
-    nonexistent = ambiguous.model_copy(
-        update={"recurrence": Recurrence(frequency="annual_date", month=3, day=30)}
+
+def test_schedule_preview_api_returns_utc_instants_for_selected_recurrence():
+    response = TestClient(app).post(
+        "/api/v1/rulesets/schedule-preview",
+        json={
+            "year": 2026,
+            "schedule": {
+                "kind": "schedule",
+                "timezone": "UTC",
+                "start_time_utc": "08:00:00",
+                "duration_minutes": 90,
+                "recurrence": {"frequency": "first_full_weekend", "month": 1},
+            },
+        },
     )
-    with pytest.raises(ScheduleResolutionError, match="does not exist"):
-        resolve_schedule(nonexistent, 2025)
+    assert response.status_code == 200
+    assert response.json() == {
+        "starts_at": "2026-01-03T08:00:00Z",
+        "ends_at": "2026-01-03T09:30:00Z",
+    }
+    invalid = TestClient(app).post(
+        "/api/v1/rulesets/schedule-preview",
+        json={
+            "year": 2026,
+            "schedule": {
+                "kind": "schedule",
+                "timezone": "UTC+1",
+                "start_time_utc": "08:00:00",
+                "duration_minutes": 90,
+                "recurrence": {"frequency": "annual_date", "month": 1, "day": 3},
+            },
+        },
+    )
+    assert invalid.status_code == 422
 
 
 def test_recurrence_rejects_zero_occurrence_at_schema_boundary():
@@ -450,13 +498,25 @@ def test_recurrence_rejects_zero_occurrence_at_schema_boundary():
         )
 
 
+def test_common_exchange_keys_reject_incompatible_value_types():
+    with pytest.raises(
+        ValidationError, match="standard exchange field serial requires type serial"
+    ):
+        ExchangeRule.model_validate(
+            {
+                "kind": "exchange",
+                "fields": [{"key": "serial", "label": "Serial", "value_type": "text"}],
+            }
+        )
+
+
 def test_cutoff_is_separate_and_extensions_follow_manager_policy():
     schedule = resolve_schedule(
         ScheduleRule.model_validate(
             {
                 "kind": "schedule",
                 "timezone": "UTC",
-                "start_local_time": "00:00:00",
+                "start_time_utc": "00:00:00",
                 "duration_minutes": 60,
                 "fixed_start_utc": "2026-01-01T00:00:00Z",
             }

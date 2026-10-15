@@ -57,6 +57,11 @@ export const router = createRouter({
       component: () => import('./views/MasterDataAdminView.vue'),
     },
     {
+      path: '/admin/operating-catalog',
+      name: 'operating-catalog-admin',
+      component: () => import('./views/OperatingCatalogAdminView.vue'),
+    },
+    {
       path: '/manage/contests',
       name: 'contest-manager',
       component: () => import('./views/ContestManagerView.vue'),

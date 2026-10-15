@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -14,14 +15,64 @@ from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
-from backend.app.models import RulesetVersion
+from backend.app.models import OperatingCatalogItem, RulesetVersion
 from backend.app.rulesets.persistence import RulesetConflictError, save_ruleset_version
 from backend.app.rulesets.registry import rule_catalog
-from backend.app.rulesets.schema import RulesetDefinition
+from backend.app.rulesets.schedules import ScheduleResolutionError, resolve_schedule
+from backend.app.rulesets.schema import RulesetDefinition, ScheduleRule
 from backend.app.rulesets.summary import validation_report
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 router = APIRouter(tags=["rulesets"])
+
+
+class SchedulePreviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schedule: ScheduleRule
+    year: int = Field(ge=1900, le=2200)
+
+
+def _catalog_reference_errors(
+    session: Session, definition: RulesetDefinition
+) -> list[dict[str, object]]:
+    requested = [
+        ("band", value)
+        for configured in definition.rules
+        if configured.rule.kind == "eligibility"
+        for value in configured.rule.allowed_bands
+    ] + [
+        ("mode", value)
+        for configured in definition.rules
+        if configured.rule.kind == "eligibility"
+        for value in configured.rule.allowed_modes
+    ]
+    if not requested:
+        return []
+    available = {
+        (item.kind, item.key)
+        for item in session.scalars(
+            select(OperatingCatalogItem).where(OperatingCatalogItem.is_active.is_(True))
+        )
+    }
+    errors: list[dict[str, object]] = []
+    for index, configured in enumerate(definition.rules):
+        rule = configured.rule
+        if rule.kind != "eligibility":
+            continue
+        for field, kind, values in (
+            ("allowed_bands", "band", rule.allowed_bands),
+            ("allowed_modes", "mode", rule.allowed_modes),
+        ):
+            for value_index, value in enumerate(values):
+                if (kind, value) not in available:
+                    errors.append(
+                        {
+                            "path": f"rules[{index}].{field}[{value_index}]",
+                            "message": f"{value} is not an active {kind} in the operating catalog.",
+                        }
+                    )
+    return errors
 
 
 @router.get("/catalog", responses=API_ERROR_RESPONSES)
@@ -32,11 +83,16 @@ def get_rule_catalog() -> dict[str, object]:
 
 @router.post("/validate", responses=API_ERROR_RESPONSES, response_model=None)
 def validate_ruleset_payload(
-    payload: dict[str, Any], request: Request
+    payload: dict[str, Any],
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
 ) -> JSONResponse | dict[str, object]:
     """Validate a proposed ruleset and return a readable summary/example without saving it."""
     try:
         definition = validate_ruleset(payload)
+        catalog_errors = _catalog_reference_errors(session, definition)
+        if catalog_errors:
+            raise RulesetValidationError(catalog_errors)
     except RulesetValidationError as exc:
         details = [
             {
@@ -54,6 +110,20 @@ def validate_ruleset_payload(
             details,
         )
     return validation_report(definition)
+
+
+@router.post("/schedule-preview")
+def preview_schedule(payload: SchedulePreviewPayload) -> dict[str, object]:
+    try:
+        resolved = resolve_schedule(
+            payload.schedule, payload.year if payload.schedule.recurrence else None
+        )
+    except ScheduleResolutionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "starts_at": resolved.starts_at.isoformat().replace("+00:00", "Z"),
+        "ends_at": resolved.ends_at.isoformat().replace("+00:00", "Z"),
+    }
 
 
 @router.get("/versions", responses=API_ERROR_RESPONSES)
@@ -95,6 +165,9 @@ def persist_ruleset_version(
 ) -> dict[str, object] | JSONResponse:
     try:
         definition = validate_ruleset(payload.model_dump(mode="json"))
+        catalog_errors = _catalog_reference_errors(session, definition)
+        if catalog_errors:
+            raise RulesetValidationError(catalog_errors)
     except RulesetValidationError as exc:
         details = [
             {

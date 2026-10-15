@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
 
@@ -74,9 +73,7 @@ def _condition_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
     errors: list[dict[str, object]] = []
     for _index, path, condition in _all_conditions(definition.rules):
         if _condition_depth(condition) > 8:
-            errors.append(
-                {"path": path, "message": "Condition nesting exceeds 8 levels."}
-            )
+            errors.append({"path": path, "message": "Condition nesting exceeds 8 levels."})
         for comparison in _walk_conditions(condition):
             if comparison.operator in {"in", "not_in"} and not isinstance(comparison.value, list):
                 errors.append(
@@ -142,18 +139,16 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
         for dimension in rule.dimensions
     }
     exchange_fields = {
-        field.key: field
-        for rule in rules
-        if rule.kind == "exchange"
-        for field in rule.fields
+        field.key: field for rule in rules if rule.kind == "exchange" for field in rule.fields
     }
     for index, rule in enumerate(rules):
         if rule.kind == "schedule":
-            try:
-                ZoneInfo(rule.timezone)
-            except ZoneInfoNotFoundError:
+            if rule.timezone != "UTC":
                 errors.append(
-                    {"path": f"rules[{index}].timezone", "message": "Unknown IANA timezone."}
+                    {
+                        "path": f"rules[{index}].timezone",
+                        "message": "Contest schedules must use UTC.",
+                    }
                 )
         elif (
             rule.kind == "points"
@@ -177,38 +172,52 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
                 )
         elif rule.kind == "multiplier":
             parts = rule.source_fact.split(".")
-            valid_qso = len(parts) == 2 and parts[0] == "qso" and parts[1] in {
-                "id",
-                "occurred_at",
-                "worked_callsign",
-                "band",
-                "mode",
-                "grid",
-                "transmitter",
-                "continent",
-                "entity",
-                "cq_zone",
-                "itu_zone",
-            }
-            valid_entry = (len(parts) == 2 and parts[0] == "entry" and parts[1] in {
-                "id", "power_multiplier"
-            }) or (
+            valid_qso = (
+                len(parts) == 2
+                and parts[0] == "qso"
+                and parts[1]
+                in {
+                    "id",
+                    "occurred_at",
+                    "worked_callsign",
+                    "band",
+                    "mode",
+                    "grid",
+                    "transmitter",
+                    "continent",
+                    "entity",
+                    "cq_zone",
+                    "itu_zone",
+                }
+            )
+            valid_entry = (
+                len(parts) == 2 and parts[0] == "entry" and parts[1] in {"id", "power_multiplier"}
+            ) or (
                 len(parts) == 3
                 and parts[0] == "entry"
                 and parts[1] in {"categories", "declarations"}
-                and parts[2] in (
-                    category_dimensions if parts[1] == "categories" else
-                    {field.key for r in rules if r.kind == "exchange" for field in r.fields
-                     if field.direction == "entry"}
+                and parts[2]
+                in (
+                    category_dimensions
+                    if parts[1] == "categories"
+                    else {
+                        field.key
+                        for r in rules
+                        if r.kind == "exchange"
+                        for field in r.fields
+                        if field.direction == "entry"
+                    }
                 )
             )
             valid_exchange = False
             if parts[0] == "exchange" and len(parts) == 2:
                 field = exchange_fields.get(parts[1])
                 valid_exchange = field is not None and field.direction in {"received", "both"}
-            elif parts[0] == "exchange" and len(parts) == 3 and parts[1] in {
-                "sent", "received", "entry"
-            }:
+            elif (
+                parts[0] == "exchange"
+                and len(parts) == 3
+                and parts[1] in {"sent", "received", "entry"}
+            ):
                 field = exchange_fields.get(parts[2])
                 valid_exchange = field is not None and field.direction in {parts[1], "both"}
             if not (valid_qso or valid_entry or valid_exchange):
