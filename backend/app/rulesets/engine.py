@@ -95,6 +95,7 @@ class QsoScoreResult(BaseModel):
     qso_id: StrictInt
     status: Literal["credited", "not_credited", "needs_review"]
     points: StrictInt = Field(ge=0)
+    bonus_points: StrictInt = Field(default=0, ge=0)
     penalty_points: StrictInt = Field(ge=0)
     multiplier_keys: list[str]
     reasons: list[str]
@@ -271,6 +272,7 @@ def score_entry(
     *,
     contest_starts_at: datetime,
     contest_ends_at: datetime,
+    qso_overrides: Mapping[int, Mapping[str, Any]] | None = None,
 ) -> EntryScoreResult:
     """Calculate one immutable result explanation using only validated rules and integer math."""
     try:
@@ -307,6 +309,7 @@ def score_entry(
     seen: dict[str, set[tuple[str, ...]]] = {item.id: set() for item in duplicate_rules}
     multiplier_keys: set[str] = set()
     penalty_occurrences: dict[str, int] = {item.id: 0 for item in penalty_rules}
+    qso_overrides = qso_overrides or {}
     eligible_contexts: list[tuple[ScoringQso, dict[str, Any]]] = []
     entry_context = _rule_context(entry, None)
     for qso in sorted(entry.qsos, key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id)):
@@ -326,9 +329,7 @@ def score_entry(
             ):
                 continue
             invalid = False
-            if rule.eligible_if is not None and not evaluate_condition(
-                rule.eligible_if, context
-            ):
+            if rule.eligible_if is not None and not evaluate_condition(rule.eligible_if, context):
                 invalid = True
                 reasons.append("eligibility_condition_failed")
             if rule.reject_out_of_period and (instant < start or instant >= end):
@@ -411,6 +412,16 @@ def score_entry(
             elif rule.action == "disqualify":
                 status = "not_credited"
 
+        # The latest persisted adjudication decision is an explicit human ruling. It is
+        # applied after automatic rule checks and before score components are calculated.
+        override = qso_overrides.get(qso.qso_id)
+        if override is not None:
+            override_status = override.get("status")
+            if override_status not in {"credited", "not_credited", "needs_review"}:
+                raise RuleExecutionError("QSO decision override has an unsupported status")
+            status = override_status
+            reasons.append(str(override.get("reason_code", "review_override")))
+
         points = 0
         qso_multiplier_keys: list[str] = []
         if status == "credited":
@@ -460,6 +471,7 @@ def score_entry(
         }
 
     bonus_total = 0
+    bonus_by_qso: dict[int, int] = {}
     for configured_rule in bonus_rules:
         rule = configured_rule.rule
         if not isinstance(rule, BonusRule):
@@ -476,6 +488,7 @@ def score_entry(
                     ):
                         continue
                     amount += rule.points
+                    bonus_by_qso[_qso.qso_id] = bonus_by_qso.get(_qso.qso_id, 0) + rule.points
         elif (
             _condition_applies(configured_rule, entry_context)
             and len(eligible_contexts) >= rule.minimum_eligible_qsos
@@ -488,7 +501,9 @@ def score_entry(
         bonus_total += amount
 
     qso_scores = [
-        QsoScoreResult.model_validate(results[qso.qso_id])
+        QsoScoreResult.model_validate(
+            {**results[qso.qso_id], "bonus_points": bonus_by_qso.get(qso.qso_id, 0)}
+        )
         for qso in sorted(
             entry.qsos,
             key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id),

@@ -28,6 +28,7 @@ from backend.app.logs.service import (
     create_guest_entry,
     digest,
     persist_revision,
+    recalculate_after_accepted_upload,
 )
 from backend.app.models import (
     Contest,
@@ -329,6 +330,18 @@ async def submit_log(
     except IdempotencyConflict as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    revision = _latest_revision(session, entry.id)
+    score_runs = (
+        recalculate_after_accepted_upload(
+            session,
+            contest_id=contest_id,
+            entry_id=entry.id,
+            revision_id=revision.id if revision else 0,
+            replayed=replayed,
+        )
+        if revision
+        else []
+    )
     return {
         "status": "accepted",
         "replayed": replayed,
@@ -344,6 +357,7 @@ async def submit_log(
         },
         "errors": [],
         "warnings": [_message(message) for message in warnings],
+        "score_runs": score_runs,
     }
 
 
@@ -462,6 +476,13 @@ async def resubmit_log(
         )
     )
     session.commit()
+    score_runs = recalculate_after_accepted_upload(
+        session,
+        contest_id=contest_id,
+        entry_id=current.id,
+        revision_id=revision.id,
+        replayed=False,
+    )
     return {
         "status": "accepted",
         "replayed": False,
@@ -475,6 +496,7 @@ async def resubmit_log(
         },
         "errors": [],
         "warnings": [_message(message) for message in warnings],
+        "score_runs": score_runs,
     }
 
 

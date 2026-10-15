@@ -103,8 +103,8 @@ flowchart LR
 
 - **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides a simple graphical rule composer for contest managers. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
 - **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
-- **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
-- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility predicates over contact geography, entry categories/declarations, and the station callsign, plus multipliers, penalties, and rounding rules. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Scoring returns structured pending workflow actions for configured cross-log, adjudication, publication, and award handlers; trusted downstream services consume these declarations, while submitted configuration never executes code. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
+- **Contest domain:** models common contest concepts and exposes services for callsign normalization, QSO validation, duplicate selection, counterpart-log matching, scoring, and adjudication. Keep pure rule checks independent of HTTP and SQLite; ORM orchestration records immutable decisions and score runs at the application boundary.
+- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility predicates over contact geography, entry categories/declarations, and the station callsign, plus multipliers, penalties, and rounding rules. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Configured cross-log workflow hooks control reciprocal-contact tolerances and whether missing/mismatched counterpart contacts require review. Submitted configuration never executes code. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
 - **Master-data refresh:** the initial single API process invokes a reusable, idempotent import job at startup if no active master-data version exists, then runs it nightly. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, expose provisioning status, keep the last valid version active on failures, and queue interpreted boundary changes for review. Scoring that depends on master data requires a version valid at the contest's start instant.
 - **Master-data version governance:** each dataset version has an effective UTC interval. For a contest, pin the version of each required dataset whose interval contains the contest start instant; keep those references on the contest and each score run so later source updates cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. A global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
@@ -293,8 +293,14 @@ erDiagram
     QSO_DECISION {
         integer id PK
         integer qso_id FK
+        integer reviewer_user_id FK
+        integer supersedes_decision_id FK
         text status
+        text source
+        text reason_code
         text reason
+        text evidence_json
+        text created_at_utc
     }
     SCORE_RUN {
         integer id PK
@@ -304,12 +310,16 @@ erDiagram
         text input_digest
         text ruleset_snapshot_json
         text master_data_snapshot_json
+        text explanation_json
         text status
         text created_at_utc
+        integer claimed_points
         integer points
         integer multiplier_count
+        integer bonus_points
         integer penalty_points
         integer final_score
+        integer adjudicated_score
     }
     SCORE_RUN_MASTER_DATA_VERSION {
         integer score_run_id PK, FK
@@ -322,7 +332,10 @@ erDiagram
         integer qso_id FK
         integer entry_revision_id FK
         integer credited
+        text status
         integer points
+        integer bonus_points
+        text reason_codes_json
         text multiplier_keys_json
         text explanation
     }

@@ -402,7 +402,12 @@ class WorkflowHookRule(StrictModel):
     execution: Literal["automatic", "declaration", "human_review"]
     parameters: dict[
         Identifier,
-        StrictStr | StrictInt | StrictBool | None | list[StrictStr | StrictInt | StrictBool],
+        StrictStr
+        | StrictInt
+        | StrictBool
+        | None
+        | list[StrictStr | StrictInt | StrictBool]
+        | dict[Identifier, StrictInt],
     ] = Field(default_factory=dict, max_length=80)
 
 

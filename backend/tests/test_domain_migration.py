@@ -94,7 +94,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0011_guest_log_submissions"
+    assert version == "0012_adjudication_score_details"
     assert foreign_keys == 1
     assert {"category_values"} <= {column["name"] for column in inspector.get_columns("entries")}
     assert {
@@ -117,6 +117,26 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert "immutable_audit_events_update" in triggers
     assert "immutable_audit_events_delete" in triggers
     assert "completed_score_runs_update" in triggers
+    assert "immutable_qso_decisions_update" in triggers
+    assert "immutable_qso_decisions_delete" in triggers
+    assert "completed_qso_scores_insert" in triggers
+    assert "completed_qso_scores_update" in triggers
+    assert "completed_qso_scores_delete" in triggers
+    assert "immutable_completed_score_run" in triggers
+    assert "retain_score_runs" in triggers
+    assert "integer_score_run_detail_insert" in triggers
+    assert "integer_score_run_detail_update" in triggers
+    assert "integer_qso_score_bonus_insert" in triggers
+    assert {
+        "bonus_points",
+        "adjudicated_score",
+        "explanation",
+    } <= {column["name"] for column in inspector.get_columns("score_runs")}
+    assert {
+        "bonus_points",
+        "status",
+        "reason_codes",
+    } <= {column["name"] for column in inspector.get_columns("qso_scores")}
     assert "prevent_active_master_data_version_delete" in triggers
 
     with Session(engine) as session:

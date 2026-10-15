@@ -29,6 +29,26 @@ class IdempotencyConflict(ValueError):
     pass
 
 
+def recalculate_after_accepted_upload(
+    session: Session, *, contest_id: int, entry_id: int, revision_id: int, replayed: bool
+) -> list[dict[str, int | str]]:
+    """Honor the contest toggle only after a newly accepted revision has committed."""
+    if replayed:
+        return []
+    contest = session.get(Contest, contest_id)
+    if contest is None or not contest.auto_recalculate_on_upload:
+        return []
+    from backend.app.adjudication.scoring import recalculate_contest
+
+    runs = recalculate_contest(
+        session,
+        contest_id,
+        trigger_key=f"accepted-upload:entry:{entry_id}:revision:{revision_id}",
+    )
+    session.commit()
+    return [{"id": run.id, "entry_id": run.entry_id, "status": run.status.value} for run in runs]
+
+
 def digest(value: str | bytes) -> str:
     if isinstance(value, str):
         value = value.encode("utf-8")

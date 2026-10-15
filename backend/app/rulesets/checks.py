@@ -67,7 +67,6 @@ def _normalize_field(value: Any, field) -> tuple[Any | None, str | None]:
     if not isinstance(value, str) and field.value_type in {
         "text",
         "callsign",
-        "serial",
         "grid",
         "zone",
     }:

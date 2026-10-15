@@ -1,0 +1,498 @@
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from backend.app.adjudication.scoring import (
+    recalculate_contest,
+    score_entry_revision,
+)
+from backend.app.api.auth import issue_session
+from backend.app.db import Base, get_session
+from backend.app.main import app
+from backend.app.models import (
+    Contest,
+    ContestMasterDataVersion,
+    ContestStatus,
+    Entry,
+    EntryRevision,
+    MasterDataSource,
+    MasterDataSyncRun,
+    MasterDataVersion,
+    MasterDataVersionStatus,
+    Participant,
+    Qso,
+    QsoDecision,
+    QsoDecisionSource,
+    QsoDecisionStatus,
+    QsoScore,
+    RulesetVersion,
+    ScoreRun,
+    ScoreRunStatus,
+    Station,
+    SystemRole,
+    SystemUser,
+)
+from backend.app.rulesets.persistence import save_ruleset_version
+from backend.app.rulesets.validation import validate_ruleset
+from backend.tests.test_rulesets import valid_payload
+
+START = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+@pytest.fixture
+def scoring_db():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with factory.begin() as session:
+        manager = SystemUser(
+            username="scoring-manager",
+            email_normalized="score@example.test",
+            display_name="Scoring Manager",
+            role=SystemRole.CONTEST_MANAGER,
+            password_hash="unused-test-hash",
+        )
+        participant = Participant(callsign_submitted="EA7KLK", callsign_normalized="EA7KLK")
+        session.add_all([manager, participant])
+        session.flush()
+        payload = valid_payload()
+        payload["rules"] = [item for item in payload["rules"] if item["id"] != "entity-multiplier"]
+        exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+        for field in exchange["rule"]["fields"]:
+            field["required"] = False
+        persisted = save_ruleset_version(
+            session, validate_ruleset(payload), created_by_user_id=manager.id
+        )
+        contest = Contest(
+            owner_user_id=manager.id,
+            ruleset_version_id=persisted.version.id,
+            name="Test Contest",
+            slug="test-contest",
+            starts_at=START,
+            ends_at=START + timedelta(hours=2),
+            log_submission_cutoff_at=START + timedelta(days=1),
+            status=ContestStatus.CLOSED,
+            auto_recalculate_on_upload=True,
+        )
+        session.add(contest)
+        session.flush()
+        entry = Entry(
+            contest_id=contest.id,
+            participant_id=participant.id,
+            entry_key="entry-one",
+            category_values={"operator": "single"},
+        )
+        session.add(entry)
+        session.flush()
+        revision = EntryRevision(
+            entry_id=entry.id,
+            revision_number=1,
+            input_format="cabrillo",
+            storage_key="database://test/1",
+            original_content="START-OF-LOG\nEND-OF-LOG",
+            import_metadata={"headers": {"CLAIMED-SCORE": ["41"]}},
+            content_sha256="a" * 64,
+            byte_size=22,
+            submitted_at=START,
+        )
+        session.add(revision)
+        session.flush()
+        station = Station(
+            entry_revision_id=revision.id,
+            callsign_submitted="EA7KLK",
+            callsign_normalized="EA7KLK",
+        )
+        session.add(station)
+        session.flush()
+        for index, instant in enumerate((START, START + timedelta(minutes=1)), start=1):
+            session.add(
+                Qso(
+                    entry_revision_id=revision.id,
+                    station_id=station.id,
+                    source_line_number=index,
+                    occurred_at=instant,
+                    callsign_submitted="F4ABC",
+                    callsign_normalized="F4ABC",
+                    band="20M",
+                    mode="CW",
+                    exchange_sent_submitted={},
+                    exchange_received_submitted={},
+                )
+            )
+        session.flush()
+    try:
+        yield factory, contest.id, entry.id, revision.id
+    finally:
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
+def test_scoring_creates_integer_auditable_run_and_is_idempotent(scoring_db):
+    factory, contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        run = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="manual-run-1",
+        )
+        assert run.status is ScoreRunStatus.COMPLETED
+        assert run.points == 2
+        assert run.bonus_points == 5
+        assert run.final_score == 5
+        assert run.adjudicated_score is None
+        assert run.claimed_points == 41
+        assert isinstance(run.final_score, int)
+        scores = list(session.scalars(select(QsoScore).where(QsoScore.score_run_id == run.id)))
+        assert [row.status for row in scores] == ["credited", "not_credited"]
+        assert scores[0].points == 2 and scores[0].bonus_points == 0
+        again = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="manual-run-1",
+        )
+        assert again.id == run.id
+        assert session.query(ScoreRun).count() == 1
+
+
+def test_manual_decision_is_append_only_and_supersedes_in_a_new_score_run(scoring_db):
+    factory, _contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        first = score_entry_revision(
+            session, entry_id=entry_id, revision_id=revision_id, idempotency_key="before-review"
+        )
+        first_qso = session.scalar(
+            select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
+        )
+        automated = QsoDecision(
+            qso_id=first_qso.id,
+            status=QsoDecisionStatus.NEEDS_REVIEW,
+            source=QsoDecisionSource.AUTOMATED,
+            reason_code="needs_review",
+            reason="Automated review required.",
+        )
+        session.add(automated)
+        session.flush()
+        manual = QsoDecision(
+            qso_id=first_qso.id,
+            status=QsoDecisionStatus.NOT_CREDITED,
+            source=QsoDecisionSource.CONTEST_MANAGER,
+            reason_code="incorrect_exchange",
+            reason="The exchange was confirmed incorrect.",
+            evidence={"note": "reviewed"},
+            supersedes_decision_id=automated.id,
+        )
+        session.add(manual)
+        session.flush()
+        second = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="after-review",
+        )
+        assert second.id != first.id
+        assert (
+            session.scalar(
+                select(QsoScore).where(
+                    QsoScore.score_run_id == second.id, QsoScore.qso_id == first_qso.id
+                )
+            ).status
+            == "not_credited"
+        )
+        assert session.get(QsoDecision, manual.id).supersedes_decision_id == automated.id
+        assert second.adjudicated_score == second.final_score
+
+
+def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scoring_db):
+    factory, contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        contest = session.get(Contest, contest_id)
+        ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        config = dict(ruleset.configuration)
+        config["version"] = "2026.1"
+        config["rules"] = [
+            *config["rules"],
+            {
+                "id": "entity-multiplier",
+                "rule": {
+                    "kind": "multiplier",
+                    "source_fact": "qso.entity",
+                    "scope": "contest",
+                    "label": "Entity",
+                },
+            },
+        ]
+        persisted = save_ruleset_version(
+            session,
+            validate_ruleset(config),
+            created_by_user_id=None,
+        )
+        contest.ruleset_version_id = persisted.version.id
+        failed = recalculate_contest(session, contest_id, trigger_key="pinned-data-retry")[0]
+        assert failed.status is ScoreRunStatus.FAILED
+        assert "cty" in failed.master_data_snapshot["error"]
+        source = MasterDataSource(
+            source_key="cty-test",
+            name="cty test",
+            canonical_url="https://example.test/cty",
+            authority_role="primary_operational",
+        )
+        session.add(source)
+        session.flush()
+        sync = MasterDataSyncRun(source_id=source.id, dataset_key="cty")
+        session.add(sync)
+        session.flush()
+        pinned_version = MasterDataVersion(
+            sync_run_id=sync.id,
+            dataset_key="cty",
+            retrieved_at=START - timedelta(days=2),
+            checksum="b" * 64,
+            valid_from=START - timedelta(days=3),
+            valid_to=START + timedelta(days=1),
+            status=MasterDataVersionStatus.RETIRED,
+        )
+        session.add(pinned_version)
+        session.flush()
+        newer_sync = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key="cty",
+            status="succeeded",
+            finished_at=START + timedelta(days=2),
+        )
+        session.add(newer_sync)
+        session.flush()
+        active_version = MasterDataVersion(
+            sync_run_id=newer_sync.id,
+            dataset_key="cty",
+            retrieved_at=START + timedelta(days=2),
+            checksum="d" * 64,
+            valid_from=START + timedelta(days=1),
+            status=MasterDataVersionStatus.ACTIVE,
+        )
+        session.add(active_version)
+        session.flush()
+        session.add(
+            ContestMasterDataVersion(
+                contest_id=contest_id,
+                dataset_key="cty",
+                master_data_version_id=pinned_version.id,
+                pinned_at=START,
+            )
+        )
+        session.flush()
+        run = recalculate_contest(session, contest_id, trigger_key="pinned-data-retry")[0]
+        assert run.status is ScoreRunStatus.COMPLETED
+        assert run.master_data_snapshot == {"cty": pinned_version.id}
+        assert run.master_data_version_id == pinned_version.id
+
+
+def test_recalculation_after_upload_retries_the_same_trigger_once(scoring_db):
+    factory, contest_id, _entry_id, _revision_id = scoring_db
+    with factory.begin() as session:
+        first = recalculate_contest(session, contest_id, trigger_key="accepted-upload:test")
+        retry = recalculate_contest(session, contest_id, trigger_key="accepted-upload:test")
+        assert len(first) == len(retry) == 1
+        assert first[0].id == retry[0].id
+        assert first[0].status is ScoreRunStatus.COMPLETED
+
+
+def test_configured_cross_log_hook_uses_reciprocal_logs_and_integer_tolerances(scoring_db):
+    factory, contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        contest = session.get(Contest, contest_id)
+        current_ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        config = dict(current_ruleset.configuration)
+        config["version"] = "2026-cross-log"
+        config["rules"] = [
+            *config["rules"],
+            {
+                "id": "cross-log-check",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "cross_log",
+                    "key": "reciprocal-contact",
+                    "execution": "automatic",
+                    "parameters": {
+                        "timestamp_tolerance_seconds": 60,
+                        "numeric_exchange_tolerances": {"serial": 1},
+                        "require_counterpart": True,
+                    },
+                },
+            },
+        ]
+        saved = save_ruleset_version(session, validate_ruleset(config), created_by_user_id=None)
+        contest.ruleset_version_id = saved.version.id
+        own_qso = session.scalar(
+            select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
+        )
+        own_qso.exchange_sent_submitted = {"raw": "5", "rst": "599"}
+        own_qso.exchange_received_submitted = {"raw": "8", "rst": "599"}
+        participant = session.scalar(select(Participant))
+        other_entry = Entry(
+            contest_id=contest_id,
+            participant_id=participant.id,
+            entry_key="reciprocal-entry",
+            category_values={"operator": "single"},
+        )
+        session.add(other_entry)
+        session.flush()
+        other_revision = EntryRevision(
+            entry_id=other_entry.id,
+            revision_number=1,
+            input_format="cabrillo",
+            storage_key="database://reciprocal/1",
+            original_content="reciprocal log",
+            content_sha256="e" * 64,
+            byte_size=14,
+            submitted_at=START,
+        )
+        session.add(other_revision)
+        session.flush()
+        other_station = Station(
+            entry_revision_id=other_revision.id,
+            callsign_submitted="F4ABC",
+            callsign_normalized="F4ABC",
+        )
+        session.add(other_station)
+        session.flush()
+        session.add(
+            Qso(
+                entry_revision_id=other_revision.id,
+                station_id=other_station.id,
+                source_line_number=1,
+                occurred_at=START + timedelta(seconds=60),
+                callsign_submitted="EA7KLK",
+                callsign_normalized="EA7KLK",
+                band="20M",
+                mode="CW",
+                exchange_sent_submitted={"raw": "9", "rst": "599"},
+                exchange_received_submitted={"raw": "6", "rst": "599"},
+            )
+        )
+        session.flush()
+        run = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="cross-log-match",
+        )
+        finding = run.explanation["cross_log"][str(own_qso.id)]
+        assert finding["reason_code"] == "counterpart_match"
+        assert finding["evidence"]["timestamp_difference_seconds"] == 60
+
+
+def test_upload_toggle_and_idempotent_replay_control_automatic_recalculation(scoring_db):
+    factory, contest_id, entry_id, revision_id = scoring_db
+    with factory() as session:
+        contest = session.get(Contest, contest_id)
+        contest.auto_recalculate_on_upload = False
+        session.commit()
+        from backend.app.logs.service import recalculate_after_accepted_upload
+
+        assert (
+            recalculate_after_accepted_upload(
+                session,
+                contest_id=contest_id,
+                entry_id=entry_id,
+                revision_id=revision_id,
+                replayed=False,
+            )
+            == []
+        )
+        contest.auto_recalculate_on_upload = True
+        session.commit()
+        runs = recalculate_after_accepted_upload(
+            session,
+            contest_id=contest_id,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            replayed=False,
+        )
+        assert runs[0]["status"] == "completed"
+        assert (
+            recalculate_after_accepted_upload(
+                session,
+                contest_id=contest_id,
+                entry_id=entry_id,
+                revision_id=revision_id,
+                replayed=True,
+            )
+            == []
+        )
+
+
+def test_manager_review_endpoint_records_audited_override_and_exposes_runs(scoring_db, monkeypatch):
+    factory, contest_id, _entry_id, revision_id = scoring_db
+    monkeypatch.setattr(
+        "backend.app.api.auth.get_settings", lambda: SimpleNamespace(secure_cookies=False)
+    )
+
+    def override_session():
+        with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    with factory.begin() as session:
+        manager = session.scalar(select(SystemUser))
+        token, csrf, _record = issue_session(session, manager)
+        outsider = SystemUser(
+            username="other-manager",
+            email_normalized="other@example.test",
+            display_name="Other Manager",
+            role=SystemRole.CONTEST_MANAGER,
+            password_hash="unused-test-hash",
+        )
+        session.add(outsider)
+        session.flush()
+        outsider_token, outsider_csrf, _outsider_record = issue_session(session, outsider)
+        qso = session.scalar(
+            select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
+        )
+        qso_id = qso.id
+    client = TestClient(app)
+    client.cookies.set("contestmaster_session", token)
+    client.cookies.set("contestmaster_csrf", csrf)
+    try:
+        response = client.post(
+            f"/api/v1/contests/{contest_id}/qsos/{qso_id}/decisions",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "status": "not_credited",
+                "reason_code": "bad_exchange",
+                "reason": "Evidence confirms the received exchange is wrong.",
+                "evidence": {"source": "cross-check"},
+            },
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["status"] == "not_credited"
+        assert response.json()["score_runs"][0]["status"] == "completed"
+        scores = client.get(f"/api/v1/contests/{contest_id}/score-runs")
+        assert scores.status_code == 200
+        assert len(scores.json()["items"]) == 1
+        detail = client.get(
+            f"/api/v1/contests/{contest_id}/score-runs/{scores.json()['items'][0]['id']}"
+        )
+        assert detail.status_code == 200
+        assert len(detail.json()["qso_scores"]) == 2
+        assert all(type(row["points"]) is int for row in detail.json()["qso_scores"])
+        outsider_client = TestClient(app)
+        outsider_client.cookies.set("contestmaster_session", outsider_token)
+        outsider_client.cookies.set("contestmaster_csrf", outsider_csrf)
+        denied = outsider_client.get(
+            f"/api/v1/contests/{contest_id}/score-runs/{scores.json()['items'][0]['id']}"
+        )
+        assert denied.status_code == 404
+        with factory() as session:
+            decision = session.scalar(select(QsoDecision).where(QsoDecision.qso_id == qso_id))
+            assert decision.reviewer_user_id == manager.id
+            assert decision.created_at.tzinfo is not None
+    finally:
+        app.dependency_overrides.clear()

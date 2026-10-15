@@ -477,12 +477,16 @@ class ScoreRun(Base):
             "claimed_points IS NULL OR claimed_points >= 0", name="claimed_points_nonnegative"
         ),
         CheckConstraint(
-            "points >= 0 AND multiplier_count >= 0 AND penalty_points >= 0 AND final_score >= 0",
+            "points >= 0 AND multiplier_count >= 0 AND bonus_points >= 0 "
+            "AND penalty_points >= 0 AND final_score >= 0 "
+            "AND (adjudicated_score IS NULL OR adjudicated_score >= 0)",
             name="score_values_nonnegative",
         ),
         CheckConstraint(
             "typeof(points) = 'integer' AND typeof(multiplier_count) = 'integer' "
-            "AND typeof(penalty_points) = 'integer' AND typeof(final_score) = 'integer' "
+            "AND typeof(bonus_points) = 'integer' AND typeof(penalty_points) = 'integer' "
+            "AND typeof(final_score) = 'integer' "
+            "AND (adjudicated_score IS NULL OR typeof(adjudicated_score) = 'integer') "
             "AND (claimed_points IS NULL OR typeof(claimed_points) = 'integer')",
             name="score_values_integer_storage",
         ),
@@ -509,11 +513,14 @@ class ScoreRun(Base):
     input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     ruleset_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     master_data_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    explanation: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     claimed_points: Mapped[int | None] = mapped_column(Integer)
     points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     multiplier_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bonus_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     penalty_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     final_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    adjudicated_score: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_by_user_id: Mapped[int | None] = mapped_column(
@@ -539,12 +546,12 @@ class QsoScore(Base):
             name="qso_score_qso_revision_fk",
         ),
         CheckConstraint(
-            "points >= 0 AND penalty_points >= 0 AND multiplier_count >= 0",
+            "points >= 0 AND bonus_points >= 0 AND penalty_points >= 0 AND multiplier_count >= 0",
             name="qso_score_values_nonnegative",
         ),
         CheckConstraint(
             "typeof(points) = 'integer' AND typeof(penalty_points) = 'integer' "
-            "AND typeof(multiplier_count) = 'integer'",
+            "AND typeof(multiplier_count) = 'integer' AND typeof(bonus_points) = 'integer'",
             name="qso_score_values_integer_storage",
         ),
     )
@@ -555,7 +562,10 @@ class QsoScore(Base):
     entry_revision_id: Mapped[int] = mapped_column(Integer, nullable=False)
     credited: Mapped[bool] = mapped_column(Boolean, nullable=False)
     points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bonus_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     penalty_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     multiplier_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     multiplier_keys: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="credited")
+    reason_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
