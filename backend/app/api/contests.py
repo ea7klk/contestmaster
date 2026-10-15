@@ -16,6 +16,10 @@ from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.db import get_session
 from backend.app.models import Contest, ContestStatus, SystemRole
+from backend.app.rulesets.persistence import (
+    RulesetPersistenceError,
+    activate_ruleset,
+)
 
 router = APIRouter(tags=["contests"])
 
@@ -39,6 +43,12 @@ class ContestWrite(BaseModel):
         if self.starts_at >= self.ends_at:
             raise ValueError("Contest start must precede contest end")
         return self
+
+
+class RulesetSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ruleset_version_id: int = Field(strict=True, ge=1)
 
 
 def contest_output(contest: Contest) -> dict[str, object]:
@@ -164,5 +174,32 @@ def update_contest(
         raise HTTPException(
             status_code=409, detail="A contest with this slug already exists."
         ) from exc
+    session.refresh(contest)
+    return contest_output(contest)
+
+
+@router.put("/{contest_id}/ruleset", responses=API_ERROR_RESPONSES)
+def select_contest_ruleset(
+    payload: RulesetSelection,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    if contest.status is not ContestStatus.DRAFT:
+        raise HTTPException(
+            status_code=409,
+            detail="A ruleset can be selected only while the contest is a draft.",
+        )
+    try:
+        activate_ruleset(
+            session,
+            contest_id=contest.id,
+            ruleset_version_id=payload.ruleset_version_id,
+            activated_by_user_id=principal.user_id,
+        )
+        session.commit()
+    except RulesetPersistenceError as exc:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     session.refresh(contest)
     return contest_output(contest)

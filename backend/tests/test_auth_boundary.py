@@ -328,3 +328,111 @@ def test_contest_creation_rejects_naive_or_reversed_times(identity_database, sta
         json=payload,
     )
     assert response.status_code == 422
+
+
+def test_manager_can_save_and_select_ruleset_only_for_owned_draft(identity_database):
+    from backend.app.models import Contest, RulesetActivation, RulesetVersion
+    from backend.tests.test_rulesets import valid_payload
+
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="rules-manager",
+        email="rules@example.test",
+    )
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="other-manager",
+        email="other@example.test",
+    )
+    from datetime import UTC, datetime
+
+    with identity_database.begin() as session:
+        contest = Contest(
+            owner_user_id=manager_id,
+            name="Ruleset contest",
+            slug="ruleset-contest",
+            starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 1, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        contest_id = contest.id
+
+    manager = TestClient(app)
+    assert (
+        manager.post(
+            "/api/v1/auth/login",
+            json={"email": "rules@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    saved = manager.post(
+        "/api/v1/rulesets/versions",
+        headers={"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")},
+        json=valid_payload(),
+    )
+    assert saved.status_code == 201
+    version_id = saved.json()["id"]
+    selected = manager.put(
+        f"/api/v1/contests/{contest_id}/ruleset",
+        headers={"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")},
+        json={"ruleset_version_id": version_id},
+    )
+    assert selected.status_code == 200
+    assert selected.json()["ruleset_version_id"] == version_id
+
+    other = TestClient(app)
+    assert (
+        other.post(
+            "/api/v1/auth/login",
+            json={"email": "other@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    forbidden = other.put(
+        f"/api/v1/contests/{contest_id}/ruleset",
+        headers={"X-CSRF-Token": other.cookies.get("contestmaster_csrf")},
+        json={"ruleset_version_id": version_id},
+    )
+    assert forbidden.status_code == 404
+    assert (
+        other.post(
+            "/api/v1/rulesets/versions",
+            headers={"X-CSRF-Token": other.cookies.get("contestmaster_csrf")},
+            json=valid_payload(),
+        ).status_code
+        == 200
+    )
+
+    with identity_database() as session:
+        assert session.query(RulesetVersion).count() == 1
+        assert session.query(RulesetActivation).count() == 1
+
+
+def test_invalid_ruleset_cannot_be_persisted(identity_database):
+    from backend.app.models import RulesetVersion
+    from backend.tests.test_rulesets import valid_payload
+
+    add_user(identity_database)
+    client = TestClient(app)
+    client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+    )
+    invalid = valid_payload()
+    invalid["version"] = "invalid-config"
+    invalid["rules"] = [  # A syntactically valid definition missing required rule types.
+        rule for rule in invalid["rules"] if rule["rule"]["kind"] != "score_formula"
+    ]
+    response = client.post(
+        "/api/v1/rulesets/versions",
+        headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
+        json=invalid,
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_ruleset"
+    with identity_database() as session:
+        assert session.query(RulesetVersion).count() == 0
