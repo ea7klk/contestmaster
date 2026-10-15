@@ -11,7 +11,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 - Record contacts (QSOs) with UTC time, callsigns, band, mode, and contest-specific exchange data.
 - Validate entries and contacts against the active contest ruleset, with clear field-level feedback.
 - Calculate reproducible integer-only scores, multipliers, penalties, and standings. Retain a breakdown so an organizer can explain how a result was reached.
-- Let participants upload logs without a system account. Provide organizer views for managing contests and reviewing results.
+- Let participants upload logs without a system account. Provide public contest result and standings views without login, alongside organizer views for managing contests.
 
 ### Log handling
 
@@ -34,6 +34,7 @@ The system has two privileged account roles. A participant is a contest identity
 - **Global administrator:** has all privileges across the system and all contests.
 - **Contest manager:** can create and manage their own contests, configure those contests' rules, run contest result generation, and generate contest result lists. Contest managers do not have global administrator privileges.
 - **Log submitter:** can submit a contest log without an account. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
+- **Public visitor:** can view contest results and standings in the web frontend without an account. Viewing results does not grant contest-management privileges.
 
 ### Later capabilities
 
@@ -43,13 +44,15 @@ The system has two privileged account roles. A participant is a contest identity
 
 ## Architecture overview
 
-The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. Participants can upload logs without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
+The Vue application handles contest setup, log entry, log-file selection and upload, administration, and standings display. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
 
 ```mermaid
 flowchart LR
     Participant[Log submitter; account optional] --> Web[Vue web application]
+    Visitor[Unauthenticated results viewer] --> Web
     PrivilegedUser[Global administrator or contest manager] --> Web
     Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
+    Web -->|public contest results and standings| API
     API -->|privileged actions| Auth[Role and contest-scope authorization]
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
@@ -63,8 +66,8 @@ flowchart LR
 
 ### Main boundaries
 
-- **Vue frontend:** presents workflows, sends typed API requests, and lets participants select and upload log files without requiring system accounts. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
-- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
+- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, and displays contest results and standings publicly without login. Show upload progress, import summaries, and actionable row-level errors. Keep contest rules and final score calculations on the server.
+- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
