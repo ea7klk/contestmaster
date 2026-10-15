@@ -15,6 +15,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 ## Contest data and scoring
 
 - Store contact timestamps in UTC and make contest start/end boundaries and time precision explicit. Convert to local time only for display or import/export formats that require it.
+- Model each contest's log submission cutoff separately from its start and end times. Validate new log submissions against the cutoff in UTC; do not assume contest end time is the submission deadline.
 - Preserve submitted values alongside normalized values when normalization could lose information. Normalize callsigns and other identifiers consistently, but do not silently rewrite the participant's original submission.
 - Validate QSOs and exchanges with contest-aware rules. Make duplicate detection, band/mode constraints, multipliers, penalties, and disqualification rules explicit and testable.
 - Make scoring deterministic and auditable: given the same log data and ruleset version, results must be reproducible. Keep enough detail to explain score totals, claimed and credited contacts, multipliers, and penalties.
