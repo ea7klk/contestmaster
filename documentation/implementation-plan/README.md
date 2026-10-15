@@ -131,8 +131,9 @@ None. All current Phase 0 decisions have been recorded.
 3. Apply publication rules to late logs, checklogs, withdrawn, reclassified, and disqualified entries; avoid exposing private contact data or internal review notes.
 4. Add paginated/filterable API endpoints and matching responsive Vue tables. Include score explanations and clear status labels for data that is public.
 5. Implement reproducible result exports and versioned downloadable log/result formats required by the selected initial contests.
+6. Implement a shared Vue application footer on every route. List each external licensed dataset used by the application and link directly to its license or use terms; keep this inventory synchronized with enabled master-data sources.
 
-**Exit criteria:** a published contest result is readable without login; private/unpublished contest data is not exposed; manager-only result operations are protected; displayed totals match the persisted score run and exports.
+**Exit criteria:** a published contest result is readable without login; private/unpublished contest data is not exposed; manager-only result operations are protected; displayed totals match the persisted score run and exports; every frontend page includes the dataset attribution footer and working license/terms links.
 
 ### Phase 9 — Hardening and first deployment
 
@@ -143,7 +144,7 @@ None. All current Phase 0 decisions have been recorded.
 3. Add operational dashboards/alerts for nightly master-data syncs, uploads, score runs, failed jobs, database errors, and API health.
 4. Document configuration/secrets, database backup and restore, migration/rollback process, log retention, and incident recovery.
 5. Start the initial single-host stack from CLI with one API process and local SQLite storage; run nightly provisioning through the internal API timer. Test backup restoration and a full contest workflow in a staging environment before production. Keep a standalone importer command that can later be run by a K3s CronJob as a one-shot Job.
-6. Publish operator and participant documentation, API reference, supported format/version list, data source/license inventory, and known limitations.
+6. Publish operator and participant documentation, API reference, supported format/version list, data source/license inventory, and known limitations; verify that every licensed dataset in use appears in the footer with its license or terms link.
 
 **Exit criteria:** staging can complete the end-to-end acceptance scenario below; backups restore successfully; critical operations have observable outcomes and recovery steps; release artifacts and configuration are reproducible.
 

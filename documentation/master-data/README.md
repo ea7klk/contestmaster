@@ -4,6 +4,8 @@ Contestmaster designates Big CTY `cty.dat` as the **primary operational source f
 
 These datasets serve different contest rule systems and should be kept in separate tables. “Public source” describes access to the material; it does not automatically grant permission to copy, transform, or redistribute it. Confirm source terms before enabling an importer for a public service.
 
+For each enabled external dataset used in the application, retain its applicable license or use-terms URL in the source inventory. The Vue application footer must identify each such dataset and link directly to those terms on every page. Do not list datasets that the hosted service is prohibited from using, including the excluded ARRL DXCC list.
+
 ## Source recommendations
 
 | Master data | Recommended source | Coverage and use | Update and reuse notes |
