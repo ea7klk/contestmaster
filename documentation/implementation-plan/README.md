@@ -182,3 +182,15 @@ Each implementation issue must include meaningful, behavior-focused unit tests f
 ## Deferred beyond the initial release
 
 The current product documents identify live/near-live standings, multi-operator collaboration, additional logging integrations, multiple API instances, and migration of nightly scheduling to managed K3s CronJobs as later capabilities. Revisit those when usage, latency, or operational requirements justify them; the first release should retain the documented single-process, low-concurrency SQLite operating model.
+
+## Supplemental planned work — Ruleset composer refinements
+
+This scoped enhancement package is tracked by parent issue [#79](https://github.com/ea7klk/contestmaster/issues/79) and milestone **Ruleset composer refinements**. It is separate from the numbered release phases and groups these implementation items:
+
+1. [#81 — UTC schedule, recurrence, and log-submission explanations](https://github.com/ea7klk/contestmaster/issues/81): make the schedule editor UTC-only, remove the unused local-start-time input, explain recurrence selection and ambiguous-time folds, and add log-submission field guidance.
+2. [#80 — Category and exchange controlled choices](https://github.com/ea7klk/contestmaster/issues/80): explain category dimensions and exchange fields, and provide valid key/label selections with backend validation.
+3. [#83 — Eligibility bands, modes, and global configuration](https://github.com/ea7klk/contestmaster/issues/83): manage band/mode choices as global-admin data, select them with checkboxes, and visibly identify configured contest-free bands.
+4. [#82 — Rule explanations](https://github.com/ea7klk/contestmaster/issues/82): explain duplicate scope, QSO point selection, integer score formulas, and format mapping.
+5. [#84 — Importable contest JSON starter drafts](https://github.com/ea7klk/contestmaster/issues/84): provide two validated, source-linked drafts for each requested mode family in `documentation/ruleset-drafts/`.
+
+Every child issue has a meaningful acceptance checklist, behavior-focused test expectations, the milestone, and a GitHub parent/sub-issue relationship. Do not close the parent until all child acceptance criteria and phase-level verification are complete.

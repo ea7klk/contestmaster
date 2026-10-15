@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "ruleset_key": "arrl-november-sweepstakes-cw",
+  "version": "2026-draft",
+  "source_url": "https://www.arrl.org/sweepstakes",
+  "source_edition": "2026 example draft; starter only, compare with linked official rules before use",
+  "rules": [
+    {
+      "id": "schedule",
+      "rule": {
+        "kind": "schedule",
+        "timezone": "UTC",
+        "start_local_time": "00:00:00",
+        "duration_minutes": 1800,
+        "fixed_start_utc": "2026-11-07T21:00:00Z"
+      }
+    },
+    {
+      "id": "submission",
+      "rule": {
+        "kind": "submission",
+        "cutoff_mode": "minutes_after_contest",
+        "minutes_after_contest": 7200,
+        "late_policy": "checklog",
+        "manager_extension_allowed": false
+      }
+    },
+    {
+      "id": "categories",
+      "rule": {
+        "kind": "categories",
+        "dimensions": [
+          {
+            "key": "operator",
+            "label": "Operator configuration",
+            "required": true,
+            "choices": [
+              {
+                "key": "single_operator",
+                "label": "Single operator"
+              },
+              {
+                "key": "multi_operator",
+                "label": "Multi operator"
+              }
+            ]
+          },
+          {
+            "key": "power",
+            "label": "Power class",
+            "required": true,
+            "choices": [
+              {
+                "key": "qrp",
+                "label": "QRP"
+              },
+              {
+                "key": "low",
+                "label": "Low power"
+              },
+              {
+                "key": "high",
+                "label": "High power"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "exchange",
+      "rule": {
+        "kind": "exchange",
+        "fields": [
+          {
+            "key": "serial",
+            "label": "Serial number",
+            "value_type": "serial",
+            "direction": "both",
+            "required": true,
+            "serial_scope": "entry"
+          },
+          {
+            "key": "precedence",
+            "label": "Sweepstakes precedence",
+            "value_type": "enum",
+            "direction": "both",
+            "required": true,
+            "choices": [
+              "A",
+              "B",
+              "M",
+              "Q",
+              "S",
+              "U"
+            ]
+          },
+          {
+            "key": "call_number",
+            "label": "Sweepstakes callsign number",
+            "value_type": "integer",
+            "direction": "both",
+            "required": true,
+            "min_integer": 0,
+            "max_integer": 999
+          },
+          {
+            "key": "check",
+            "label": "Year first licensed (check)",
+            "value_type": "integer",
+            "direction": "both",
+            "required": true,
+            "min_integer": 0,
+            "max_integer": 99
+          },
+          {
+            "key": "section",
+            "label": "ARRL/RAC section",
+            "value_type": "text",
+            "direction": "both",
+            "required": true,
+            "max_length": 12
+          }
+        ]
+      }
+    },
+    {
+      "id": "eligibility",
+      "rule": {
+        "kind": "eligibility",
+        "allowed_bands": [
+          "160m",
+          "80m",
+          "40m",
+          "20m",
+          "15m",
+          "10m"
+        ],
+        "allowed_modes": [
+          "CW"
+        ],
+        "reject_self_contacts": true,
+        "reject_out_of_period": true,
+        "reject_missing_required_exchange": true,
+        "action": "not_credited"
+      }
+    },
+    {
+      "id": "duplicates",
+      "rule": {
+        "kind": "duplicates",
+        "scope": [
+          "worked_callsign",
+          "band"
+        ],
+        "effect": "not_credited",
+        "penalty_points": 0
+      }
+    },
+    {
+      "id": "points",
+      "rule": {
+        "kind": "points",
+        "fact": "fixed",
+        "fixed_points": 1
+      }
+    },
+    {
+      "id": "score-formula",
+      "rule": {
+        "kind": "score_formula",
+        "start": {
+          "variable": "points_total"
+        },
+        "steps": [
+          {
+            "operator": "multiply",
+            "operand": {
+              "variable": "multiplier_count"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "format-mapping",
+      "rule": {
+        "kind": "format_mapping",
+        "format": "cabrillo",
+        "qso_columns": [
+          "band",
+          "mode",
+          "callsign",
+          "time_on",
+          "exchange_sent",
+          "exchange_received"
+        ],
+        "preserve_unknown_fields": true
+      }
+    },
+    {
+      "id": "multiplier-1",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "exchange.section",
+        "scope": "contest",
+        "label": "ARRL/RAC section"
+      }
+    }
+  ]
+}

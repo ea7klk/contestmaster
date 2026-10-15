@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "ruleset_key": "ari-ft8-activity",
+  "version": "2026-draft",
+  "source_url": "https://www.ari.it/contest-vhf-up/ft8-activity.html",
+  "source_edition": "2026 example draft (October 144 MHz round); starter only, compare with linked official rules before use",
+  "rules": [
+    {
+      "id": "schedule",
+      "rule": {
+        "kind": "schedule",
+        "timezone": "UTC",
+        "start_local_time": "00:00:00",
+        "duration_minutes": 180,
+        "fixed_start_utc": "2026-10-07T17:00:00Z"
+      }
+    },
+    {
+      "id": "submission",
+      "rule": {
+        "kind": "submission",
+        "cutoff_mode": "minutes_after_contest",
+        "minutes_after_contest": 4320,
+        "late_policy": "checklog",
+        "manager_extension_allowed": false
+      }
+    },
+    {
+      "id": "categories",
+      "rule": {
+        "kind": "categories",
+        "dimensions": [
+          {
+            "key": "operator",
+            "label": "Operator configuration",
+            "required": true,
+            "choices": [
+              {
+                "key": "single_operator",
+                "label": "Single operator"
+              },
+              {
+                "key": "multi_operator",
+                "label": "Multi operator"
+              }
+            ]
+          },
+          {
+            "key": "power",
+            "label": "Power class",
+            "required": true,
+            "choices": [
+              {
+                "key": "qrp",
+                "label": "QRP"
+              },
+              {
+                "key": "low",
+                "label": "Low power"
+              },
+              {
+                "key": "high",
+                "label": "High power"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "exchange",
+      "rule": {
+        "kind": "exchange",
+        "fields": [
+          {
+            "key": "report",
+            "label": "Signal report (RST/RS)",
+            "value_type": "text",
+            "direction": "both",
+            "required": true,
+            "max_length": 4
+          },
+          {
+            "key": "grid",
+            "label": "Maidenhead grid locator",
+            "value_type": "grid",
+            "direction": "both",
+            "required": true,
+            "max_length": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "eligibility",
+      "rule": {
+        "kind": "eligibility",
+        "allowed_bands": [
+          "2m"
+        ],
+        "allowed_modes": [
+          "FT8"
+        ],
+        "reject_self_contacts": true,
+        "reject_out_of_period": true,
+        "reject_missing_required_exchange": true,
+        "action": "not_credited"
+      }
+    },
+    {
+      "id": "duplicates",
+      "rule": {
+        "kind": "duplicates",
+        "scope": [
+          "worked_callsign",
+          "band"
+        ],
+        "effect": "not_credited",
+        "penalty_points": 0
+      }
+    },
+    {
+      "id": "points",
+      "rule": {
+        "kind": "points",
+        "fact": "fixed",
+        "fixed_points": 1
+      }
+    },
+    {
+      "id": "score-formula",
+      "rule": {
+        "kind": "score_formula",
+        "start": {
+          "variable": "points_total"
+        },
+        "steps": [
+          {
+            "operator": "multiply",
+            "operand": {
+              "variable": "multiplier_count"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "format-mapping",
+      "rule": {
+        "kind": "format_mapping",
+        "format": "cabrillo",
+        "qso_columns": [
+          "band",
+          "mode",
+          "callsign",
+          "time_on",
+          "exchange_sent",
+          "exchange_received"
+        ],
+        "preserve_unknown_fields": true
+      }
+    },
+    {
+      "id": "multiplier-1",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "qso.grid",
+        "scope": "band",
+        "label": "Grid square"
+      }
+    }
+  ]
+}
