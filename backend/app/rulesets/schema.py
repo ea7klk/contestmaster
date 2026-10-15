@@ -214,6 +214,7 @@ class ExchangeRule(StrictModel):
 
 class EligibilityRule(StrictModel):
     kind: Literal["eligibility"]
+    eligible_if: Condition | None = None
     allowed_bands: list[str] = Field(default_factory=list, max_length=100)
     allowed_modes: list[str] = Field(default_factory=list, max_length=100)
     reject_self_contacts: bool = True

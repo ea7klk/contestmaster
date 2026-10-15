@@ -50,6 +50,17 @@ describe('RulesetComposerView', () => {
         expect(
           draft.rules.map((item: { rule: { kind: string } }) => item.rule.kind),
         ).toEqual(requiredRules)
+        expect(
+          draft.rules.find(
+            (item: { rule: { kind: string } }) =>
+              item.rule.kind === 'eligibility',
+          ).rule.eligible_if,
+        ).toEqual({
+          kind: 'compare',
+          fact: 'qso.entity',
+          operator: 'eq',
+          value: 'K',
+        })
         return new Response(
           JSON.stringify({
             valid: true,
@@ -71,6 +82,10 @@ describe('RulesetComposerView', () => {
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
     expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
+    await wrapper
+      .findAll('.rule-card')[4]
+      .get('.condition-toggle input')
+      .setValue(true)
 
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()

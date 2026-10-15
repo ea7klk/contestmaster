@@ -32,6 +32,8 @@ Public endpoints (health, published contest listings and published results) are 
 - `GET /api/v1/rulesets/catalog` returns the typed schemas, labels, and execution expectations for the built-in rule types used by the graphical composer.
 - `POST /api/v1/rulesets/validate` accepts a proposed declarative ruleset but does not save or activate it. A valid response includes the normalized metadata, configured rule-type list, readable summary, and integer-only worked formula example. Invalid configurations return the standard error envelope with rule paths and messages.
 - Conditions use the declared compare/all/any/not expression tree. The API rejects unknown fact paths and unsafe regular-expression features; it never evaluates submitted Python or JavaScript.
+- `EligibilityRule.eligible_if` is a positive QSO predicate over configured contact geography, entry categories/declarations, exchanges, and station callsign. A contact that fails this predicate follows the rule's explicit `not_credited` or `needs_review` action.
+- Domain scoring returns pending structured workflow actions (rule ID, entry/QSO scope, stage, execution mode, and validated parameters) for cross-log, adjudication, publication, and award consumers. These are handoff requests for trusted services, not dynamically loaded user code; cross-log/adjudication work remains visible as pending review until its downstream phase handles it.
 - Saving and activating rulesets is a privileged contest-manager operation. Ruleset definitions are immutable versions, and every selection change is recorded in append-only contest activation history. Current API authentication enforcement is completed in Phase 5.
 
 ## Versioning

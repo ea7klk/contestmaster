@@ -24,7 +24,22 @@ function resolveSchema(input: JsonSchema): JsonSchema {
     return props.rootSchema.$defs?.[name] ?? input
   }
   if (input.anyOf) {
-    return input.anyOf.find((option) => option.type !== 'null') ?? input
+    const options = input.anyOf.filter((option) => option.type !== 'null')
+    const value = props.modelValue
+    const selected = options.find((option) => {
+      const type = typeof option.type === 'string' ? option.type : undefined
+      if (type === 'string') return typeof value === 'string'
+      if (type === 'integer' || type === 'number')
+        return typeof value === 'number'
+      if (type === 'boolean') return typeof value === 'boolean'
+      if (type === 'array') return Array.isArray(value)
+      if (type === 'object')
+        return (
+          value !== null && typeof value === 'object' && !Array.isArray(value)
+        )
+      return false
+    })
+    return selected ?? options[0] ?? input
   }
   return input
 }
@@ -39,8 +54,33 @@ const isMap = computed(
   () =>
     isObject.value &&
     !effectiveSchema.value.properties &&
-    effectiveSchema.value.additionalProperties,
+    Boolean(
+      effectiveSchema.value.additionalProperties ||
+      effectiveSchema.value.patternProperties,
+    ),
 )
+const mapValueSchema = computed(() => {
+  const patternSchema = Object.values(
+    effectiveSchema.value.patternProperties ?? {},
+  )[0]
+  if (patternSchema) return patternSchema
+  return typeof effectiveSchema.value.additionalProperties === 'object'
+    ? effectiveSchema.value.additionalProperties
+    : {}
+})
+const unionTypeOptions = computed(() => {
+  const types = (props.schema.anyOf ?? [])
+    .filter((option) => option.type !== 'null')
+    .map((option) => resolveSchema(option))
+    .map((option) =>
+      Array.isArray(option.type) ? option.type[0] : option.type,
+    )
+    .filter((type): type is string =>
+      ['string', 'integer', 'number', 'boolean', 'array'].includes(type ?? ''),
+    )
+  return [...new Set(types)]
+})
+const hasUnionTypeSelector = computed(() => unionTypeOptions.value.length > 1)
 const isRequired = (key: string) =>
   effectiveSchema.value.required?.includes(key) ?? false
 const objectValue = computed(() =>
@@ -69,6 +109,7 @@ const inputValue = computed(() =>
 )
 
 function initialValue(schema: JsonSchema): unknown {
+  if (schema.default !== undefined) return schema.default
   const resolved = resolveSchema(schema)
   if (resolved.const !== undefined) return resolved.const
   if (resolved.default !== undefined) return resolved.default
@@ -143,11 +184,15 @@ function addMapRow() {
     key = `value-${suffix}`
     suffix += 1
   }
-  const valueSchema =
-    typeof effectiveSchema.value.additionalProperties === 'object'
-      ? effectiveSchema.value.additionalProperties
-      : {}
-  setValue({ ...values, [key]: initialValue(valueSchema) })
+  setValue({ ...values, [key]: initialValue(mapValueSchema.value) })
+}
+
+function selectUnionType(type: string) {
+  const option = (props.schema.anyOf ?? [])
+    .filter((candidate) => candidate.type !== 'null')
+    .map((candidate) => resolveSchema(candidate))
+    .find((candidate) => candidate.type === type)
+  if (option) setValue(initialValue(option))
 }
 
 function renameMapKey(oldKey: string, newKey: string) {
@@ -199,38 +244,41 @@ function onEnumInput(event: Event) {
     <legend v-if="label || effectiveSchema.title">{{ fieldLabel }}</legend>
 
     <template v-if="isObject && !isMap">
-      <div
+      <template
         v-for="(childSchema, key) in effectiveSchema.properties"
         :key="key"
-        class="schema-field"
       >
-        <label v-if="!isRequired(key)" class="schema-enable">
-          <input
-            type="checkbox"
-            :checked="Object.hasOwn(objectValue, key)"
-            @change="
-              toggleProperty(
-                key,
-                childSchema,
-                ($event.target as HTMLInputElement).checked,
-              )
+        <div v-if="key !== 'eligible_if'" class="schema-field">
+          <label v-if="!isRequired(key)" class="schema-enable">
+            <input
+              type="checkbox"
+              :checked="Object.hasOwn(objectValue, key)"
+              @change="
+                toggleProperty(
+                  key,
+                  childSchema,
+                  ($event.target as HTMLInputElement).checked,
+                )
+              "
+            />
+            Configure {{ childSchema.title || key.replaceAll('_', ' ') }}
+          </label>
+          <RuleSchemaEditor
+            v-if="isRequired(key) || Object.hasOwn(objectValue, key)"
+            :schema="childSchema"
+            :root-schema="rootSchema"
+            :model-value="objectValue[key] ?? initialValue(childSchema)"
+            :label="
+              key === 'kind'
+                ? ''
+                : childSchema.title || key.replaceAll('_', ' ')
             "
+            :path="`${path}-${key}`"
+            :depth="depth + 1"
+            @update:model-value="updateProperty(key, $event)"
           />
-          Configure {{ childSchema.title || key.replaceAll('_', ' ') }}
-        </label>
-        <RuleSchemaEditor
-          v-if="isRequired(key) || Object.hasOwn(objectValue, key)"
-          :schema="childSchema"
-          :root-schema="rootSchema"
-          :model-value="objectValue[key] ?? initialValue(childSchema)"
-          :label="
-            key === 'kind' ? '' : childSchema.title || key.replaceAll('_', ' ')
-          "
-          :path="`${path}-${key}`"
-          :depth="depth + 1"
-          @update:model-value="updateProperty(key, $event)"
-        />
-      </div>
+        </div>
+      </template>
     </template>
 
     <template v-else-if="isArray">
@@ -286,11 +334,7 @@ function onEnumInput(event: Event) {
           @change="renameMapKey(key, ($event.target as HTMLInputElement).value)"
         />
         <RuleSchemaEditor
-          :schema="
-            typeof effectiveSchema.additionalProperties === 'object'
-              ? effectiveSchema.additionalProperties
-              : {}
-          "
+          :schema="mapValueSchema"
           :root-schema="rootSchema"
           :model-value="value"
           :label="`Value for ${key}`"
@@ -307,61 +351,75 @@ function onEnumInput(event: Event) {
       </button>
     </template>
 
-    <template v-else-if="primitiveSchema.const !== undefined">
-      <p class="fixed-value">{{ primitiveSchema.const }}</p>
-    </template>
-
-    <label v-else-if="primitiveType === 'boolean'" class="schema-boolean">
-      <input
-        type="checkbox"
-        :checked="Boolean(modelValue)"
-        @change="onBooleanInput"
-      />
-      {{ fieldLabel }}
-    </label>
-
-    <label v-else-if="enumOptions.length" class="schema-control">
-      {{ fieldLabel }}
-      <select :value="inputValue" @change="onEnumInput">
-        <option
-          v-for="option in enumOptions"
-          :key="String(option)"
-          :value="String(option)"
+    <template v-else>
+      <label v-if="hasUnionTypeSelector" class="schema-control">
+        Value type
+        <select
+          :value="primitiveType"
+          @change="selectUnionType(($event.target as HTMLSelectElement).value)"
         >
-          {{ option }}
-        </option>
-      </select>
-    </label>
+          <option v-for="type in unionTypeOptions" :key="type" :value="type">
+            {{ type === 'array' ? 'list' : type }}
+          </option>
+        </select>
+      </label>
 
-    <label v-else class="schema-control">
-      {{ fieldLabel }}
-      <textarea
-        v-if="
-          primitiveType === 'string' && (effectiveSchema.maxLength ?? 0) > 160
-        "
-        :value="inputValue"
-        rows="3"
-        @input="onPrimitiveInput"
-      />
-      <input
-        v-else
-        :value="inputValue"
-        :type="primitiveType === 'integer' ? 'number' : 'text'"
-        :step="primitiveType === 'integer' ? 1 : undefined"
-        :min="effectiveSchema.minimum"
-        :max="effectiveSchema.maximum"
-        :maxlength="effectiveSchema.maxLength"
-        :placeholder="
-          effectiveSchema.format === 'date-time'
-            ? '2026-01-01T00:00:00Z'
-            : undefined
-        "
-        @input="onPrimitiveInput"
-      />
-    </label>
-    <p v-if="effectiveSchema.description" class="schema-description">
-      {{ effectiveSchema.description }}
-    </p>
+      <template v-if="primitiveSchema.const !== undefined">
+        <p class="fixed-value">{{ primitiveSchema.const }}</p>
+      </template>
+
+      <label v-else-if="primitiveType === 'boolean'" class="schema-boolean">
+        <input
+          type="checkbox"
+          :checked="Boolean(modelValue)"
+          @change="onBooleanInput"
+        />
+        {{ fieldLabel }}
+      </label>
+
+      <label v-else-if="enumOptions.length" class="schema-control">
+        {{ fieldLabel }}
+        <select :value="inputValue" @change="onEnumInput">
+          <option
+            v-for="option in enumOptions"
+            :key="String(option)"
+            :value="String(option)"
+          >
+            {{ option }}
+          </option>
+        </select>
+      </label>
+
+      <label v-else class="schema-control">
+        {{ fieldLabel }}
+        <textarea
+          v-if="
+            primitiveType === 'string' && (effectiveSchema.maxLength ?? 0) > 160
+          "
+          :value="inputValue"
+          rows="3"
+          @input="onPrimitiveInput"
+        />
+        <input
+          v-else
+          :value="inputValue"
+          :type="primitiveType === 'integer' ? 'number' : 'text'"
+          :step="primitiveType === 'integer' ? 1 : undefined"
+          :min="effectiveSchema.minimum"
+          :max="effectiveSchema.maximum"
+          :maxlength="effectiveSchema.maxLength"
+          :placeholder="
+            effectiveSchema.format === 'date-time'
+              ? '2026-01-01T00:00:00Z'
+              : undefined
+          "
+          @input="onPrimitiveInput"
+        />
+      </label>
+      <p v-if="effectiveSchema.description" class="schema-description">
+        {{ effectiveSchema.description }}
+      </p>
+    </template>
   </fieldset>
 </template>
 

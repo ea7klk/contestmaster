@@ -260,6 +260,18 @@ def test_ruleset_validator_rejects_duplicate_keys_unsafe_patterns_and_bad_fact_p
     assert any("unsupported fact" in str(issue["message"]) for issue in error.value.errors)
 
     payload = valid_payload()
+    eligibility = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility["rule"]["eligible_if"] = {
+        "kind": "compare",
+        "fact": "qso.iaru_region",
+        "operator": "eq",
+        "value": "1",
+    }
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any("unsupported fact" in str(issue["message"]) for issue in error.value.errors)
+
+    payload = valid_payload()
     multiplier = next(item for item in payload["rules"] if item["id"] == "entity-multiplier")
     multiplier["rule"]["source_fact"] = "qso.iaru_region"
     with pytest.raises(RulesetValidationError) as error:
@@ -295,6 +307,104 @@ def test_condition_groups_are_typed_and_evaluated_without_code_execution():
     assert not evaluate_condition(
         condition, {"qso": {"band": "40m"}, "entry": {"categories": {"operator": "single"}}}
     )
+
+
+def test_eligibility_predicates_apply_to_contact_geography_and_entry_facts():
+    payload = valid_payload()
+    eligibility = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility["rule"]["eligible_if"] = {
+        "kind": "all",
+        "conditions": [
+            {"kind": "compare", "fact": "qso.entity", "operator": "eq", "value": "K"},
+            {
+                "kind": "compare",
+                "fact": "entry.declarations.section",
+                "operator": "eq",
+                "value": "EMA",
+            },
+            {
+                "kind": "compare",
+                "fact": "station.callsign",
+                "operator": "eq",
+                "value": "N0CALL",
+            },
+        ],
+    }
+    entry = sample_entry()
+    entry.qsos[0].entity = "DL"
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == "credited"
+    assert result.qso_scores[1].status == "not_credited"
+    assert "eligibility_condition_failed" in result.qso_scores[1].reasons
+
+
+def test_scoring_emits_structured_pending_workflow_actions():
+    payload = valid_payload()
+    payload["rules"].extend(
+        [
+            {
+                "id": "cross-check",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "cross_log",
+                    "key": "counterpart_match",
+                    "execution": "automatic",
+                    "parameters": {"timestamp_tolerance_seconds": 300},
+                },
+                "when": {
+                    "kind": "compare",
+                    "fact": "qso.band",
+                    "operator": "eq",
+                    "value": "40m",
+                },
+            },
+            {
+                "id": "review",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "adjudication",
+                    "key": "manual_review",
+                    "execution": "human_review",
+                },
+            },
+            {
+                "id": "publish",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "publication",
+                    "key": "public_results",
+                    "execution": "automatic",
+                },
+            },
+            {
+                "id": "awards",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "award",
+                    "key": "award_eligibility",
+                    "execution": "declaration",
+                },
+            },
+        ]
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), sample_entry(), contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert [(action.stage, action.qso_id) for action in result.workflow_actions] == [
+        ("cross_log", 1),
+        ("cross_log", 2),
+        ("adjudication", None),
+        ("publication", None),
+        ("award", None),
+    ]
+    assert all(action.status == "pending" for action in result.workflow_actions)
+    assert result.outcome == "needs_review"
 
 
 def test_schedule_recurrence_resolves_to_persistable_utc_and_handles_dst_boundaries():

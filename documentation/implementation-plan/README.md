@@ -77,9 +77,9 @@ None. All current Phase 0 decisions have been recorded.
 
 1. Define a declarative, schema-validated ruleset format and a typed registry for the initial reusable rule types. Expose the schemas to the Vue composer and support conditional rule groups without arbitrary user-supplied code or `eval`.
 2. Implement schedule resolution (including recurrence to saved UTC instants), UTC log cutoff and late-log policy, category dimensions/compatibility, and exchange schemas/validators.
-3. Implement QSO eligibility predicates, duplicate-key scopes, integer point rules, multiplier definitions/scopes/eligibility, integer bonuses/penalties, and an integer-only score expression with explicit operation order and rounding.
+3. Implement QSO eligibility predicates over contact geography and configured entry/station facts, duplicate-key scopes, integer point rules, multiplier definitions/scopes/eligibility, integer bonuses/penalties, and an integer-only score expression with explicit operation order and rounding.
 4. Model operating-time/off-time, band-change, and transmitter constraints, clearly identifying which checks are automatic and which need entrant declarations or human review.
-5. Define import/export format mappings and category mappings as configuration separate from parser code. Add hooks for cross-log checks, adjudication decisions, result publication, and award eligibility.
+5. Define import/export format mappings and category mappings as configuration separate from parser code. Emit structured pending hook requests for cross-log checks, adjudication decisions, result publication, and award eligibility; trusted downstream services consume these requests.
 6. Validate required parameters and incompatible combinations. Produce a human-readable rules summary and worked examples before activation.
 7. Persist ruleset key, version, source URL, source edition/year, and immutable configuration. Record append-only per-contest activation history; existing contests and score runs retain their selected version and score-run snapshots.
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -12,24 +12,39 @@ from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.operating import evaluate_operating_constraints
 from backend.app.rulesets.schema import (
+    AllCondition,
+    AnyCondition,
     BonusRule,
+    CompareCondition,
     ConfiguredRule,
     DuplicateRule,
     EligibilityRule,
     ExchangeRule,
     MultiplierRule,
+    NotCondition,
     PenaltyRule,
     PointRule,
     RulesetDefinition,
     ScoreFormulaRule,
     ScoreOperand,
     ScoreStep,
+    WorkflowHookRule,
 )
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 
 class RuleExecutionError(ValueError):
     pass
+
+
+def _condition_comparisons(condition) -> Iterable[CompareCondition]:
+    if isinstance(condition, CompareCondition):
+        yield condition
+    elif isinstance(condition, NotCondition):
+        yield from _condition_comparisons(condition.condition)
+    elif isinstance(condition, (AllCondition, AnyCondition)):
+        for child in condition.conditions:
+            yield from _condition_comparisons(child)
 
 
 class ScoringQso(BaseModel):
@@ -85,6 +100,21 @@ class QsoScoreResult(BaseModel):
     reasons: list[str]
 
 
+class WorkflowAction(BaseModel):
+    """Validated handoff request for a trusted downstream workflow handler."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    rule_id: str
+    entry_id: StrictInt
+    qso_id: StrictInt | None = None
+    stage: Literal["cross_log", "adjudication", "publication", "award"]
+    key: str
+    execution: Literal["automatic", "declaration", "human_review"]
+    parameters: dict[str, Any]
+    status: Literal["pending"] = "pending"
+
+
 class EntryScoreResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -98,6 +128,7 @@ class EntryScoreResult(BaseModel):
     penalty_points: StrictInt = Field(ge=0)
     final_score: StrictInt = Field(ge=0)
     qso_scores: list[QsoScoreResult]
+    workflow_actions: list[WorkflowAction] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)
     explanation: list[str]
 
@@ -295,6 +326,11 @@ def score_entry(
             ):
                 continue
             invalid = False
+            if rule.eligible_if is not None and not evaluate_condition(
+                rule.eligible_if, context
+            ):
+                invalid = True
+                reasons.append("eligibility_condition_failed")
             if rule.reject_out_of_period and (instant < start or instant >= end):
                 invalid = True
             if rule.allowed_bands and (qso.band or "").upper() not in {
@@ -487,14 +523,44 @@ def score_entry(
         if score.status == "needs_review"
         for reason in score.reasons
     ]
+    workflow_actions: list[WorkflowAction] = []
     for configured_rule in configured:
-        if configured_rule.rule.kind == "workflow_hook" and configured_rule.rule.stage in {
-            "cross_log",
-            "adjudication",
-        }:
-            review_reasons.append(
-                f"workflow:{configured_rule.rule.stage}:{configured_rule.rule.key}:{configured_rule.rule.execution}"
+        if isinstance(configured_rule.rule, WorkflowHookRule):
+            uses_qso_facts = configured_rule.when is not None and any(
+                comparison.fact.startswith("qso.")
+                for comparison in _condition_comparisons(configured_rule.when)
             )
+            candidates = (
+                [
+                    (qso.qso_id, _rule_context(entry, qso))
+                    for qso in sorted(
+                        entry.qsos,
+                        key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id),
+                    )
+                    if _condition_applies(configured_rule, _rule_context(entry, qso))
+                ]
+                if uses_qso_facts
+                else [(None, entry_context)]
+            )
+            if not uses_qso_facts and not _condition_applies(configured_rule, entry_context):
+                candidates = []
+            for qso_id, _context in candidates:
+                workflow_actions.append(
+                    WorkflowAction(
+                        rule_id=configured_rule.id,
+                        entry_id=entry.entry_id,
+                        qso_id=qso_id,
+                        stage=configured_rule.rule.stage,
+                        key=configured_rule.rule.key,
+                        execution=configured_rule.rule.execution,
+                        parameters=configured_rule.rule.parameters,
+                    )
+                )
+                if configured_rule.rule.stage in {"cross_log", "adjudication"}:
+                    review_reasons.append(
+                        f"workflow:{configured_rule.rule.stage}:{configured_rule.rule.key}:"
+                        f"{configured_rule.rule.execution}"
+                    )
         elif configured_rule.rule.kind == "operating_constraints" and _condition_applies(
             configured_rule, entry_context
         ):
@@ -534,6 +600,7 @@ def score_entry(
         penalty_points=penalty_points,
         final_score=final_score,
         qso_scores=qso_scores,
+        workflow_actions=workflow_actions,
         review_reasons=review_reasons,
         explanation=explanation,
     )

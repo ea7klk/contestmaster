@@ -40,10 +40,14 @@ class RulesetValidationError(ValueError):
         super().__init__("Ruleset configuration is invalid")
 
 
-def _all_conditions(rules: Iterable[ConfiguredRule]) -> Iterable[tuple[int, Condition]]:
+def _all_conditions(
+    rules: Iterable[ConfiguredRule],
+) -> Iterable[tuple[int, str, Condition]]:
     for index, configured in enumerate(rules):
         if configured.when is not None:
-            yield index, configured.when
+            yield index, f"rules[{index}].when", configured.when
+        if configured.rule.kind == "eligibility" and configured.rule.eligible_if is not None:
+            yield index, f"rules[{index}].rule.eligible_if", configured.rule.eligible_if
 
 
 def _condition_depth(condition: Condition) -> int:
@@ -68,16 +72,16 @@ def _walk_conditions(condition: Condition) -> Iterable[CompareCondition]:
 
 def _condition_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
     errors: list[dict[str, object]] = []
-    for index, condition in _all_conditions(definition.rules):
+    for _index, path, condition in _all_conditions(definition.rules):
         if _condition_depth(condition) > 8:
             errors.append(
-                {"path": f"rules[{index}].when", "message": "Condition nesting exceeds 8 levels."}
+                {"path": path, "message": "Condition nesting exceeds 8 levels."}
             )
         for comparison in _walk_conditions(condition):
             if comparison.operator in {"in", "not_in"} and not isinstance(comparison.value, list):
                 errors.append(
                     {
-                        "path": f"rules[{index}].when",
+                        "path": path,
                         "message": "in/not_in comparisons require a list value.",
                     }
                 )
@@ -85,7 +89,7 @@ def _condition_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
                 if not isinstance(comparison.value, str) or not is_safe_pattern(comparison.value):
                     errors.append(
                         {
-                            "path": f"rules[{index}].when",
+                            "path": path,
                             "message": "matches requires a valid pattern in the supported "
                             "safe subset.",
                         }
@@ -266,7 +270,7 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
         "exchange_received",
     }
     errors: list[dict[str, object]] = []
-    for rule_index, condition in _all_conditions(definition.rules):
+    for _rule_index, path, condition in _all_conditions(definition.rules):
         for comparison in _walk_conditions(condition):
             parts = comparison.fact.split(".")
             valid = (
@@ -300,7 +304,7 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
             if not valid:
                 errors.append(
                     {
-                        "path": f"rules[{rule_index}].when",
+                        "path": path,
                         "message": f"Condition references unsupported fact {comparison.fact}.",
                     }
                 )

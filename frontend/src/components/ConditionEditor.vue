@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 
 defineOptions({ name: 'ConditionEditor' })
 
 const props = withDefaults(
-  defineProps<{ modelValue: Record<string, unknown>; depth?: number }>(),
-  { depth: 0 },
+  defineProps<{ modelValue?: Record<string, unknown>; depth?: number }>(),
+  {
+    modelValue: () => ({
+      kind: 'compare',
+      fact: 'qso.band',
+      operator: 'eq',
+      value: '20m',
+    }),
+    depth: 0,
+  },
 )
 const emit = defineEmits<{
   'update:modelValue': [value: Record<string, unknown>]
 }>()
+const factsListId = useId()
 
 type ConditionKind = 'compare' | 'all' | 'any' | 'not'
 const kind = computed(
@@ -26,6 +35,16 @@ const listValue = computed(() =>
   Array.isArray(props.modelValue.value)
     ? props.modelValue.value.map(String).join(', ')
     : '',
+)
+const childConditions = computed(() =>
+  Array.isArray(props.modelValue.conditions)
+    ? (props.modelValue.conditions as Record<string, unknown>[])
+    : [],
+)
+const negatedCondition = computed(() =>
+  props.modelValue.condition && typeof props.modelValue.condition === 'object'
+    ? (props.modelValue.condition as Record<string, unknown>)
+    : { kind: 'compare', fact: 'qso.band', operator: 'eq', value: '20m' },
 )
 const compareOperators = [
   'eq',
@@ -79,6 +98,21 @@ function updateValueKind(nextKind: string) {
   else update({ value: '' })
 }
 
+function updateOperator(operator: string) {
+  const value = props.modelValue.value
+  if (operator === 'in' || operator === 'not_in') {
+    update({
+      operator,
+      value: Array.isArray(value) ? value : value == null ? [] : [value],
+    })
+  } else {
+    update({
+      operator,
+      value: Array.isArray(value) ? (value[0] ?? '') : value,
+    })
+  }
+}
+
 function onValueInput(event: Event) {
   const value = (event.target as HTMLInputElement).value
   update({ value: valueKind.value === 'integer' ? Number(value) : value })
@@ -93,19 +127,16 @@ function onListInput(event: Event) {
 }
 
 function addCondition() {
-  const conditions = Array.isArray(props.modelValue.conditions)
-    ? (props.modelValue.conditions as Record<string, unknown>[])
-    : []
   update({
     conditions: [
-      ...conditions,
+      ...childConditions.value,
       { kind: 'compare', fact: 'qso.band', operator: 'eq', value: '20m' },
     ],
   })
 }
 
 function removeCondition(index: number) {
-  const conditions = props.modelValue.conditions as Record<string, unknown>[]
+  const conditions = childConditions.value
   if (conditions.length <= 1) return
   update({
     conditions: conditions.filter((_, childIndex) => childIndex !== index),
@@ -113,9 +144,7 @@ function removeCondition(index: number) {
 }
 
 function updateCondition(index: number, condition: Record<string, unknown>) {
-  const conditions = [
-    ...(props.modelValue.conditions as Record<string, unknown>[]),
-  ]
+  const conditions = [...childConditions.value]
   conditions[index] = condition
   update({ conditions })
 }
@@ -148,28 +177,29 @@ function updateNegated(condition: Record<string, unknown>) {
         Fact path
         <input
           :value="modelValue.fact"
-          list="condition-facts"
+          :list="factsListId"
           maxlength="160"
           placeholder="qso.band"
           @input="update({ fact: ($event.target as HTMLInputElement).value })"
-        >
+        />
       </label>
-      <datalist id="condition-facts">
+      <datalist :id="factsListId">
         <option value="qso.band" />
         <option value="qso.mode" />
+        <option value="qso.continent" />
         <option value="qso.entity" />
         <option value="qso.cq_zone" />
         <option value="qso.itu_zone" />
         <option value="entry.categories.operator" />
+        <option value="entry.declarations.license_class" />
+        <option value="entry.declarations.membership" />
         <option value="station.callsign" />
       </datalist>
       <label>
         Comparison
         <select
           :value="modelValue.operator"
-          @change="
-            update({ operator: ($event.target as HTMLSelectElement).value })
-          "
+          @change="updateOperator(($event.target as HTMLSelectElement).value)"
         >
           <option
             v-for="operator in compareOperators"
@@ -202,7 +232,7 @@ function updateNegated(condition: Record<string, unknown>) {
             @change="
               update({ value: ($event.target as HTMLInputElement).checked })
             "
-          >
+          />
           Value is true
         </label>
         <label v-else>
@@ -216,14 +246,14 @@ function updateNegated(condition: Record<string, unknown>) {
             @input="
               valueKind === 'list' ? onListInput($event) : onValueInput($event)
             "
-          >
+          />
         </label>
       </template>
     </template>
 
     <div v-else-if="kind === 'not'" class="condition-child">
       <ConditionEditor
-        :model-value="modelValue.condition as Record<string, unknown>"
+        :model-value="negatedCondition"
         :depth="depth + 1"
         @update:model-value="updateNegated"
       />
@@ -238,10 +268,7 @@ function updateNegated(condition: Record<string, unknown>) {
         }}
       </p>
       <div
-        v-for="(condition, index) in modelValue.conditions as Record<
-          string,
-          unknown
-        >[]"
+        v-for="(condition, index) in childConditions"
         :key="index"
         class="condition-child"
       >
@@ -251,7 +278,7 @@ function updateNegated(condition: Record<string, unknown>) {
           @update:model-value="updateCondition(index, $event)"
         />
         <button
-          v-if="(modelValue.conditions as Record<string, unknown>[]).length > 1"
+          v-if="childConditions.length > 1"
           type="button"
           class="quiet-button"
           @click="removeCondition(index)"

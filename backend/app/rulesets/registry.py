@@ -66,7 +66,8 @@ RULE_TYPES: tuple[RuleType, ...] = (
     RuleType(
         "eligibility",
         "QSO eligibility",
-        "Select bands/modes and explicit QSO eligibility checks.",
+        "Check bands, modes, contact geography, entry categories/declarations, "
+        "and the station callsign.",
         "automatic",
         EligibilityRule,
     ),

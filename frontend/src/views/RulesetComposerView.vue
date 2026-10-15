@@ -51,6 +51,7 @@ function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
 }
 
 function initialValue(input: JsonSchema, rootSchema: JsonSchema): unknown {
+  if (input.default !== undefined) return input.default
   const schema = resolveSchema(input, rootSchema)
   if (schema.const !== undefined) return schema.const
   if (schema.default !== undefined) return schema.default
@@ -149,6 +150,17 @@ function setCondition(
 ) {
   if (condition) rule.when = condition
   else delete rule.when
+  clearValidation()
+}
+
+function setEligibilityCondition(
+  rule: ConfiguredRuleDraft,
+  condition: Record<string, unknown> | undefined,
+) {
+  const next = { ...rule.rule }
+  if (condition) next.eligible_if = condition
+  else delete next.eligible_if
+  rule.rule = next
   clearValidation()
 }
 
@@ -399,6 +411,38 @@ onMounted(async () => {
             :path="`rules-${index}`"
             @update:model-value="updateRule(configured, $event)"
           />
+          <div
+            v-if="configured.rule.kind === 'eligibility'"
+            class="condition-toggle"
+          >
+            <label>
+              <input
+                type="checkbox"
+                :checked="Boolean(configured.rule.eligible_if)"
+                @change="
+                  setEligibilityCondition(
+                    configured,
+                    ($event.target as HTMLInputElement).checked
+                      ? {
+                          kind: 'compare',
+                          fact: 'qso.entity',
+                          operator: 'eq',
+                          value: 'K',
+                        }
+                      : undefined,
+                  )
+                "
+              />
+              Require contacts to match an eligibility condition
+            </label>
+            <ConditionEditor
+              v-if="configured.rule.eligible_if"
+              :model-value="
+                configured.rule.eligible_if as Record<string, unknown>
+              "
+              @update:model-value="setEligibilityCondition(configured, $event)"
+            />
+          </div>
           <div v-if="supportsConditions(configured)" class="condition-toggle">
             <label>
               <input
