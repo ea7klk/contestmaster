@@ -214,21 +214,6 @@ class IARURegion(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
 
 
-class ITURadioRegion(Base):
-    __tablename__ = "itu_radio_regions"
-    __table_args__ = (
-        UniqueConstraint("version_id", "code", name="itu_radio_region_version_code_unique"),
-        UniqueConstraint("id", "version_id", name="itu_radio_region_id_version_unique"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    version_id: Mapped[int] = mapped_column(
-        ForeignKey("master_data_versions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    code: Mapped[str] = mapped_column(String(16), nullable=False)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-
-
 class ContestEntity(Base):
     __tablename__ = "contest_entities"
     __table_args__ = (
@@ -530,84 +515,3 @@ class EntityIARURegionAssignment(Base):
     )
     valid_from: Mapped[date | None] = mapped_column(Date)
     valid_to: Mapped[date | None] = mapped_column(Date)
-
-
-class EntityITURadioRegionAssignment(Base):
-    __tablename__ = "entity_itu_radio_region_assignments"
-    __table_args__ = (
-        UniqueConstraint(
-            "version_id",
-            "entity_id",
-            "itu_radio_region_id",
-            "valid_from",
-            name="entity_itu_radio_region_version_effective_unique",
-        ),
-        ForeignKeyConstraint(
-            ["entity_id", "version_id"],
-            ["contest_entities.id", "contest_entities.version_id"],
-            name="entity_itu_radio_region_entity_version_fk",
-        ),
-        ForeignKeyConstraint(
-            ["itu_radio_region_id", "version_id"],
-            ["itu_radio_regions.id", "itu_radio_regions.version_id"],
-            name="entity_itu_radio_region_region_version_fk",
-        ),
-        CheckConstraint(
-            "valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from",
-            name="validity_range",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    version_id: Mapped[int] = mapped_column(
-        ForeignKey("master_data_versions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    entity_id: Mapped[int] = mapped_column(
-        ForeignKey("contest_entities.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    itu_radio_region_id: Mapped[int] = mapped_column(
-        ForeignKey("itu_radio_regions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    valid_from: Mapped[date | None] = mapped_column(Date)
-    valid_to: Mapped[date | None] = mapped_column(Date)
-
-
-class IARUITURadioRegionMapping(Base):
-    __tablename__ = "iaru_itu_radio_region_mappings"
-    __table_args__ = (
-        UniqueConstraint(
-            "version_id",
-            "iaru_region_id",
-            "itu_radio_region_id",
-            "valid_from",
-            name="iaru_itu_region_version_effective_unique",
-        ),
-        ForeignKeyConstraint(
-            ["iaru_region_id", "version_id"],
-            ["iaru_regions.id", "iaru_regions.version_id"],
-            name="iaru_itu_region_iaru_version_fk",
-        ),
-        ForeignKeyConstraint(
-            ["itu_radio_region_id", "version_id"],
-            ["itu_radio_regions.id", "itu_radio_regions.version_id"],
-            name="iaru_itu_region_itu_version_fk",
-        ),
-        CheckConstraint(
-            "valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from",
-            name="validity_range",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    version_id: Mapped[int] = mapped_column(
-        ForeignKey("master_data_versions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    iaru_region_id: Mapped[int] = mapped_column(
-        ForeignKey("iaru_regions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    itu_radio_region_id: Mapped[int] = mapped_column(
-        ForeignKey("itu_radio_regions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    valid_from: Mapped[date | None] = mapped_column(Date)
-    valid_to: Mapped[date | None] = mapped_column(Date)
-    mapping_note: Mapped[str | None] = mapped_column(Text)

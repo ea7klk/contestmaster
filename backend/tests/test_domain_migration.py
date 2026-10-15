@@ -82,10 +82,13 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "audit_events",
     } <= tables
     assert "call_districts" not in tables
+    assert "itu_radio_regions" not in tables
+    assert "entity_itu_radio_region_assignments" not in tables
+    assert "iaru_itu_radio_region_mappings" not in tables
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0004_remove_call_district_master_data"
+    assert version == "0005_remove_itu_radio_regions"
     assert foreign_keys == 1
     triggers = {
         row[0]
