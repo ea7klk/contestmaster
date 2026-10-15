@@ -27,6 +27,8 @@
 - [x] Accepted modes and mode families, including mixed-mode entries and whether the same station may be credited again on another mode.
 - [x] Geographic or entity tables used by scoring, with an identified source and version: CQ/ITU zones, DXCC entities, ARRL/RAC sections, Maidenhead grids, continents, states, provinces, or contest-specific regions.
 
+These geographic values are selected and defined by each contest. IARU organizational-region master data and a built-in IARU-region rule condition are deferred to [backlog issue #77](https://github.com/ea7klk/contestmaster/issues/77); amateur-radio ITU zones remain a distinct supported value.
+
 Examples show why these are separate settings: CQ WW defines a fixed operating window and HF bands, while Sweepstakes also limits logged operating time and requires minimum off periods. Submission deadlines are separate from the operating period and can change by edition. [CQ WW rules](https://www.cqww.com/rules/), [ARRL November Sweepstakes rules](https://contests.arrl.org/ContestRules/SS-Rules.pdf), [CQ WW 2026 rule changes](https://cqww.com/blog/2026-rule-changes/)
 
 ## Entry categories and overlays
@@ -50,7 +52,7 @@ CQ WW and WPX combine operator type, power, band choice, assistance, overlays, a
 
 - [x] Define the exchange as an ordered list of named fields, each with a type, format, required/optional flag, and validation rule.
 - [x] Support fields exchanged per contact and entry-level fields repeated across contacts.
-- [x] Support common field types: signal report (RS/RST), serial number, callsign, category/precedence, section/region, CQ or ITU zone, grid locator, class, prefix, age/year, and contest-specific text.
+- [x] Support common field types: signal report (RS/RST), serial number, callsign, category/precedence, section or other contest-defined identifier, CQ or ITU zone, grid locator, class, prefix, age/year, and contest-specific text.
 - [x] Define which values are sent, received, or derived from the entrant's contest entry.
 - [x] Define serial-number scope and starting value: whole log, band, transmitter, mode, or another rule-defined scope.
 - [x] Validate fixed lengths, allowed enumerations, geographic formats, and sequence behavior without discarding the submitted text.
@@ -58,7 +60,7 @@ CQ WW and WPX combine operator type, power, band choice, assistance, overlays, a
 - [x] Preserve the raw submitted exchange and its parsed/normalized interpretation separately.
 - [x] Provide an exchange preview/example for contest setup and clear row-level validation errors during log import.
 
-The exchange can be a signal report plus CQ zone, a serial number, a long structured Sweepstakes exchange, a Field Day class and section, a VHF grid locator, or an amateur-radio ITU Zone, headquarters-station, or official-station identifier. Model station identifiers as contest-specific values in the exchange configuration. A generic untyped “exchange string” cannot express all the validation and scoring dependencies needed by these examples. [CQ WW rules](https://www.cqww.com/rules/), [ARRL Sweepstakes rules](https://contests.arrl.org/ContestRules/SS-Rules.pdf), [ARRL Field Day rules](https://www.arrl.org/field-day-rules), [ARRL VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), [IARU HF rules](https://contests.arrl.org/ContestRules/IARU-HF-Rules.pdf)
+The exchange can be a signal report plus CQ zone, a serial number, a long structured Sweepstakes exchange, a Field Day class and section, a VHF grid locator, or an amateur-radio ITU Zone, headquarters-station, or official-station identifier. For the IARU HF Championship, these are contest exchanges and multiplier identifiers; they do not require IARU organizational-region master data. Model station identifiers as contest-specific values in the exchange configuration. A generic untyped “exchange string” cannot express all the validation and scoring dependencies needed by these examples. [CQ WW rules](https://www.cqww.com/rules/), [ARRL Sweepstakes rules](https://contests.arrl.org/ContestRules/SS-Rules.pdf), [ARRL Field Day rules](https://www.arrl.org/field-day-rules), [ARRL VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), [IARU HF rules](https://contests.arrl.org/ContestRules/IARU-HF-Rules.pdf)
 
 ## QSO eligibility, duplicate handling, and log validation
 
@@ -90,7 +92,7 @@ The duplication key is not universal: CQ WW and WPX give band-level repeat credi
 - [x] Club/team aggregation rules, membership eligibility, and allocation rules for multi-operator entries.
 - [x] Separate claimed, provisional, and adjudicated scores; store immutable score runs tied to the ruleset version and source log revision.
 
-Different scoring shapes appear in the sources: CQ WW combines QSO points with zone and country multipliers counted by band; WPX uses a prefix multiplier counted once regardless of band; Sweepstakes uses section multipliers; ARRL VHF weights QSO points by band and counts grid multipliers per band, with additional rover-specific multipliers; IARU combines amateur-radio ITU Zones with HQ and official-station multipliers; Field Day applies a power multiplier and then eligible bonuses. [CQ WW rules](https://www.cqww.com/rules/), [CQ WPX rules](https://cqwpx.com/rules/), [ARRL Sweepstakes rules](https://contests.arrl.org/ContestRules/SS-Rules.pdf), [ARRL VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), [IARU HF rules](https://contests.arrl.org/ContestRules/IARU-HF-Rules.pdf), [ARRL Field Day rules](https://www.arrl.org/field-day-rules)
+Different scoring shapes appear in the sources: CQ WW combines QSO points with zone and country multipliers counted by band; WPX uses a prefix multiplier counted once regardless of band; Sweepstakes uses section multipliers; ARRL VHF weights QSO points by band and counts grid multipliers per band, with additional rover-specific multipliers; the IARU HF Championship combines amateur-radio ITU Zones with HQ and official-station multipliers, without requiring IARU organizational-region data; Field Day applies a power multiplier and then eligible bonuses. [CQ WW rules](https://www.cqww.com/rules/), [CQ WPX rules](https://cqwpx.com/rules/), [ARRL Sweepstakes rules](https://contests.arrl.org/ContestRules/SS-Rules.pdf), [ARRL VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), [IARU HF rules](https://contests.arrl.org/ContestRules/IARU-HF-Rules.pdf), [ARRL Field Day rules](https://www.arrl.org/field-day-rules)
 
 ## Submission, imports, and publication
 

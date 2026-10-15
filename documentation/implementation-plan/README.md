@@ -8,6 +8,8 @@ Deliver a deployable web application in which a contest manager can create and c
 
 The initial release includes every checked rule type in the system catalog: schedule/cutoff, categories, exchange schema, QSO eligibility and duplicates, points and integer score composition, multipliers, bonuses and penalties, operating limits, log format mapping, cross-log checks and review/publication eligibility, and ruleset provenance with explainable immutable score runs.
 
+IARU organizational-region master data and built-in IARU-region contest conditions are deferred; they are not a Phase 3 or Phase 4 dependency. Amateur-radio ITU-zone support remains separate. See the [standalone backlog issue](https://github.com/ea7klk/contestmaster/issues/77) for later reconsideration.
+
 ## Phase 0 — Decisions to settle at project start
 
 Record the selected choices in a short architecture decision log before implementation begins. The product documentation fixes the architecture boundaries but does not yet choose these details.
