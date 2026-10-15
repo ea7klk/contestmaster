@@ -31,7 +31,9 @@ Privileged accounts use `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, a
 
 Contest creation never accepts an owner identity from the request; the API assigns the authenticated account. All mutating privileged operations require both a valid session and CSRF token. Result generation and result-list endpoints are not yet implemented; when added, each must use the same contest-owner authorization dependency.
 
-Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts. Participant magic-link authentication is still planned.
+Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts.
+
+Participant email access uses `POST /api/v1/participants/auth/request-link` and `POST /api/v1/participants/auth/consume-link`. The request has a generic `202` response, creates an unprivileged participant identity if the email is new, and sends a 15-minute single-use verification/sign-in link when SMTP is configured. Only a hash of the token is stored, and requesting a replacement invalidates older links. Successful consumption marks the email verified and sets a separate participant-only session cookie; it never creates or grants a system role. `GET /api/v1/participants/auth/me` and `/entries` expose only that verified participant's identity and entries. `POST /api/v1/participants/auth/logout` revokes the participant session and requires its CSRF cookie/header pair.
 
 Contest managers may change an owned contest through `draft → open → closed → published`; a closed contest may be reopened, and a published contest may be withdrawn to closed. Opening or publishing requires a saved ruleset that still validates. `GET /api/v1/public/contests` and `GET /api/v1/public/contests/{slug}` expose only published contest metadata.
 

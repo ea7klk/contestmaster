@@ -23,6 +23,7 @@ from backend.app.api.errors import (
     validation_error_handler,
 )
 from backend.app.api.identity import router as identity_router
+from backend.app.api.participant_identity import router as participant_identity_router
 from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
@@ -87,6 +88,9 @@ app.add_middleware(
 )
 app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
 app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
+app.include_router(
+    participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth"
+)
 app.include_router(contest_router, prefix=f"{settings.api_prefix}/contests")
 app.include_router(public_contest_router, prefix=f"{settings.api_prefix}/public/contests")
 

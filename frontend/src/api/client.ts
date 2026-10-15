@@ -18,9 +18,14 @@ export class ApiError extends Error {
 
 const apiPrefix = import.meta.env.VITE_API_PREFIX ?? '/api/v1'
 
-function csrfToken(): string | undefined {
+function csrfToken(path: string): string | undefined {
   if (typeof document === 'undefined') return undefined
-  const match = document.cookie.match(/(?:^|;\s*)contestmaster_csrf=([^;]+)/)
+  const cookieName = path.startsWith('/participants/auth')
+    ? 'contestmaster_participant_csrf'
+    : 'contestmaster_csrf'
+  const match = document.cookie.match(
+    new RegExp(`(?:^|;\\s*)${cookieName}=([^;]+)`),
+  )
   return match ? decodeURIComponent(match[1] ?? '') : undefined
 }
 
@@ -37,7 +42,7 @@ export async function apiRequest<T>(
     !['GET', 'HEAD', 'OPTIONS'].includes(method) &&
     !headers.has('X-CSRF-Token')
   ) {
-    const csrf = csrfToken()
+    const csrf = csrfToken(path)
     if (csrf) headers.set('X-CSRF-Token', csrf)
   }
 

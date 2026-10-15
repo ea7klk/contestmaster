@@ -14,6 +14,21 @@ export const router = createRouter({
       component: () => import('./views/SignInView.vue'),
     },
     {
+      path: '/participant/access',
+      name: 'participant-access',
+      component: () => import('./views/ParticipantAccessView.vue'),
+    },
+    {
+      path: '/participant/verify',
+      name: 'participant-verify',
+      component: () => import('./views/ParticipantAccessView.vue'),
+    },
+    {
+      path: '/participant/entries',
+      name: 'participant-entries',
+      component: () => import('./views/ParticipantAccessView.vue'),
+    },
+    {
       path: '/manage/contests',
       name: 'contest-manager',
       component: () => import('./views/ContestManagerView.vue'),

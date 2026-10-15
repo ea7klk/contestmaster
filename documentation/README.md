@@ -129,6 +129,7 @@ erDiagram
     PARTICIPANT ||--o{ ENTRY : identifies
     PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
+    PARTICIPANT_EMAIL ||--o{ PARTICIPANT_SESSION : signs_in
     CONTEST ||--o{ RULESET_VERSION : selects
     CONTEST ||--o{ RULESET_ACTIVATION : history
     RULESET_VERSION ||--o{ RULESET_ACTIVATION : activated
@@ -188,6 +189,15 @@ erDiagram
         integer participant_id FK
         text email_normalized UK
         text verified_at_utc
+    }
+    PARTICIPANT_SESSION {
+        integer id PK
+        integer participant_email_id FK
+        text token_hash UK
+        text csrf_token_hash
+        text created_at_utc
+        text expires_at_utc
+        text revoked_at_utc
     }
     PARTICIPANT_MAGIC_LINK {
         integer id PK

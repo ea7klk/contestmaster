@@ -129,6 +129,27 @@ class ParticipantMagicLink(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
+class ParticipantSession(Base):
+    """Revocable browser session for one verified participant email identity."""
+
+    __tablename__ = "participant_sessions"
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 64", name="session_token_hash_length"),
+        CheckConstraint("length(csrf_token_hash) = 64", name="session_csrf_hash_length"),
+        CheckConstraint("expires_at > created_at", name="session_expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    participant_email_id: Mapped[int] = mapped_column(
+        ForeignKey("participant_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
 class Contest(Base):
     __tablename__ = "contests"
     __table_args__ = (

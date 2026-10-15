@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     allowed_origins: list[str] = ["http://localhost:5173"]
     secure_cookies: bool = True
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_username: str | None = None
+    email_smtp_password: str | None = None
+    email_from_address: str | None = None
+    frontend_base_url: str = "http://localhost:5173"
     master_data_scheduler_enabled: bool = True
     master_data_nightly_hour_utc: int = 2
 

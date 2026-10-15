@@ -69,6 +69,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert {
         "system_users",
         "system_sessions",
+        "participant_sessions",
         "participants",
         "contests",
         "entries",
@@ -92,7 +93,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0008_privileged_sessions"
+    assert version == "0009_participant_sessions"
     assert foreign_keys == 1
     triggers = {
         row[0]

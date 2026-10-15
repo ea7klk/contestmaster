@@ -50,6 +50,7 @@ watch(() => route.fullPath, refreshIdentity)
       <nav aria-label="Main navigation" class="site-navigation">
         <RouterLink to="/manage/contests">Manage contests</RouterLink>
         <RouterLink to="/rulesets/compose">Ruleset composer</RouterLink>
+        <RouterLink to="/participant/access">Participant access</RouterLink>
         <RouterLink v-if="!staffUser" to="/sign-in">Staff sign-in</RouterLink>
         <button
           v-else
