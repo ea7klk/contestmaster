@@ -90,7 +90,7 @@ None. All current Phase 0 decisions have been recorded.
 **Depends on:** Phases 1, 2, and 4.
 
 1. Implement the two privileged roles: global administrator and contest manager. Provision the first global administrator through a documented secure operation.
-2. Enforce authorization in the API: administrators have all privileges; managers can create/manage their own contests, edit rules, run result generation, and generate result lists only for contests they own.
+2. Enforce authorization in the API: administrators have all system privileges; contest managers can create/manage their own contests and edit their rules. Establish and test a shared contest-ownership dependency for all contest-scoped operations. Result generation and result-list actions are implemented in Phase 8 and must use this dependency.
 3. Implement email magic-link verification and sign-in for registered contest participants, scoped only to that participant's entries and profile. Do not map participant identities to either privileged role.
 4. Build Vue privileged sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, schedule/cutoff, category setup, ruleset selection, and automatic recalculation setting.
 5. Implement contest status/publication transitions and validation before a contest/ruleset is made available. Let managers set guest access expiry and close/revoke or rotate entry grants.
@@ -131,7 +131,7 @@ None. All current Phase 0 decisions have been recorded.
 
 **Depends on:** Phases 5 and 7.
 
-1. Implement manager actions to run/re-run result generation, review unresolved items, generate result lists, and publish a selected score run.
+1. Implement manager actions to run/re-run result generation, review unresolved items, generate result lists, and publish a selected score run. Protect every contest-scoped action with the Phase 5 contest-ownership dependency and test cross-manager denial.
 2. Implement public unauthenticated contest discovery and result/standings pages with category, band, mode, status, and other configured grouping filters.
 3. Apply publication rules to late logs, checklogs, withdrawn, reclassified, and disqualified entries; avoid exposing private contact data or internal review notes.
 4. Add paginated/filterable API endpoints and matching responsive Vue tables. Include score explanations and clear status labels for data that is public.
