@@ -3,8 +3,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import backend.app.models  # noqa: F401
 from backend.app.config import get_settings
 from backend.app.db import Base, ensure_sqlite_parent
+from backend.app.models.types import UTCDateTime
 
 config = context.config
 if config.config_file_name is not None:
@@ -16,6 +18,12 @@ ensure_sqlite_parent(settings.database_url)
 target_metadata = Base.metadata
 
 
+def render_item(type_: str, obj, autogen_context):
+    if type_ == "type" and isinstance(obj, UTCDateTime):
+        return "sa.String(length=27)"
+    return False
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
@@ -23,6 +31,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        render_item=render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -40,9 +49,17 @@ def run_migrations_online() -> None:
             connection.exec_driver_sql(f"PRAGMA busy_timeout={settings.sqlite_busy_timeout_ms}")
             if settings.database_url != "sqlite:///:memory:":
                 connection.exec_driver_sql("PRAGMA journal_mode=WAL")
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            render_item=render_item,
+        )
         with context.begin_transaction():
             context.run_migrations()
+        # Explicitly persist Alembic's version-row DML under sqlite3's legacy transaction mode.
+        if connection.in_transaction():
+            connection.commit()
 
 
 if context.is_offline_mode():

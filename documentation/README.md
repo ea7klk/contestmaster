@@ -121,13 +121,23 @@ erDiagram
     PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
     CONTEST ||--o{ RULESET_VERSION : selects
-    ENTRY ||--o{ STATION : uses
-    ENTRY ||--o{ QSO : records
+    ENTRY ||--o{ ENTRY_REVISION : receives
+    ENTRY_REVISION ||--o{ STATION : uses
+    ENTRY_REVISION ||--o{ QSO : records
     QSO ||--o{ QSO_DECISION : receives
     ENTRY ||--o{ SCORE_RUN : has
     ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
+    ENTRY_REVISION ||--o{ SCORE_RUN : scores
     RULESET_VERSION ||--o{ SCORE_RUN : evaluates
+    MASTER_DATA_VERSION o|--o{ SCORE_RUN : snapshots
     SCORE_RUN ||--o{ QSO_SCORE : explains
+    QSO ||--o{ QSO_SCORE : credited_in
+    CONTEST_ENTITY o|--o{ QSO : resolves
+    CQ_ZONE o|--o{ QSO : resolves
+    ITU_ZONE o|--o{ QSO : resolves
+    CONTEST ||--o{ ADMIN_NOTE : contains
+    SYSTEM_USER o|--o{ AUDIT_EVENT : performs
+    SYSTEM_USER o|--o{ ADMIN_NOTE : writes
 
     SYSTEM_USER {
         integer id PK
@@ -148,7 +158,8 @@ erDiagram
     PARTICIPANT {
         integer id PK
         text display_name
-        text callsign
+        text callsign_submitted
+        text callsign_normalized
     }
     PARTICIPANT_EMAIL {
         integer id PK
@@ -182,6 +193,15 @@ erDiagram
         text submitted_at_utc
         text status
     }
+    ENTRY_REVISION {
+        integer id PK
+        integer entry_id FK
+        integer revision_number
+        text storage_key
+        text content_sha256
+        text submitted_at_utc
+        text received_at_utc
+    }
     ENTRY_ACCESS_GRANT {
         integer id PK
         integer entry_id FK
@@ -192,19 +212,27 @@ erDiagram
     }
     STATION {
         integer id PK
-        integer entry_id FK
-        text callsign
+        integer entry_revision_id FK
+        text callsign_submitted
+        text callsign_normalized
         text station_configuration_json
     }
     QSO {
         integer id PK
-        integer entry_id FK
+        integer entry_revision_id FK
         text occurred_at_utc
         text callsign_submitted
         text callsign_normalized
         text band
         text mode
-        text exchange_submitted_json
+        text exchange_sent_submitted_json
+        text exchange_sent_normalized_json
+        text exchange_received_submitted_json
+        text exchange_received_normalized_json
+        integer resolved_master_data_version_id FK
+        integer worked_entity_id FK
+        integer worked_cq_zone_id FK
+        integer worked_itu_zone_id FK
     }
     QSO_DECISION {
         integer id PK
@@ -215,7 +243,13 @@ erDiagram
     SCORE_RUN {
         integer id PK
         integer entry_id FK
+        integer entry_revision_id FK
         integer ruleset_version_id FK
+        integer master_data_version_id FK
+        text input_digest
+        text ruleset_snapshot_json
+        text master_data_snapshot_json
+        text status
         text created_at_utc
         integer points
         integer multiplier_count
@@ -226,10 +260,26 @@ erDiagram
         integer id PK
         integer score_run_id FK
         integer qso_id FK
+        integer entry_revision_id FK
         integer credited
         integer points
         text multiplier_keys_json
         text explanation
+    }
+    ADMIN_NOTE {
+        integer id PK
+        integer contest_id FK
+        integer entry_id FK
+        integer author_user_id FK
+        text body
+    }
+    AUDIT_EVENT {
+        integer id PK
+        integer actor_user_id FK
+        text action
+        text target_type
+        text target_id
+        text occurred_at_utc
     }
 ```
 
@@ -238,9 +288,21 @@ erDiagram
 - Store contest start, end, and log submission cutoff as separate UTC timestamps with a documented, consistent precision. The cutoff is independent of the operating end time and governs acceptance of new log submissions. SQLite can store them as ISO 8601 text; convert to local time at display or file-format boundaries.
 - Use integer values only for points, bonuses, penalties, multipliers, intermediate score values, and final scores. Never use floating-point or decimal values for scoring. If a published rule yields a fractional result, apply its specified rounding rule and keep the stored result an integer.
 - Keep each score run immutable or auditable: a changed log or ruleset should produce a new run, not silently rewrite the prior explanation.
+- Keep ruleset versions, accepted entry revisions, station/QSO input, adjudication decisions, and audit events append-only. A completed score run and its per-QSO explanations are immutable at the database level; corrections create a new revision or score run. Private staff notes can be edited, with material administrative actions recorded in the audit trail.
 - Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
 - Treat JSON configuration and exchange payloads as untrusted input. Validate their schema and preserve the original submitted exchange when a normalized interpretation is stored.
 - Add indexes based on actual query needs, especially for contacts by entry, time, band, and callsign. Keep uniqueness rules contest-aware; a duplicate definition can vary by ruleset.
+
+### Retention and visibility defaults
+
+Treat these as product defaults to confirm for the deployment's jurisdiction and contest requirements. Restrict access in API serialization as well as the UI; hiding a link is not authorization.
+
+- Keep original uploaded log files private. Entrants can access their own entry through its receipt grant or verified participant access; the contest's managers and global administrators can access it for adjudication. Public result pages never expose original files, raw QSO records, participant email addresses, receipt-token hashes, or private staff notes.
+- Retain the original uploaded file until 12 months after the result is final, then remove the blob unless an appeal, dispute, or legal hold is active. Keep the revision metadata and cryptographic digest for provenance after blob deletion; do not overwrite an earlier revision when a replacement is submitted.
+- Retain parsed QSO input, adjudication decisions, ruleset/master-data snapshots, and score explanations for five years after final results to support reproducibility and appeals. Mark this as a configurable deployment policy; a legal hold extends retention.
+- Keep verified participant email addresses and account recovery/access records private. Expire and remove consumed or expired magic-link token hashes after 30 days. Revoke entry grants at closure or expiry and retain only non-secret audit metadata about that action.
+- Limit administrative notes to authorized staff for the associated contest. Retain audit events for three years; audit metadata must not contain credentials, bearer tokens, raw log data, email bodies, or unnecessary personal data.
+- Provide an authorized deletion/anonymization workflow after applicable retention ends. Preserve contest result records and non-identifying score evidence where required, and record the deletion action without copying the deleted personal data into the audit event.
 
 ## Geographic and callsign master data
 
