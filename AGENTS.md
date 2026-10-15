@@ -18,6 +18,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Preserve submitted values alongside normalized values when normalization could lose information. Normalize callsigns and other identifiers consistently, but do not silently rewrite the participant's original submission.
 - Validate QSOs and exchanges with contest-aware rules. Make duplicate detection, band/mode constraints, multipliers, penalties, and disqualification rules explicit and testable.
 - Make scoring deterministic and auditable: given the same log data and ruleset version, results must be reproducible. Keep enough detail to explain score totals, claimed and credited contacts, multipliers, and penalties.
+- Make result recalculation a per-contest setting controlled by the contest manager. When enabled, a newly accepted log upload triggers result generation for that contest; failed or rejected uploads do not.
 - Treat imports and exports, including common interchange formats such as Cabrillo, as boundary adapters. Validate malformed input, report actionable row-level errors, and avoid losing fields that the engine does not interpret.
 - Use database constraints and transactions for invariants such as unique identifiers and atomic log/result updates. Represent points, bonuses, penalties, multipliers, intermediate scores, and final scores with integer values only; never use floating-point or decimal values for scoring. If a contest rule produces a fractional result, apply its specified rounding rule and keep the resulting scoring value an integer.
 
