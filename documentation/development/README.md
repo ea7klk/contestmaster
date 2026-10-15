@@ -52,6 +52,8 @@ Participant access is at `/participant/access`. Set `EMAIL_SMTP_HOST`, `EMAIL_SM
 
 Administrative account provisioning, contest edits, ruleset version creation, and contest ruleset activation write append-only audit events in the same transaction as the change. The optional `audit_reason` request field records operator context; event metadata must never contain passwords, session/receipt tokens, uploaded log contents, or unnecessary personal information.
 
+Global administrators can inspect master-data versions and recent sync attempts at `/admin/master-data`. They can activate a validated candidate or delete only an unreferenced candidate/retired version. Deletion keeps source sync runs and appends an audit event; the API and SQLite reject active or retained-reference deletions.
+
 The API checks enabled master-data sources immediately on startup when any required active version is missing, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Enabled sources currently include Big CTY, UNGEGN WGN country names/M49 identifiers, and the UNSD M49 country-or-area list. The M49 adapter stores published names and numeric codes as-is. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run all adapters from CLI with `uv run contestmaster-master-data sync`, or one with `sync-cty`, `sync-ungegn`, or `sync-m49`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
 
 ## Useful commands

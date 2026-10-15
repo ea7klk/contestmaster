@@ -65,4 +65,31 @@ describe('shared API client', () => {
       issues: [{ message: 'Missing.' }],
     })
   })
+
+  it('uses the separate participant CSRF cookie for participant mutations', async () => {
+    const cookieDescriptor = Object.getOwnPropertyDescriptor(document, 'cookie')
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      value:
+        'contestmaster_csrf=staff-token; contestmaster_participant_csrf=participant-token',
+    })
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe(
+          'participant-token',
+        )
+        return new Response(JSON.stringify({ status: 'signed_out' }), {
+          status: 200,
+        })
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiRequest('/participants/auth/logout', { method: 'POST' })
+
+    vi.unstubAllGlobals()
+    if (cookieDescriptor)
+      Object.defineProperty(document, 'cookie', cookieDescriptor)
+    else Reflect.deleteProperty(document, 'cookie')
+  })
 })

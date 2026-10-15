@@ -48,6 +48,7 @@ describe('App privileged navigation', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Sign out Contest Manager')
+    expect(wrapper.text()).not.toContain('Master data')
     await wrapper.get('.sign-out-button').trigger('click')
     await flushPromises()
 

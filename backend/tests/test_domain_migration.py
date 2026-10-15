@@ -93,7 +93,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "0009_participant_sessions"
+    assert version == "0010_protect_active_master_data"
     assert foreign_keys == 1
     triggers = {
         row[0]
@@ -107,6 +107,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert "immutable_audit_events_update" in triggers
     assert "immutable_audit_events_delete" in triggers
     assert "completed_score_runs_update" in triggers
+    assert "prevent_active_master_data_version_delete" in triggers
 
     with Session(engine) as session:
         ruleset = RulesetVersion(ruleset_key="initial", version="1")
@@ -132,6 +133,41 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         session.delete(event)
         with pytest.raises(DBAPIError, match="append-only"):
             session.commit()
+        session.rollback()
+
+        source = MasterDataSource(
+            source_key="migration-active-source",
+            name="Migration Active Source",
+            canonical_url="https://example.test/master-data",
+            authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
+        )
+        session.add(source)
+        session.flush()
+        run = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key="migration-active-dataset",
+            status=MasterDataRunStatus.SUCCEEDED,
+            source_release="test-release",
+            checksum="a" * 64,
+        )
+        session.add(run)
+        session.flush()
+        active_version = MasterDataVersion(
+            sync_run_id=run.id,
+            dataset_key=run.dataset_key,
+            retrieved_at=utc_now(),
+            checksum=run.checksum,
+            valid_from=utc_now(),
+            status=MasterDataVersionStatus.ACTIVE,
+        )
+        session.add(active_version)
+        session.commit()
+        with pytest.raises(DBAPIError, match="active master data versions cannot be deleted"):
+            session.execute(
+                text("DELETE FROM master_data_versions WHERE id = :version_id"),
+                {"version_id": active_version.id},
+            )
+        session.rollback()
     engine.dispose()
 
 

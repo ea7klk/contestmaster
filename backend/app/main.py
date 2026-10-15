@@ -23,6 +23,7 @@ from backend.app.api.errors import (
     validation_error_handler,
 )
 from backend.app.api.identity import router as identity_router
+from backend.app.api.master_data_admin import router as master_data_admin_router
 from backend.app.api.participant_identity import router as participant_identity_router
 from backend.app.config import get_settings
 from backend.app.db import SessionFactory, engine, get_session
@@ -91,6 +92,7 @@ app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
 app.include_router(
     participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth"
 )
+app.include_router(master_data_admin_router, prefix=settings.api_prefix)
 app.include_router(contest_router, prefix=f"{settings.api_prefix}/contests")
 app.include_router(public_contest_router, prefix=f"{settings.api_prefix}/public/contests")
 
