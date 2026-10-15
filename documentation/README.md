@@ -13,7 +13,7 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 - Record contacts (QSOs) with UTC time, callsigns, band, mode, and contest-specific exchange data.
 - Validate entries and contacts against the active contest ruleset, with clear field-level feedback.
 - Calculate reproducible integer-only scores, multipliers, penalties, and standings. Retain a breakdown so an organizer can explain how a result was reached.
-- Let participants upload logs without a system account. Provide public contest result and standings views without login, alongside organizer views for managing contests.
+- Let participants upload logs without a system account. Guests manage an entry with its receipt token; registered participants can use email magic links for entries associated with their verified email. Provide public contest result and standings views without login, alongside organizer views for managing contests.
 
 ### Log handling
 
@@ -31,11 +31,12 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 
 ### System roles and access
 
-The system has two privileged account roles. A participant is a contest identity, not a system account, and does not need to register before submitting a log.
+The system has two privileged account roles. A participant is a contest identity, not a privileged system account, and does not need to register before submitting a log. A participant who registers and verifies an email address can request a short-lived, single-use email magic link to access only associated entries. This access never grants a global administrator or contest manager role.
 
 - **Global administrator:** has all privileges across the system and all contests.
 - **Contest manager:** can create and manage their own contests, configure those contests' rules and automatic recalculation setting, run contest result generation, and generate contest result lists. Contest managers do not have global administrator privileges.
-- **Log submitter:** can submit a contest log without an account. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
+- **Guest log submitter:** can submit a contest log without an account and use an entry-scoped receipt token to manage that entry. Store only a token hash; the contest manager controls its expiry and can close, revoke, or rotate it. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
+- **Registered participant:** can verify an email address and use a short-lived, single-use email magic link to manage only entries associated with that identity. Participant identity and entry access do not grant privileged system roles.
 - **Public visitor:** can view contest results and standings in the web frontend without an account. Viewing results does not grant contest-management privileges.
 
 ### Later capabilities
@@ -107,7 +108,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. System accounts are only for global administrators and contest managers; participant records are contest identities and do not require an account. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring.
 
 ```mermaid
 erDiagram
@@ -115,11 +116,14 @@ erDiagram
     SYSTEM_USER o|--o{ ENTRY : submits
     CONTEST ||--o{ ENTRY : accepts
     PARTICIPANT ||--o{ ENTRY : identifies
+    PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
+    PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
     CONTEST ||--o{ RULESET_VERSION : selects
     ENTRY ||--o{ STATION : uses
     ENTRY ||--o{ QSO : records
     QSO ||--o{ QSO_DECISION : receives
     ENTRY ||--o{ SCORE_RUN : has
+    ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
     RULESET_VERSION ||--o{ SCORE_RUN : evaluates
     SCORE_RUN ||--o{ QSO_SCORE : explains
 
@@ -144,6 +148,20 @@ erDiagram
         text display_name
         text callsign
     }
+    PARTICIPANT_EMAIL {
+        integer id PK
+        integer participant_id FK
+        text email_normalized UK
+        text verified_at_utc
+    }
+    PARTICIPANT_MAGIC_LINK {
+        integer id PK
+        integer participant_email_id FK
+        text token_hash UK
+        text created_at_utc
+        text expires_at_utc
+        text consumed_at_utc
+    }
     RULESET_VERSION {
         integer id PK
         text ruleset_key
@@ -161,6 +179,14 @@ erDiagram
         text category
         text submitted_at_utc
         text status
+    }
+    ENTRY_ACCESS_GRANT {
+        integer id PK
+        integer entry_id FK
+        text token_hash UK
+        text created_at_utc
+        text expires_at_utc
+        text revoked_at_utc
     }
     STATION {
         integer id PK

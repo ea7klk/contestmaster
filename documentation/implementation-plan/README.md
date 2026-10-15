@@ -18,10 +18,10 @@ Record the selected choices in a short architecture decision log before implemen
 - **ORM and migration tools:** SQLAlchemy 2.x + Alembic. This provides the required ORM-managed SQLite access and explicit schema migrations.
 - **Vue toolchain and component strategy:** Vue 3 + TypeScript + Vite + Vue Router + Pinia, with a small set of accessible application components. Use typed component boundaries and semantic HTML; avoid introducing a full UI framework until the workflows demonstrate a need.
 - **Authentication, account recovery, and first administrator:** use app-managed accounts for the initial release. Hash passwords with Argon2id; use server-side sessions in `Secure`, `HttpOnly`, and `SameSite` cookies; provide single-use, expiring email reset links; and provision the first global administrator through a one-time CLI command with no default password. Design an extension point for common OIDC providers that can each be configured and activated independently in a later release. Keep local authorization roles explicit; an external identity must not gain global-administrator privileges through automatic registration or an unreviewed claim mapping. This follows [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), and [password reset](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html) guidance.
+- **Guest and registered participant access:** guests receive an entry-scoped receipt token for correction/resubmission and contact management; registered contest participants use email magic links to access only entries associated with their verified participant identity. Participant access does not create a privileged system role. Store only hashes of guest receipt tokens; let contest managers set expiry and close/revoke or rotate a grant. Preserve every accepted change as a new log revision. Display/download the guest secret at submission time, and never write it to application logs.
 
 ### Decisions remaining
 
-- How a guest entrant securely corrects or withdraws a submitted log and manages individual contacts after upload. Proposed default: allow a revised log submission tied to the same entry using a time-limited, unguessable receipt token; do not require a participant system account.
 - Deployment and nightly scheduler mechanism. Keep the first deployment to one API instance and local SQLite storage.
 - Which national call-district sources are in the first release, and what review workflow to use where no public machine-readable source exists.
 - Whether ARRL DXCC data can be used in the hosted service. ARRL's published text list requires permission for uses beyond personal use; obtain permission before ingesting or redistributing it. Big CTY is the designated primary operational feed for the data it contains.
@@ -45,8 +45,8 @@ Record the selected choices in a short architecture decision log before implemen
 
 **Depends on:** Phase 1 project and persistence conventions.
 
-1. Implement the first migration for users/roles, contests, ruleset versions, participants, entries, stations, QSOs, QSO decisions, score runs, per-QSO score explanations, master-data sources/runs/versions, and geographic/callsign reference tables.
-2. Enforce database constraints for ownership, unique contest identifiers, valid relationships, nullable guest submitter identity, and integer score storage.
+1. Implement the first migration for users/roles, participants and verified emails, contests, ruleset versions, entries, guest entry-access grants, stations, QSOs, QSO decisions, score runs, per-QSO score explanations, master-data sources/runs/versions, and geographic/callsign reference tables.
+2. Enforce database constraints for ownership, unique contest identifiers, valid relationships, nullable guest submitter identity, hashed entry-token storage, and integer score storage.
 3. Store original submitted callsigns and exchanges separately from normalized/resolved values. Store contest instants and QSO timestamps in UTC at explicit precision.
 4. Add revision/snapshot identifiers so an entry/log revision, ruleset version, and relevant master-data version can be tied to a score run.
 5. Define retention and visibility rules for uploaded logs, participant details, admin notes, and audit history.
@@ -86,9 +86,10 @@ Record the selected choices in a short architecture decision log before implemen
 
 1. Implement the two privileged roles: global administrator and contest manager. Provision the first global administrator through a documented secure operation.
 2. Enforce authorization in the API: administrators have all privileges; managers can create/manage their own contests, edit rules, run result generation, and generate result lists only for contests they own.
-3. Build Vue sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, schedule/cutoff, category setup, ruleset selection, and automatic recalculation setting.
-4. Implement contest status/publication transitions and validation before a contest/ruleset is made available.
-5. Record administrative changes with actor, time, target, and an audit reason where appropriate.
+3. Implement email magic-link verification and sign-in for registered contest participants, scoped only to that participant's entries and profile. Do not map participant identities to either privileged role.
+4. Build Vue privileged sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, schedule/cutoff, category setup, ruleset selection, and automatic recalculation setting.
+5. Implement contest status/publication transitions and validation before a contest/ruleset is made available. Let managers set guest access expiry and close/revoke or rotate entry grants.
+6. Record administrative changes with actor, time, target, and an audit reason where appropriate.
 
 **Exit criteria:** API authorization tests show no manager can access another manager's contest; the manager can configure and save a validated contest; public visibility is controlled by publication state.
 
@@ -97,14 +98,14 @@ Record the selected choices in a short architecture decision log before implemen
 **Depends on:** Phases 2, 4, and 5.
 
 1. Implement unauthenticated log-submission endpoints with request/file size limits, accepted-format checks, rate limits, idempotency support, and safe filename handling.
-2. Create participant and entry records from submission data without requiring a system account; keep the privileged-user submitter reference nullable.
+2. Create participant and entry records from submission data without requiring a system account; keep the privileged-user submitter reference nullable. Associate verified participant identities when the entrant has registered.
 3. Implement Cabrillo parsing first, with contest-specific header/QSO templates and category mapping; preserve unknown headers/fields for review or round-trip export.
 4. Parse files outside long-lived database transactions, then persist accepted input atomically through ORM transactions.
 5. Validate required records and fields; return line-level errors, warnings, accepted/rejected counts, and an import summary. Preserve original input and normalized interpretations.
 6. Build Vue upload UI with progress, success/error summaries, retry behavior, and accessible status announcements.
-7. Support authorized log correction/resubmission and add/edit/remove contact workflows. Keep each accepted change as a new input revision; preserve prior submissions and score-run inputs for audit and reproducibility.
+7. Support guest correction/resubmission and add/edit/remove contact workflows using a receipt token scoped to one entry. Registered participants may use verified email magic links to manage their associated entries. Managers control guest token expiry and can close, revoke, or rotate access. Keep each accepted change as a new input revision; preserve prior submissions and score-run inputs for audit and reproducibility.
 
-**Exit criteria:** an unregistered entrant can submit a valid supported log; malformed logs return useful line-level feedback and are not partially accepted; repeated idempotent submissions do not create duplicate entries; uploaded content cannot inject executable UI content.
+**Exit criteria:** an unregistered entrant can submit a valid supported log and use only the associated entry's receipt token; a registered participant can use an expiring email magic link limited to their entries; managers can end guest access; malformed logs return useful line-level feedback and are not partially accepted; repeated idempotent submissions do not create duplicate entries; uploaded content cannot inject executable UI content.
 
 ### Phase 7 — Adjudication, cross-log checking, and scoring
 
