@@ -35,3 +35,18 @@ def test_exception_logging_records_type_without_untrusted_message_or_traceback()
     assert '"exception_type":"RuntimeError"' in output
     assert "private-value" not in output
     assert "Traceback" not in output
+
+
+def test_job_events_include_safe_correlation_fields_and_omit_unapproved_fields():
+    record = logging.LogRecord("jobs", logging.INFO, "", 0, "master_data_sync_finished", (), None)
+    record.dataset_key = "cty"
+    record.run_id = 17
+    record.status = "succeeded"
+    record.participant_email = "private@example.test"
+
+    payload = json.loads(JsonFormatter().format(record))
+
+    assert payload["dataset_key"] == "cty"
+    assert payload["run_id"] == 17
+    assert payload["status"] == "succeeded"
+    assert "participant_email" not in payload

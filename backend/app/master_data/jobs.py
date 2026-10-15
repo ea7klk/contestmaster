@@ -626,6 +626,7 @@ def sync_cty(
 ) -> dict[str, int | str | bool | None]:
     """Fetch, validate, and transactionally import Big CTY; safe to retry after failure."""
     run_id = _create_run(session_factory)
+    logger.info("master_data_sync_started", extra={"dataset_key": "cty", "run_id": run_id})
     try:
         archive_bytes, release_date, archive_url, retrieved_at = fetch_archive()
         release = parse_archive(archive_bytes, release_date, archive_url, retrieved_at)
@@ -665,6 +666,10 @@ def sync_ungegn_countries(
 ) -> dict[str, int | str | bool | None]:
     """Refresh the UNGEGN WGN reference for UN member-country names and M49 codes."""
     run_id = _create_ungegn_run(session_factory)
+    logger.info(
+        "master_data_sync_started",
+        extra={"dataset_key": UNGEGN_DATASET_KEY, "run_id": run_id},
+    )
     try:
         source_data = fetch_data()
         with session_factory.begin() as session:
@@ -692,6 +697,10 @@ def sync_m49_country_areas(
 ) -> dict[str, int | str | bool | None]:
     """Refresh the official UNSD M49 country-or-area reference as published."""
     run_id = _create_m49_run(session_factory)
+    logger.info(
+        "master_data_sync_started",
+        extra={"dataset_key": M49_DATASET_KEY, "run_id": run_id},
+    )
     try:
         source_data = fetch_data()
         with session_factory.begin() as session:

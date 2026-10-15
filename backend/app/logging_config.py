@@ -17,7 +17,21 @@ class JsonFormatter(logging.Formatter):
         request_id = request_id_var.get()
         if request_id:
             payload["request_id"] = request_id
-        for field in ("method", "path", "status_code", "duration_ms"):
+        for field in (
+            "method",
+            "path",
+            "status_code",
+            "duration_ms",
+            "dataset_key",
+            "run_id",
+            "operation_id",
+            "contest_id",
+            "entry_id",
+            "revision_id",
+            "score_run_id",
+            "status",
+            "changed",
+        ):
             if hasattr(record, field):
                 payload[field] = getattr(record, field)
         if record.exc_info:

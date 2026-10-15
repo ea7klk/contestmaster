@@ -8,6 +8,7 @@ import logging
 import re
 from datetime import UTC
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -630,6 +631,14 @@ def recalculate_contest(
         if revision is None:
             continue
         key = f"{trigger_key}:entry:{entry.id}:revision:{revision.id}"
+        operation_id = str(uuid4())
+        event_fields = {
+            "operation_id": operation_id,
+            "contest_id": contest_id,
+            "entry_id": entry.id,
+            "revision_id": revision.id,
+        }
+        logger.info("score_run_started", extra=event_fields)
         try:
             with session.begin_nested():
                 run = score_entry_revision(
@@ -640,11 +649,22 @@ def recalculate_contest(
                     created_by_user_id=created_by_user_id,
                 )
             runs.append(run)
-        except Exception as exc:
-            logger.exception(
-                "score_run_failed", extra={"entry_id": entry.id, "revision_id": revision.id}
+            logger.info(
+                "score_run_finished",
+                extra={**event_fields, "score_run_id": run.id, "status": run.status.value},
             )
-            runs.append(_record_failed_run(session, entry, revision, key, exc, created_by_user_id))
+        except Exception as exc:
+            logger.exception("score_run_failed", extra=event_fields)
+            failed_run = _record_failed_run(session, entry, revision, key, exc, created_by_user_id)
+            runs.append(failed_run)
+            logger.info(
+                "score_run_finished",
+                extra={
+                    **event_fields,
+                    "score_run_id": failed_run.id,
+                    "status": failed_run.status.value,
+                },
+            )
     return runs
 
 
