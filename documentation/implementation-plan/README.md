@@ -19,10 +19,10 @@ Record the selected choices in a short architecture decision log before implemen
 - **Vue toolchain and component strategy:** Vue 3 + TypeScript + Vite + Vue Router + Pinia, with a small set of accessible application components. Use typed component boundaries and semantic HTML; avoid introducing a full UI framework until the workflows demonstrate a need.
 - **Authentication, account recovery, and first administrator:** use app-managed accounts for the initial release. Hash passwords with Argon2id; use server-side sessions in `Secure`, `HttpOnly`, and `SameSite` cookies; provide single-use, expiring email reset links; and provision the first global administrator through a one-time CLI command with no default password. Design an extension point for common OIDC providers that can each be configured and activated independently in a later release. Keep local authorization roles explicit; an external identity must not gain global-administrator privileges through automatic registration or an unreviewed claim mapping. This follows [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), and [password reset](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html) guidance.
 - **Guest and registered participant access:** guests receive an entry-scoped receipt token for correction/resubmission and contact management; registered contest participants use email magic links to access only entries associated with their verified participant identity. Participant access does not create a privileged system role. Store only hashes of guest receipt tokens; let contest managers set expiry and close/revoke or rotate a grant. Preserve every accepted change as a new log revision. Display/download the guest secret at submission time, and never write it to application logs.
+- **Initial startup and master-data scheduling:** start the stack from CLI on one host with SQLite on local storage. Run nightly master-data provisioning through an internal API timer, while keeping the importer callable as an independent job. Run a single API process initially; make imports idempotent and prevent overlapping runs. Prepare the same importer entry point for a future managed container platform, using K3s CronJobs to create one-shot Jobs.
 
 ### Decisions remaining
 
-- Deployment and nightly scheduler mechanism. Keep the first deployment to one API instance and local SQLite storage.
 - Which national call-district sources are in the first release, and what review workflow to use where no public machine-readable source exists.
 - Whether ARRL DXCC data can be used in the hosted service. ARRL's published text list requires permission for uses beyond personal use; obtain permission before ingesting or redistributing it. Big CTY is the designated primary operational feed for the data it contains.
 
@@ -39,7 +39,7 @@ Record the selected choices in a short architecture decision log before implemen
 3. Establish ORM session lifecycle, transaction helpers, migration workflow, and SQLite connection settings: foreign keys enabled, busy timeout, short write transactions, and WAL where appropriate.
 4. Add a health/readiness endpoint and structured request logging with correlation IDs.
 
-**Exit criteria:** a developer can start the API and Vue application locally; OpenAPI is available; schema changes run through migrations; no application code accesses SQLite outside the ORM.
+**Exit criteria:** a developer can start the stack from CLI with the documented command; OpenAPI is available; schema changes run through migrations; no application code accesses SQLite outside the ORM.
 
 ### Phase 2 — Domain model and persistence
 
@@ -60,11 +60,12 @@ Record the selected choices in a short architecture decision log before implemen
 1. Implement a versioned `cty.dat` parser and import Big CTY as the primary operational source for callsign prefixes, DXCC entities, and callsign-based CQ/ITU zone mappings.
 2. Keep CQ zones, amateur ITU zones, ITU Radio Regions, and IARU Regions in separate namespaces/tables. Add entity-zone and prefix-zone mappings with effective dates and source/version provenance.
 3. Add official/public gap-filling imports or reviewed seed datasets for country/area identifiers, IARU Regions, ITU Radio Regions, and selected national call districts. Do not infer one global call-district format.
-4. Implement a nightly source-check/import command. Capture source URL, release marker, fetched-at time, checksum, parser version, use terms, counts, and status for every run.
-5. Validate keys, completeness, expected counts, cross-references, and effective dates before activation. Preserve the last good version on fetch/parse/validation failure; stage meaningful boundary changes for review.
-6. Preserve applicable license notices with imported artifacts. Do not import or publish restricted data until its permitted use has been established.
+4. Implement the master-data source-check/import as an idempotent callable job and CLI command. Capture source URL, release marker, fetched-at time, checksum, parser version, use terms, counts, and status for every run.
+5. Add an internal API timer that invokes the job nightly, prevents overlapping executions, and reports failures. Keep scheduling separate from import logic so a future K3s CronJob can launch the same one-shot command.
+6. Validate keys, completeness, expected counts, cross-references, and effective dates before activation. Preserve the last good version on fetch/parse/validation failure; stage meaningful boundary changes for review.
+7. Preserve applicable license notices with imported artifacts. Do not import or publish restricted data until its permitted use has been established.
 
-**Exit criteria:** a clean install can load a known CTY release; repeat imports are idempotent; a failed or partial import cannot replace active data; import history and differences are reviewable; the nightly command is schedulable and observable.
+**Exit criteria:** a clean install can load a known CTY release; repeat imports are idempotent; a failed or partial import cannot replace active data; import history and differences are reviewable; the internal API timer and one-shot CLI job are observable and safe to retry.
 
 ### Phase 4 — Ruleset engine and initial rule catalog
 
@@ -140,7 +141,7 @@ Record the selected choices in a short architecture decision log before implemen
 2. Verify accessible keyboard and screen-reader operation for the rule composer, upload flow, manager pages, and standings.
 3. Add operational dashboards/alerts for nightly master-data syncs, uploads, score runs, failed jobs, database errors, and API health.
 4. Document configuration/secrets, database backup and restore, migration/rollback process, log retention, and incident recovery.
-5. Deploy one API instance with local SQLite storage and a nightly scheduler. Test backup restoration and a full contest workflow in a staging environment before production.
+5. Start the initial single-host stack from CLI with one API process and local SQLite storage; run nightly provisioning through the internal API timer. Test backup restoration and a full contest workflow in a staging environment before production. Keep a standalone importer command that can later be run by a K3s CronJob as a one-shot Job.
 6. Publish operator and participant documentation, API reference, supported format/version list, data source/license inventory, and known limitations.
 
 **Exit criteria:** staging can complete the end-to-end acceptance scenario below; backups restore successfully; critical operations have observable outcomes and recovery steps; release artifacts and configuration are reproducible.
@@ -154,7 +155,7 @@ Record the selected choices in a short architecture decision log before implemen
 5. The backend validates and adjudicates the QSOs, applies duplicate and cross-log rules, and creates an integer-only explainable score run tied to the exact input/rules/master-data versions.
 6. The per-contest recalculation setting is honored. The manager can review decisions, generate a result list, and publish it.
 7. An unauthenticated visitor can view the published standings and allowed score breakdowns; private log content and internal notes remain hidden.
-8. A nightly master-data run imports or checks Big CTY and configured supplemental sources, preserves provenance, and leaves active data intact if a source fails validation.
+8. The API's nightly timer invokes the master-data job to import or check Big CTY and configured supplemental sources, preserves provenance, and leaves active data intact if a source fails validation. The same job can run once from CLI.
 
 ## Cross-cutting verification gates
 
@@ -169,4 +170,4 @@ Each phase should include focused automated tests for its domain and API contrac
 
 ## Deferred beyond the initial release
 
-The current product documents identify live/near-live standings, multi-operator collaboration, additional logging integrations, multiple API instances, and a separate worker/job queue as later capabilities. Revisit those when usage, latency, or concrete interoperability requirements justify them; the first release should retain the documented single-instance, low-concurrency SQLite operating model.
+The current product documents identify live/near-live standings, multi-operator collaboration, additional logging integrations, multiple API instances, and migration of nightly scheduling to managed K3s CronJobs as later capabilities. Revisit those when usage, latency, or operational requirements justify them; the first release should retain the documented single-process, low-concurrency SQLite operating model.

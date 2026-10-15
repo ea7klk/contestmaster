@@ -86,7 +86,8 @@ flowchart LR
     API -->|account-free log upload| Adapters[Import and export adapters]
     Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo and other log formats]
-    Scheduler[Nightly master-data refresh] -->|fetch, validate, version| MasterImport[Master-data importer]
+    Timer[Internal nightly timer in single API process] -->|invokes| MasterImport[Callable master-data import job]
+    CLI[Operator CLI] -->|start stack or run import once| API
     PublicSources[Public reference sources] --> MasterImport
     MasterImport -->|ORM-managed writes| Store
     Store --> ReferenceData[(Versioned master data)]
@@ -99,12 +100,13 @@ flowchart LR
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
 - **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Contest managers author ruleset configuration through the graphical composer; the API validates and stores versioned configuration. Store the ruleset identifier and version with each contest and score run.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
-- **Master-data refresh:** a nightly scheduled importer checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Keep the last valid version active on failures and queue interpreted boundary changes for review.
+- **Master-data refresh:** the initial single API process runs an internal nightly timer that invokes a reusable, idempotent import job. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, keep the last valid version active on failures, and queue interpreted boundary changes for review.
+- **Initial operations:** start the stack from CLI on one host with SQLite on local storage. Run one API process so the internal timer has a single owner; keep the nightly importer independent of HTTP startup and callable as a standalone job for future K3s scheduling.
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
 
 ### SQLite operating guidance
 
-SQLite fits the expected low concurrency and keeps initial deployment simple. It supports multiple readers but serializes writes, so keep write transactions short and avoid holding them open during parsing, scoring, or network calls. Enable foreign key enforcement on every connection, use a busy timeout, and consider WAL mode for reader/writer overlap. Keep the database on local storage; do not use a shared network filesystem as a multi-host database. Start with one API deployment and no separate job queue; move long-running recalculations to a worker only if usage or response times require it. Back up the database and test restores before relying on it for contest records.
+SQLite fits the expected low concurrency and keeps initial deployment simple. It supports multiple readers but serializes writes, so keep write transactions short and avoid holding them open during parsing, scoring, or network calls. Enable foreign key enforcement on every connection, use a busy timeout, and consider WAL mode for reader/writer overlap. Keep the database on local storage; do not use a shared network filesystem as a multi-host database. Start with one API process and no separate job queue; move long-running recalculations to a worker only if usage or response times require it. Back up the database and test restores before relying on it for contest records.
 
 ## Initial data model
 
