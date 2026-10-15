@@ -35,6 +35,9 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 ## Python REST API
 
 - Follow the repository's chosen Python framework and formatter once established. Use type hints, clear module boundaries, and focused request/response schemas.
+- Create and use the project-local Python virtual environment (`.venv`) managed by the checked-in `uv.lock`; do not install application or development dependencies globally. Use the Python version recorded in `.python-version`.
+- Developers may install local toolchain managers required for project work (for example, `uv` in the user-local bin directory and nvm under the user's home directory); do not require a globally installed project toolchain.
+- Use the Node version recorded in `.nvmrc`. nvm is the recommended per-user Node version manager; document a direct Node.js installation as an alternative.
 - Keep HTTP handlers thin. Put domain validation and scoring in reusable services, and return consistent error responses with useful field-level details.
 - Publish and maintain an OpenAPI schema. Use explicit API versioning for breaking changes; paginate collection endpoints and define stable sorting and filtering behavior.
 - Validate all client input on the server. Enforce authentication and authorization at the API boundary, including contest roles and ownership checks; never rely on frontend-only access control.
@@ -69,6 +72,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Update API documentation and relevant user or operator documentation when behavior changes.
 - Write meaningful tests alongside implementation. Prefer behavior-focused unit tests for domain rules, parsing, scoring, validation, and state transitions; cover boundary cases and failure paths. Add integration/API/UI tests where unit tests cannot verify cross-layer behavior. Run the relevant tests and record their exact commands and outcomes; do not add tests that only restate implementation details.
 - Keep changes scoped. Explain assumptions when a contest rule or product behavior is not defined; do not invent a universal rule where contest rules differ.
+- Group related changes into sensible commits instead of committing each file or small edit separately. Use explicit commit subjects; add a concise multi-line body when it helps explain scope, design choices, or verification performed.
 
 ## GitHub phase tracking
 
