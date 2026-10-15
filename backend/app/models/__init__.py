@@ -17,8 +17,10 @@ from backend.app.models.domain import (
 )
 from backend.app.models.enums import (
     ContestStatus,
+    EntityType,
     EntryStatus,
     MasterDataAuthorityRole,
+    MasterDataRunStatus,
     MasterDataVersionStatus,
     QsoDecisionSource,
     QsoDecisionStatus,
@@ -29,6 +31,7 @@ from backend.app.models.master_data import (
     CallDistrict,
     CallsignPrefix,
     ContestEntity,
+    ContestMasterDataVersion,
     CQZone,
     EntityCQZoneAssignment,
     EntityIARURegionAssignment,
@@ -44,6 +47,7 @@ from backend.app.models.master_data import (
     PrefixCQZoneAssignment,
     PrefixEntityAssignment,
     PrefixITUZoneAssignment,
+    ScoreRunMasterDataVersion,
 )
 from backend.app.models.types import UTCDateTime, utc_now
 
@@ -55,11 +59,13 @@ __all__ = [
     "CallsignPrefix",
     "Contest",
     "ContestEntity",
+    "ContestMasterDataVersion",
     "ContestStatus",
     "Entry",
     "EntryAccessGrant",
     "EntryRevision",
     "EntryStatus",
+    "EntityType",
     "EntityCQZoneAssignment",
     "EntityIARURegionAssignment",
     "EntityITUZoneAssignment",
@@ -70,6 +76,7 @@ __all__ = [
     "ITUZone",
     "MasterDataSource",
     "MasterDataAuthorityRole",
+    "MasterDataRunStatus",
     "MasterDataSyncRun",
     "MasterDataVersion",
     "MasterDataVersionStatus",
@@ -86,6 +93,7 @@ __all__ = [
     "QsoScore",
     "RulesetVersion",
     "ScoreRun",
+    "ScoreRunMasterDataVersion",
     "ScoreRunStatus",
     "Station",
     "SystemRole",

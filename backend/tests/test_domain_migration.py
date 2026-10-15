@@ -74,7 +74,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     with engine.connect() as connection:
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-    assert version == "833dcfe825b9"
+    assert version == "0003_master_data_intervals"
     assert foreign_keys == 1
     triggers = {
         row[0]

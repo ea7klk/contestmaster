@@ -28,6 +28,8 @@ The Vue development server is at `http://localhost:5173`; it proxies `/api` to t
 
 The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes.
 
+The API checks Big CTY immediately on startup when no active CTY version exists, then checks nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. The same importer can run once from CLI with `uv run contestmaster-master-data sync`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes basic provisioning status at `/api/v1/master-data/status`.
+
 ## Useful commands
 
 | Command | Purpose |

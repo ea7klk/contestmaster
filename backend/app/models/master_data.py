@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -53,6 +54,15 @@ class MasterDataSource(Base):
 
 class MasterDataSyncRun(Base):
     __tablename__ = "master_data_sync_runs"
+    __table_args__ = (
+        Index(
+            "uq_master_data_running_source_dataset",
+            "source_id",
+            "dataset_key",
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_id: Mapped[int] = mapped_column(
@@ -62,6 +72,7 @@ class MasterDataSyncRun(Base):
     started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     retrieved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    source_url: Mapped[str | None] = mapped_column(String(2048))
     source_release: Mapped[str | None] = mapped_column(String(160))
     checksum: Mapped[str | None] = mapped_column(String(128))
     parser_version: Mapped[str | None] = mapped_column(String(80))
@@ -71,15 +82,19 @@ class MasterDataSyncRun(Base):
         default=MasterDataRunStatus.RUNNING,
     )
     record_counts: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False, default=dict)
+    change_detected: Mapped[bool | None] = mapped_column(Boolean)
     error_summary: Mapped[str | None] = mapped_column(Text)
 
 
 class MasterDataVersion(Base):
     __tablename__ = "master_data_versions"
     __table_args__ = (
-        UniqueConstraint("dataset_key", "checksum", name="master_data_dataset_checksum_unique"),
+        UniqueConstraint("id", "dataset_key", name="master_data_version_id_dataset_unique"),
         CheckConstraint("length(trim(dataset_key)) > 0", name="dataset_key_not_blank"),
         CheckConstraint("length(checksum) >= 32", name="checksum_minimum_length"),
+        CheckConstraint(
+            "valid_to IS NULL OR valid_from < valid_to", name="effective_interval_positive"
+        ),
         Index(
             "uq_master_data_active_dataset",
             "dataset_key",
@@ -97,12 +112,59 @@ class MasterDataVersion(Base):
     retrieved_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     checksum: Mapped[str] = mapped_column(String(128), nullable=False)
     activated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    valid_from: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    valid_to: Mapped[datetime | None] = mapped_column(UTCDateTime())
     status: Mapped[MasterDataVersionStatus] = mapped_column(
         enum_column(MasterDataVersionStatus, "master_data_version_status"),
         nullable=False,
         default=MasterDataVersionStatus.CANDIDATE,
     )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class ContestMasterDataVersion(Base):
+    """Immutable dataset/version selection made for a contest at its start instant."""
+
+    __tablename__ = "contest_master_data_versions"
+    __table_args__ = (
+        UniqueConstraint("contest_id", "dataset_key", name="contest_dataset_version_unique"),
+        ForeignKeyConstraint(
+            ["master_data_version_id", "dataset_key"],
+            ["master_data_versions.id", "master_data_versions.dataset_key"],
+            ondelete="RESTRICT",
+            name="contest_master_data_version_dataset_fk",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    dataset_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    master_data_version_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    pinned_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class ScoreRunMasterDataVersion(Base):
+    """Dataset/version provenance consumed by a score run."""
+
+    __tablename__ = "score_run_master_data_versions"
+    __table_args__ = (
+        UniqueConstraint("score_run_id", "dataset_key", name="score_run_dataset_version_unique"),
+        ForeignKeyConstraint(
+            ["master_data_version_id", "dataset_key"],
+            ["master_data_versions.id", "master_data_versions.dataset_key"],
+            ondelete="RESTRICT",
+            name="score_run_master_data_version_dataset_fk",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    score_run_id: Mapped[int] = mapped_column(
+        ForeignKey("score_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    dataset_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    master_data_version_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
 
 class CQZone(Base):
@@ -189,6 +251,10 @@ class ContestEntity(Base):
     namespace: Mapped[str] = mapped_column(String(40), nullable=False)
     authority_code: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    continent: Mapped[str | None] = mapped_column(String(2))
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    utc_offset: Mapped[float | None] = mapped_column(Float)
     entity_type: Mapped[EntityType] = mapped_column(
         enum_column(EntityType, "entity_type"), nullable=False
     )
@@ -213,6 +279,10 @@ class CallsignPrefix(Base):
     )
     prefix_pattern: Mapped[str] = mapped_column(String(80), nullable=False)
     allocation_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    continent_override: Mapped[str | None] = mapped_column(String(2))
+    latitude_override: Mapped[float | None] = mapped_column(Float)
+    longitude_override: Mapped[float | None] = mapped_column(Float)
+    utc_offset_override: Mapped[float | None] = mapped_column(Float)
     valid_from: Mapped[date | None] = mapped_column(Date)
     valid_to: Mapped[date | None] = mapped_column(Date)
 

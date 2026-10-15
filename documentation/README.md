@@ -335,6 +335,10 @@ The source catalog in [Master data source recommendations](master-data/README.md
 erDiagram
     MASTER_DATA_SOURCE ||--o{ MASTER_DATA_SYNC_RUN : supplies
     MASTER_DATA_SYNC_RUN ||--o{ MASTER_DATA_VERSION : produces
+    CONTEST ||--o{ CONTEST_MASTER_DATA_VERSION : pins
+    CONTEST_MASTER_DATA_VERSION }o--|| MASTER_DATA_VERSION : selects
+    SCORE_RUN ||--o{ SCORE_RUN_MASTER_DATA_VERSION : records
+    SCORE_RUN_MASTER_DATA_VERSION }o--|| MASTER_DATA_VERSION : uses
     MASTER_DATA_VERSION ||--o{ CQ_ZONE : versions
     MASTER_DATA_VERSION ||--o{ ITU_ZONE : versions
     MASTER_DATA_VERSION ||--o{ IARU_REGION : versions
@@ -375,7 +379,13 @@ erDiagram
         text dataset_key
         text started_at_utc
         text finished_at_utc
+        text retrieved_at_utc
+        text source_url
+        text source_release
+        text archive_checksum
+        text parser_version
         text status
+        integer change_detected
         text error_summary
     }
     MASTER_DATA_VERSION {
@@ -388,6 +398,7 @@ erDiagram
         text valid_to_utc
         text checksum
         text activated_at_utc
+        text status
     }
     CQ_ZONE {
         integer id PK

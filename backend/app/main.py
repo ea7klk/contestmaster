@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -20,8 +21,14 @@ from backend.app.api.errors import (
     validation_error_handler,
 )
 from backend.app.config import get_settings
-from backend.app.db import engine, get_session
+from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
+from backend.app.master_data.scheduler import (
+    has_active_cty_version,
+    nightly_master_data_timer,
+    run_cty_sync,
+)
+from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
 
 settings = get_settings()
@@ -32,8 +39,27 @@ REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    yield
-    engine.dispose()
+    timer: asyncio.Task[None] | None = None
+    sync_lock = asyncio.Lock()
+    if settings.master_data_scheduler_enabled:
+        if not has_active_cty_version(SessionFactory):
+            await run_cty_sync(SessionFactory, sync_lock)
+        timer = asyncio.create_task(
+            nightly_master_data_timer(
+                SessionFactory, sync_lock, settings.master_data_nightly_hour_utc
+            ),
+            name="master-data-nightly-timer",
+        )
+    try:
+        yield
+    finally:
+        if timer is not None:
+            timer.cancel()
+            try:
+                await timer
+            except asyncio.CancelledError:
+                pass
+        engine.dispose()
 
 
 app = FastAPI(
@@ -105,3 +131,44 @@ def liveness() -> dict[str, str]:
 def readiness(session: Session = Depends(get_session)) -> dict[str, str]:  # noqa: B008
     session.execute(text("SELECT 1"))
     return {"status": "ready", "database": "ready"}
+
+
+@app.get(f"{settings.api_prefix}/master-data/status", tags=["master-data"])
+def master_data_status(session: Session = Depends(get_session)) -> dict[str, object]:  # noqa: B008
+    from sqlalchemy import desc, select
+
+    from backend.app.models import MasterDataSyncRun, MasterDataVersion
+
+    active = list(
+        session.scalars(
+            select(MasterDataVersion)
+            .where(MasterDataVersion.status == MasterDataVersionStatus.ACTIVE)
+            .order_by(MasterDataVersion.dataset_key)
+        )
+    )
+    latest = session.scalar(select(MasterDataSyncRun).order_by(desc(MasterDataSyncRun.started_at)))
+    return {
+        "active_versions": [
+            {
+                "dataset_key": version.dataset_key,
+                "version_id": version.id,
+                "source_release": version.source_release,
+                "valid_from": version.valid_from,
+                "valid_to": version.valid_to,
+            }
+            for version in active
+        ],
+        "latest_run": (
+            {
+                "id": latest.id,
+                "dataset_key": latest.dataset_key,
+                "status": latest.status.value,
+                "started_at": latest.started_at,
+                "finished_at": latest.finished_at,
+                "change_detected": latest.change_detected,
+                "has_error": latest.error_summary is not None,
+            }
+            if latest
+            else None
+        ),
+    }

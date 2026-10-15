@@ -14,12 +14,21 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     log_level: str = "INFO"
     allowed_origins: list[str] = ["http://localhost:5173"]
+    master_data_scheduler_enabled: bool = True
+    master_data_nightly_hour_utc: int = 2
 
     @field_validator("sqlite_busy_timeout_ms")
     @classmethod
     def busy_timeout_must_be_positive(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("sqlite_busy_timeout_ms must be positive")
+        return value
+
+    @field_validator("master_data_nightly_hour_utc")
+    @classmethod
+    def nightly_hour_must_be_valid(cls, value: int) -> int:
+        if not 0 <= value <= 23:
+            raise ValueError("master_data_nightly_hour_utc must be between 0 and 23")
         return value
 
 
