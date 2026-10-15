@@ -27,6 +27,13 @@ Collection endpoints use one-based `page` (default `1`) and `page_size` (default
 
 Public endpoints (health, published contest listings and published results) are explicitly unauthenticated. Privileged and participant operations declare authentication dependencies in the API layer and enforce ownership/role checks in services. The foundation provides the dependency boundary; the account/session implementation is planned for Phase 5. Guest log submission and entry receipt access are intentionally public/token-scoped workflows, not privileged accounts.
 
+## Ruleset authoring
+
+- `GET /api/v1/rulesets/catalog` returns the typed schemas, labels, and execution expectations for the built-in rule types used by the graphical composer.
+- `POST /api/v1/rulesets/validate` accepts a proposed declarative ruleset but does not save or activate it. A valid response includes the normalized metadata, configured rule-type list, readable summary, and integer-only worked formula example. Invalid configurations return the standard error envelope with rule paths and messages.
+- Conditions use the declared compare/all/any/not expression tree. The API rejects unknown fact paths and unsafe regular-expression features; it never evaluates submitted Python or JavaScript.
+- Saving and activating rulesets is a privileged contest-manager operation. Ruleset definitions are immutable versions, and every selection change is recorded in append-only contest activation history. Current API authentication enforcement is completed in Phase 5.
+
 ## Versioning
 
 Additive, backward-compatible fields and endpoints remain in the current API version. Removing or changing field meaning, response shape, or behavior incompatibly requires a new `/api/vN` route prefix and a documented deprecation/migration period. OpenAPI is the machine-readable contract for each version.

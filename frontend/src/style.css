@@ -53,6 +53,13 @@ a:focus-visible {
   color: #536a78;
   font-size: 0.9rem;
 }
+.site-navigation {
+  margin-left: auto;
+}
+.site-navigation a {
+  color: #075a83;
+  font-weight: 650;
+}
 .main-content {
   width: min(1080px, calc(100% - 2rem));
   margin: 3.5rem auto;
@@ -118,6 +125,10 @@ h1 {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.25rem;
+  }
+  .site-navigation {
+    margin-left: 0;
+    margin-top: 0.6rem;
   }
   .main-content {
     margin: 1.5rem auto;

@@ -9,6 +9,9 @@ import SiteFooter from './components/SiteFooter.vue'
         >Contestmaster</a
       >
       <span class="header-caption">Amateur radio contest engine</span>
+      <nav aria-label="Main navigation" class="site-navigation">
+        <RouterLink to="/rulesets/compose">Ruleset composer</RouterLink>
+      </nav>
     </header>
     <main id="main-content" class="main-content">
       <RouterView />

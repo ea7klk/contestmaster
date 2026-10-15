@@ -8,6 +8,11 @@ export const router = createRouter({
       name: 'home',
       component: () => import('./views/HomeView.vue'),
     },
+    {
+      path: '/rulesets/compose',
+      name: 'ruleset-composer',
+      component: () => import('./views/RulesetComposerView.vue'),
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

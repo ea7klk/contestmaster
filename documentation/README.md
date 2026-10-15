@@ -103,7 +103,7 @@ flowchart LR
 - **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides a simple graphical rule composer for contest managers. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
 - **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for validation, scoring, adjudication, and standings. Keep it independent of HTTP and SQLite.
-- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. Contest managers author ruleset configuration through the graphical composer; the API validates and stores versioned configuration. Store the ruleset identifier and version with each contest and score run.
+- **Rulesets:** define contest-specific categories, exchange interpretation, QSO eligibility, multipliers, penalties, and rounding rules. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
 - **Master-data refresh:** the initial single API process invokes a reusable, idempotent import job at startup if no active master-data version exists, then runs it nightly. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It checks configured public reference sources, records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, expose provisioning status, keep the last valid version active on failures, and queue interpreted boundary changes for review. Scoring that depends on master data requires a version valid at the contest's start instant.
 - **Master-data version governance:** each dataset version has an effective UTC interval. For a contest, pin the version of each required dataset whose interval contains the contest start instant; keep those references on the contest and each score run so later source updates cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. A global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
@@ -119,7 +119,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. Keep common fields relational and allow contest-specific exchanges and rule configuration to be stored as validated structured data. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
 
-The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup.
+The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition.
 
 ```mermaid
 erDiagram
@@ -130,6 +130,9 @@ erDiagram
     PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
     CONTEST ||--o{ RULESET_VERSION : selects
+    CONTEST ||--o{ RULESET_ACTIVATION : history
+    RULESET_VERSION ||--o{ RULESET_ACTIVATION : activated
+    SYSTEM_USER o|--o{ RULESET_ACTIVATION : activates
     CONTEST ||--o{ CONTEST_MASTER_DATA_VERSION : pins
     MASTER_DATA_VERSION ||--o{ CONTEST_MASTER_DATA_VERSION : selected_for
     ENTRY ||--o{ ENTRY_REVISION : receives
@@ -202,6 +205,14 @@ erDiagram
         text source_edition
         text rule_type_keys_json
         text configuration_json
+    }
+    RULESET_ACTIVATION {
+        integer id PK
+        integer contest_id FK
+        integer ruleset_version_id FK
+        integer activated_by_user_id FK
+        text configuration_sha256
+        text activated_at_utc
     }
     ENTRY {
         integer id PK

@@ -8,12 +8,28 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...vue.configs['flat/recommended'],
   {
+    files: ['src/**/*.{ts,vue}'],
+    languageOptions: {
+      globals: {
+        AbortController: 'readonly',
+        Blob: 'readonly',
+        document: 'readonly',
+        Event: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLSelectElement: 'readonly',
+        HTMLTextAreaElement: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.vue'],
     languageOptions: { parserOptions: { parser: tseslint.parser } },
     rules: {
       // Prettier owns markup formatting; these ESLint stylistic checks conflict with it.
       'vue/max-attributes-per-line': 'off',
       'vue/html-closing-bracket-newline': 'off',
+      'vue/html-self-closing': 'off',
       'vue/html-indent': 'off',
       'vue/singleline-html-element-content-newline': 'off',
     },
