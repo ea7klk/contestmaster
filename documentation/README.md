@@ -22,7 +22,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 
 ### Contest administration
 
-- Configure ruleset options, contest dates, categories, bands, modes, and exchange definitions.
+- Configure ruleset options, contest dates, categories, bands, modes, exchange definitions, and whether accepted new log uploads automatically trigger result recalculation.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Track adjudication decisions and score changes for later review.
@@ -32,7 +32,7 @@ This document captures an initial direction for Contestmaster, a universal engin
 The system has two privileged account roles. A participant is a contest identity, not a system account, and does not need to register before submitting a log.
 
 - **Global administrator:** has all privileges across the system and all contests.
-- **Contest manager:** can create and manage their own contests, configure those contests' rules, run contest result generation, and generate contest result lists. Contest managers do not have global administrator privileges.
+- **Contest manager:** can create and manage their own contests, configure those contests' rules and automatic recalculation setting, run contest result generation, and generate contest result lists. Contest managers do not have global administrator privileges.
 - **Log submitter:** can submit a contest log without an account. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
 - **Public visitor:** can view contest results and standings in the web frontend without an account. Viewing results does not grant contest-management privileges.
 
@@ -57,10 +57,11 @@ flowchart LR
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
     Domain --> Rules[Versioned contest rulesets]
-    Domain --> Scoring[Integer scoring and adjudication]
+    Domain -->|when enabled by contest setting| Scoring[Integer scoring and adjudication]
     API --> Store[ORM persistence layer]
     Store -->|ORM-managed connection and session| DB[(SQLite)]
     API -->|account-free log upload| Adapters[Import and export adapters]
+    Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo and other log formats]
 ```
 
@@ -108,6 +109,7 @@ erDiagram
         text ends_at_utc
         text status
         integer ruleset_version_id FK
+        integer auto_recalculate_on_upload
     }
     PARTICIPANT {
         integer id PK
@@ -177,5 +179,6 @@ erDiagram
 - Use UTC timestamps with a documented, consistent precision. SQLite can store them as ISO 8601 text; convert to local time at display or file-format boundaries.
 - Use integer values only for points, bonuses, penalties, multipliers, intermediate score values, and final scores. Never use floating-point or decimal values for scoring. If a published rule yields a fractional result, apply its specified rounding rule and keep the stored result an integer.
 - Keep each score run immutable or auditable: a changed log or ruleset should produce a new run, not silently rewrite the prior explanation.
+- Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
 - Treat JSON configuration and exchange payloads as untrusted input. Validate their schema and preserve the original submitted exchange when a normalized interpretation is stored.
 - Add indexes based on actual query needs, especially for contacts by entry, time, band, and callsign. Keep uniqueness rules contest-aware; a duplicate definition can vary by ruleset.
