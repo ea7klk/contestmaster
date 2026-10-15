@@ -10,6 +10,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Keep domain rules independent of HTTP handlers, database models, and Vue components. Use explicit services or modules for log validation, scoring, multipliers, and standings.
 - Model common concepts such as contests, participants, stations, contacts (QSOs), exchanges, bands, modes, logs, and results without assuming every contest uses every field or the same rules.
 - Implement contest-specific behavior behind a documented ruleset interface or configuration. Avoid scattered contest-name conditionals and hidden defaults.
+- Let contest managers create and edit ruleset configuration with a simple graphical rule composer in the Vue frontend. Validate the composed configuration on the backend, version it, and keep executable contest logic behind the ruleset interface.
 - Prefer small, composable changes that preserve existing public API and data compatibility. Document intentional breaking changes and migrations.
 
 ## Contest data and scoring
