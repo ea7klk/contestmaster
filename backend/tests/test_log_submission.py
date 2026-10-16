@@ -24,6 +24,7 @@ from backend.app.models import (
     SystemRole,
     SystemUser,
 )
+from backend.app.rate_limit import limiter
 
 LOG = """START-OF-LOG
 CONTEST: guest-sprint
@@ -84,12 +85,12 @@ def log_database():
             yield session
 
     app.dependency_overrides[get_session] = override_session
-    logs.api.limiter.clear()
+    limiter.clear()
     try:
         yield factory
     finally:
         app.dependency_overrides.clear()
-        logs.api.limiter.clear()
+        limiter.clear()
         Base.metadata.drop_all(engine)
         engine.dispose()
 
@@ -505,20 +506,32 @@ def test_verified_participant_identity_is_associated_and_can_use_its_session(log
         assert revision.received_via == "participant_session"
 
 
-def test_sliding_window_rate_limiter_rejects_excess_requests():
-    logs.api.limiter.clear()
-    assert logs.api.RATE_LIMIT_COUNT == 60
-    for index in range(logs.api.RATE_LIMIT_COUNT):
-        assert logs.api.allow_submission("station-test", float(index))
-    assert not logs.api.allow_submission("station-test", 59.5)
-    assert logs.api.allow_submission("station-test", 120.0)
-
-
-def test_anonymous_log_upload_allows_60_per_ip_per_rolling_minute(log_database):
+def test_anonymous_log_upload_has_no_per_ip_rate_limit(log_database):
     client = TestClient(app)
-    accepted = [submit(client).status_code for _ in range(60)]
+    accepted = [
+        submit(client, key=f"request-key-{index:04d}").status_code
+        for index in range(65)
+    ]
 
     assert all(status in {200, 201} for status in accepted)
-    limited = submit(client, key="request-key-0002")
-    assert limited.status_code == 429
-    assert int(limited.headers["Retry-After"]) > 0
+
+
+def test_log_resubmission_has_no_per_ip_rate_limit(log_database):
+    client = TestClient(app)
+    created = submit(client, key="resubmit-create-0001")
+    assert created.status_code in {200, 201}
+    entry_id = created.json()["entry_id"]
+    receipt = created.json()["receipt_token"]
+    results = [
+        client.put(
+            f"/api/v1/public/entries/{entry_id}/log",
+            files={"file": ("entry.log", LOG.encode(), "text/plain")},
+            headers={
+                "Idempotency-Key": f"resubmit-key-{index:04d}",
+                "X-Entry-Receipt": receipt,
+            },
+        ).status_code
+        for index in range(125)
+    ]
+
+    assert all(status in {200, 201} for status in results)

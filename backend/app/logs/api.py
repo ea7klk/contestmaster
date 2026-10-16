@@ -42,7 +42,7 @@ from backend.app.models import (
     RulesetVersion,
     Station,
 )
-from backend.app.rate_limit import enforce_rate_limit, limiter
+from backend.app.rate_limit import enforce_rate_limit
 from backend.app.rulesets.persistence import load_ruleset_version
 from backend.app.rulesets.schema import SubmissionRule
 
@@ -58,21 +58,6 @@ FORMAT_SUFFIXES = {
     ".adif": "adif",
 }
 _IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
-RATE_LIMIT_COUNT = 60
-RATE_LIMIT_WINDOW_SECONDS = 60
-
-
-def allow_submission(client_key: str, now: float) -> bool:
-    allowed, _retry = limiter.allow(
-        "guest-log-upload",
-        client_key,
-        limit=RATE_LIMIT_COUNT,
-        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
-        now=now,
-    )
-    return allowed
-
-
 def _message(message: ImportMessage) -> dict[str, object]:
     return {"line": message.line, "code": message.code, "message": message.message}
 
@@ -293,13 +278,6 @@ async def submit_log(
     """Accept a complete ruleset-supported log anonymously and atomically."""
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
-    enforce_rate_limit(
-        request,
-        "guest-log-upload",
-        limit=RATE_LIMIT_COUNT,
-        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
-        message="Too many log submissions. Retry later.",
-    )
     content_bytes, upload_filename, content_type = await _read_upload(request)
     filename = _filename(upload_filename)
     suffix = PurePosixPath(filename).suffix.casefold()
@@ -430,13 +408,6 @@ async def resubmit_log(
     receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
     participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
 ) -> dict[str, object] | JSONResponse:
-    enforce_rate_limit(
-        request,
-        "entry-log-revision",
-        limit=60,
-        window_seconds=60,
-        message="Too many entry changes. Retry later.",
-    )
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
     content_bytes, upload_filename, content_type = await _read_upload(request)
@@ -450,7 +421,16 @@ async def resubmit_log(
         content = content_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="The log file must be UTF-8 encoded.") from exc
-    entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
+    entry = session.get(Entry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    _authorize_entry(
+        entry,
+        request=request,
+        session=session,
+        receipt=receipt,
+        participant=participant,
+    )
     contest = session.get(Contest, entry.contest_id)
     if contest is None:
         raise HTTPException(status_code=404, detail="Entry not found.")

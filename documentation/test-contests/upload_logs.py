@@ -25,7 +25,6 @@ CONTESTS = {
         "test-advanced-cabrillo-rules-challenge",
     ),
 }
-DEFAULT_DELAY_SECONDS = 1.1
 MAX_ATTEMPTS = 5
 LOGGER = logging.getLogger("contestmaster.test_upload")
 
@@ -75,14 +74,6 @@ def _multipart(filename: str, content: bytes) -> tuple[bytes, str]:
         + f"\r\n--{boundary}--\r\n".encode("ascii")
     )
     return body, f"multipart/form-data; boundary={boundary}"
-
-
-def _retry_after(error: HTTPError) -> float:
-    value = error.headers.get("Retry-After", "")
-    try:
-        return max(float(value), DEFAULT_DELAY_SECONDS)
-    except ValueError:
-        return DEFAULT_DELAY_SECONDS
 
 
 def _safe_server_detail(error: HTTPError) -> str:
@@ -164,27 +155,21 @@ def upload_one(base_url: str, contest_slug: str, path: Path) -> UploadResult:
                 )
         except HTTPError as error:
             if error.code == 429 and attempt + 1 < MAX_ATTEMPTS:
-                delay = _retry_after(error)
                 LOGGER.warning(
-                    "%s: API rate limit (HTTP 429); retry %d/%d in %.1f seconds",
+                    "%s: HTTP 429; retry %d/%d immediately",
                     path.name,
                     attempt + 1,
                     MAX_ATTEMPTS - 1,
-                    delay,
                 )
-                time.sleep(delay)
                 continue
             if error.code >= 500 and attempt + 1 < MAX_ATTEMPTS:
-                delay = DEFAULT_DELAY_SECONDS * (attempt + 1)
                 LOGGER.warning(
-                    "%s: server error (HTTP %d); retry %d/%d in %.1f seconds",
+                    "%s: server error (HTTP %d); retry %d/%d immediately",
                     path.name,
                     error.code,
                     attempt + 1,
                     MAX_ATTEMPTS - 1,
-                    delay,
                 )
-                time.sleep(delay)
                 continue
             return UploadResult(
                 path.name,
@@ -195,18 +180,15 @@ def upload_one(base_url: str, contest_slug: str, path: Path) -> UploadResult:
             )
         except (TimeoutError, URLError, OSError) as error:
             if attempt + 1 < MAX_ATTEMPTS:
-                delay = DEFAULT_DELAY_SECONDS * (attempt + 1)
                 reason = getattr(error, "reason", None)
                 reason_text = _redact(str(reason or error))
                 LOGGER.warning(
-                    "%s: network error (%s); retry %d/%d in %.1f seconds",
+                    "%s: network error (%s); retry %d/%d immediately",
                     path.name,
                     reason_text,
                     attempt + 1,
                     MAX_ATTEMPTS - 1,
-                    delay,
                 )
-                time.sleep(delay)
                 continue
             return UploadResult(
                 path.name,
@@ -249,7 +231,7 @@ def _log_summary(label: str, results: list[UploadResult], elapsed_seconds: float
     )
 
 
-def upload_set(base_url: str, name: str, delay: float) -> list[UploadResult]:
+def upload_set(base_url: str, name: str) -> list[UploadResult]:
     directory, contest_slug = CONTESTS[name]
     extension = ".adi" if name == "adif" else ".log"
     files = sorted((directory / "logs").glob(f"*{extension}"))
@@ -258,17 +240,14 @@ def upload_set(base_url: str, name: str, delay: float) -> list[UploadResult]:
             f"No {extension} files found in {directory / 'logs'}; run its generate_logs.py first."
         )
     LOGGER.info(
-        "Starting %s batch: contest=%s files=%d delay=%.1fs",
+        "Starting %s batch: contest=%s files=%d",
         name,
         contest_slug,
         len(files),
-        delay,
     )
     results = []
     started = time.monotonic()
     for index, path in enumerate(files):
-        if index:
-            time.sleep(delay)
         LOGGER.info("Uploading %s [%d/%d]", path.name, index + 1, len(files))
         try:
             result = upload_one(base_url, contest_slug, path)
@@ -316,18 +295,7 @@ def main() -> int:
         default="all",
         help="fixture set to upload (default: all)",
     )
-    parser.add_argument(
-        "--delay",
-        type=float,
-        default=DEFAULT_DELAY_SECONDS,
-        help=(
-            f"seconds between uploads; minimum is {DEFAULT_DELAY_SECONDS:g} "
-            "to stay under the local API limit"
-        ),
-    )
     args = parser.parse_args()
-    if args.delay < DEFAULT_DELAY_SECONDS:
-        parser.error(f"--delay must be at least {DEFAULT_DELAY_SECONDS:g} seconds")
     selections = tuple(CONTESTS) if args.contest == "all" else (args.contest,)
     logging.basicConfig(
         level=logging.INFO,
@@ -337,11 +305,9 @@ def main() -> int:
     all_results: list[UploadResult] = []
     started = time.monotonic()
     try:
-        for index, selection in enumerate(selections):
-            if index:
-                time.sleep(args.delay)
+        for selection in selections:
             LOGGER.info("Using app endpoint %s", _display_url(args.url))
-            all_results.extend(upload_set(args.url, selection, args.delay))
+            all_results.extend(upload_set(args.url, selection))
     except (FileNotFoundError, OSError) as error:
         LOGGER.error("Cannot start upload batch: %s", error)
         return 2

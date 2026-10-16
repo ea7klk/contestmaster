@@ -68,11 +68,6 @@ def test_app_base_url_normalizes_vite_and_api_urls():
     )
 
 
-def test_default_delay_stays_below_the_updated_api_rate_limit():
-    assert upload_logs.DEFAULT_DELAY_SECONDS == 1.1
-    assert 60 / upload_logs.DEFAULT_DELAY_SECONDS < 60
-
-
 def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypatch, caplog):
     caplog.set_level(logging.INFO, logger="contestmaster.test_upload")
     log_dir = tmp_path / "cabrillo" / "logs"
@@ -91,9 +86,7 @@ def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypa
         ),
     )
 
-    results = upload_logs.upload_set(
-        "http://127.0.0.1:8000", "cabrillo", upload_logs.DEFAULT_DELAY_SECONDS
-    )
+    results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo")
 
     messages = caplog.text
     assert len(results) == 1 and results[0].accepted
@@ -102,6 +95,37 @@ def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypa
     assert "Accepted K0AAA.log [1/1]" in messages
     assert "cabrillo summary: total=1 accepted=1 failed=0 retries=0" in messages
     assert "rate=" in messages and "logs/min" in messages
+
+
+def test_upload_batch_does_not_pause_between_logs(tmp_path: Path, monkeypatch):
+    log_dir = tmp_path / "cabrillo" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "K0AAA.log").write_text("first", encoding="utf-8")
+    (log_dir / "K0BBB.log").write_text("second", encoding="utf-8")
+    monkeypatch.setitem(
+        upload_logs.CONTESTS,
+        "cabrillo",
+        (tmp_path / "cabrillo", "test-cabrillo-results-sprint"),
+    )
+    calls = []
+    monkeypatch.setattr(
+        upload_logs,
+        "upload_one",
+        lambda _base, _slug, path: (
+            calls.append(path.name)
+            or upload_logs.UploadResult(path.name, True, entry_id=42)
+        ),
+    )
+    monkeypatch.setattr(
+        upload_logs.time,
+        "sleep",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("uploader paused")),
+    )
+
+    results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo")
+
+    assert calls == ["K0AAA.log", "K0BBB.log"]
+    assert all(result.accepted for result in results)
 
 
 def test_advanced_cabrillo_fixture_is_uploadable_as_a_distinct_contest(tmp_path: Path, monkeypatch):
@@ -123,11 +147,7 @@ def test_advanced_cabrillo_fixture_is_uploadable_as_a_distinct_contest(tmp_path:
         ),
     )
 
-    results = upload_logs.upload_set(
-        "http://127.0.0.1:8000",
-        "advanced-cabrillo",
-        upload_logs.DEFAULT_DELAY_SECONDS,
-    )
+    results = upload_logs.upload_set("http://127.0.0.1:8000", "advanced-cabrillo")
 
     assert calls == [("test-advanced-cabrillo-rules-challenge", "K0AAA.log")]
     assert len(results) == 1 and results[0].accepted
@@ -167,10 +187,15 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
         return Response()
 
     monkeypatch.setattr(upload_logs, "urlopen", rate_limited_then_accepted)
-    monkeypatch.setattr(upload_logs.time, "sleep", lambda _delay: None)
+    monkeypatch.setattr(
+        upload_logs.time,
+        "sleep",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("uploader paused")),
+    )
     result = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-results-sprint", log)
     assert result.accepted and result.retries == 1
-    assert "API rate limit (HTTP 429)" in caplog.text
+    assert "HTTP 429" in caplog.text
+    assert "immediately" in caplog.text
     assert "retry 1/4" in caplog.text
 
     caplog.clear()
@@ -196,9 +221,7 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
         "cabrillo",
         (failure_dir, "test-cabrillo-results-sprint"),
     )
-    batch_results = upload_logs.upload_set(
-        "http://127.0.0.1:8000", "cabrillo", upload_logs.DEFAULT_DELAY_SECONDS
-    )
+    batch_results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo")
     assert len(batch_results) == 1 and not batch_results[0].accepted
     assert "HTTP 409: contest closed" in caplog.text
     assert "1/1" in caplog.text

@@ -8,7 +8,7 @@ Phase 9 reviewed account authentication, session and participant-token handling,
 - API routes apply server-side role and contest-ownership checks. Public result routes return published snapshots and do not include original logs, QSOs, participant email, or internal notes.
 - CORS uses an explicit origin allowlist. State-changing participant-session requests require CSRF protection. Production/staging configuration rejects insecure cookies, weak/default receipt secrets, non-HTTPS origins/frontend URL, absent email delivery, and disabled scheduling.
 - JSON and multipart requests have explicit size limits. Cabrillo and ADI/ADIF parsing limit line count, line length, and QSO count. Filenames are reduced to safe basenames and are not used as paths. Parsing completes before accepted data is written in a short ORM transaction.
-- IP-based in-process rate limits cover authentication, magic-link, guest log, and entry-access operations. They are intentionally single-process controls, not a replacement for reverse-proxy abuse prevention or a distributed rate limiter.
+- IP-based in-process rate limits cover authentication, magic-link, participant access, and entry-access operations. Log creation and log-file resubmission are not rate-limited by the application; request and file size limits still apply. These controls are intentionally single-process, not a replacement for reverse-proxy abuse prevention or a distributed rate limiter.
 - Unexpected API errors return a stable generic response. Logs avoid exception payloads and secrets; the request ID can be used to correlate safe server events. Frontend user-supplied values are rendered by Vue text interpolation, not interpreted as HTML.
 
 ### Residual risks and deployment controls

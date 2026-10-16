@@ -103,7 +103,7 @@ None. All current Phase 0 decisions have been recorded.
 
 **Depends on:** Phases 2, 4, and 5.
 
-1. Implement unauthenticated log-submission endpoints with request/file size limits, accepted-format checks, rate limits, idempotency support, and safe filename handling.
+1. Implement unauthenticated log-submission endpoints with request/file size limits, accepted-format checks, idempotency support, and safe filename handling. Do not apply an application rate limit to log creation or file resubmission.
 2. Create participant and entry records from submission data without requiring a system account; keep the privileged-user submitter reference nullable. Associate verified participant identities when the entrant has registered.
 3. Implement Cabrillo parsing first, with contest-specific header/QSO templates and category mapping; preserve unknown headers/fields for review or round-trip export.
 4. Parse files outside long-lived database transactions, then persist accepted input atomically through ORM transactions.
