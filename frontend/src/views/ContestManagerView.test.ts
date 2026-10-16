@@ -128,6 +128,7 @@ describe('ContestManagerView', () => {
   })
 
   it('assigns a saved ruleset to a draft contest through the authenticated API', async () => {
+    let assignedRuleset = false
     const contest = {
       id: 12,
       owner_user_id: 4,
@@ -169,6 +170,7 @@ describe('ContestManagerView', () => {
           init?.method === 'PUT' &&
           path.endsWith('/ruleset')
         ) {
+          assignedRuleset = true
           expect(JSON.parse(String(init.body))).toEqual({
             ruleset_version_id: 21,
           })
@@ -176,7 +178,12 @@ describe('ContestManagerView', () => {
         }
         if (path.includes('/contests')) {
           return ok({
-            items: [{ ...contest, ruleset_version_id: 21 }],
+            items: [
+              {
+                ...contest,
+                ruleset_version_id: assignedRuleset ? 21 : null,
+              },
+            ],
             meta: { page: 1, page_size: 100, total: 1, pages: 1 },
           })
         }
@@ -186,8 +193,9 @@ describe('ContestManagerView', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountManager()
     await flushPromises()
+    expect(wrapper.text()).not.toContain('Open contest')
 
-    await wrapper.get('select').setValue('21')
+    await wrapper.get('.ruleset-row select').setValue('21')
     await wrapper.get('.ruleset-row button').trigger('click')
     await flushPromises()
 
@@ -198,6 +206,68 @@ describe('ContestManagerView', () => {
     ).toBe(true)
     expect(wrapper.text()).toContain('Ruleset assigned to Field Day Sprint')
     expect(wrapper.text()).toContain('Edit ruleset')
+    expect(wrapper.text()).toContain('Open contest')
+  })
+
+  it('opens a ruleset-ready draft for public discovery', async () => {
+    let status = 'draft'
+    const statusChanges: Array<{ path: string; status: string }> = []
+    const contest = {
+      id: 18,
+      owner_user_id: 4,
+      name: 'Autumn Radio Rally',
+      slug: 'autumn-radio-rally',
+      description: 'A public weekend contest.',
+      starts_at: '2026-11-07T12:00:00Z',
+      ends_at: '2026-11-07T18:00:00Z',
+      periodicity: null,
+      log_submission_cutoff_at: '2026-11-14T12:00:00Z',
+      auto_recalculate_on_upload: false,
+      ruleset_version_id: 21,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        if (path.endsWith('/contests/18/status') && init?.method === 'PUT') {
+          const payload = JSON.parse(String(init.body)) as { status: string }
+          statusChanges.push({ path, status: payload.status })
+          status = payload.status
+          return ok({ ...contest, status })
+        }
+        if (path.includes('/contests')) {
+          return ok({
+            items: [{ ...contest, status }],
+            meta: { page: 1, page_size: 100, total: 1, pages: 1 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('draft')
+    expect(wrapper.text()).toContain('Open contest')
+    expect(wrapper.text()).toContain('Opening makes this contest public')
+    await wrapper
+      .get('.contest-card')
+      .get('button.primary-button')
+      .trigger('click')
+    await flushPromises()
+
+    expect(statusChanges).toEqual([
+      { path: '/api/v1/contests/18/status', status: 'open' },
+    ])
+    expect(wrapper.text()).toContain('open')
+    expect(wrapper.text()).toContain(
+      'Autumn Radio Rally is now open to the public.',
+    )
+    await expectAccessible(wrapper.element)
   })
 
   it('loads an existing contest into the edit form and saves its changed details', async () => {

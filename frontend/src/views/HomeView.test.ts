@@ -92,7 +92,7 @@ describe('HomeView public contest activity', () => {
     finishUpcoming?.(response([]))
     await flushPromises()
     expect(loadingWrapper.text()).toContain(
-      'No public contests are upcoming or in progress.',
+      'No contests are open or in progress right now. Contest managers can open a draft after assigning a valid ruleset.',
     )
     loadingWrapper.unmount()
 

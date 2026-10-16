@@ -104,3 +104,10 @@ export function selectRuleset(id: number, rulesetVersionId: number) {
     body: JSON.stringify({ ruleset_version_id: rulesetVersionId }),
   })
 }
+
+export function changeContestStatus(id: number, status: ContestStatus) {
+  return apiRequest<Contest>(`/contests/${id}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  })
+}

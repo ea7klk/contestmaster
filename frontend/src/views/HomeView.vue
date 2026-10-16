@@ -160,7 +160,8 @@ onBeforeUnmount(() => {
         v-else-if="visibleUpcomingContests.length === 0"
         class="notice feed-state"
       >
-        No public contests are upcoming or in progress.
+        No contests are open or in progress right now. Contest managers can open
+        a draft after assigning a valid ruleset.
       </p>
       <ul v-else class="contest-feed">
         <li v-for="contest in visibleUpcomingContests" :key="contest.id">

@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
   createContest,
+  changeContestStatus,
   importContest,
   listContests,
   previewContestSchedule,
@@ -13,6 +14,7 @@ import {
   type ContestDraft,
   type ContestImportPackage,
   type ContestPeriodicity,
+  type ContestStatus,
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import { listRulesetVersions, type SavedRulesetVersion } from '../api/rulesets'
@@ -43,6 +45,7 @@ const editingId = ref<number | null>(null)
 const statusMessage = ref('')
 const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
+const statusSavingId = ref<number | null>(null)
 const importing = ref(false)
 const previewYear = ref(new Date().getUTCFullYear())
 const schedulePreview = ref('')
@@ -243,6 +246,27 @@ async function saveRuleset(contest: Contest) {
         : 'The ruleset could not be assigned.'
   } finally {
     rulesetSavingId.value = null
+  }
+}
+
+async function setContestStatus(contest: Contest, status: ContestStatus) {
+  statusSavingId.value = contest.id
+  errorMessage.value = ''
+  statusMessage.value = ''
+  try {
+    await changeContestStatus(contest.id, status)
+    await refreshData()
+    statusMessage.value =
+      status === 'open'
+        ? `${contest.name} is now open to the public.`
+        : `${contest.name} is now closed.`
+  } catch (error) {
+    errorMessage.value =
+      error instanceof ApiError
+        ? error.message
+        : 'The contest status could not be changed.'
+  } finally {
+    statusSavingId.value = null
   }
 }
 
@@ -556,14 +580,59 @@ onMounted(refreshData)
             <h3>{{ contest.name }}</h3>
             <p class="field-help">/{{ contest.slug }}</p>
           </div>
-          <button
-            class="secondary-button"
-            type="button"
-            @click="editContest(contest)"
-          >
-            Edit details
-          </button>
+          <div class="contest-card-actions">
+            <button
+              v-if="
+                contest.status === 'draft' &&
+                contest.ruleset_version_id !== null
+              "
+              class="primary-button"
+              type="button"
+              :disabled="statusSavingId === contest.id"
+              @click="setContestStatus(contest, 'open')"
+            >
+              {{ statusSavingId === contest.id ? 'Opening…' : 'Open contest' }}
+            </button>
+            <button
+              v-else-if="contest.status === 'open'"
+              class="secondary-button"
+              type="button"
+              :disabled="statusSavingId === contest.id"
+              @click="setContestStatus(contest, 'closed')"
+            >
+              {{ statusSavingId === contest.id ? 'Closing…' : 'Close contest' }}
+            </button>
+            <button
+              v-else-if="
+                contest.status === 'closed' &&
+                contest.ruleset_version_id !== null
+              "
+              class="primary-button"
+              type="button"
+              :disabled="statusSavingId === contest.id"
+              @click="setContestStatus(contest, 'open')"
+            >
+              {{
+                statusSavingId === contest.id ? 'Reopening…' : 'Reopen contest'
+              }}
+            </button>
+            <button
+              class="secondary-button"
+              type="button"
+              @click="editContest(contest)"
+            >
+              Edit details
+            </button>
+          </div>
         </div>
+        <p
+          v-if="
+            contest.status === 'draft' && contest.ruleset_version_id !== null
+          "
+          class="field-help"
+        >
+          Opening makes this contest public and eligible for log submissions.
+        </p>
         <RouterLink :to="`/manage/contests/${contest.id}/results`">
           Generate and publish results
         </RouterLink>
@@ -657,6 +726,12 @@ onMounted(refreshData)
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+.contest-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 .file-button {
   position: relative;
@@ -816,6 +891,9 @@ onMounted(refreshData)
   .ruleset-row {
     align-items: stretch;
     flex-direction: column;
+  }
+  .contest-card-actions {
+    justify-content: flex-start;
   }
   .form-grid,
   .contest-meta {
