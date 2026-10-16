@@ -4,11 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from contact_graph import build_contact_plan  # noqa: E402
 
 PARTICIPANT_COUNT = 56
 CONTEST = "test-adif-ft8-sprint"
 QSO_DATE = "20240914"
+STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 
 
 def callsign(index: int) -> str:
@@ -24,20 +30,21 @@ def callsign(index: int) -> str:
 
 
 def build_logs() -> dict[str, str]:
+    stations = [callsign(index) for index in range(PARTICIPANT_COUNT)]
+    contact_plan = build_contact_plan(stations, STARTS_AT)
     logs: dict[str, str] = {}
-    for index in range(PARTICIPANT_COUNT):
-        station = callsign(index)
-        minute = index % 60
-        time_on = f"{12 + index // 60:02d}{minute:02d}"
-        record = (
-            f"<STATION_CALLSIGN:{len(station)}>{station} "
-            "<CALL:7>EA7TEST <BAND:3>20M <MODE:3>FT8 "
-            f"<QSO_DATE:8>{QSO_DATE} <TIME_ON:4>{time_on} "
-            "<RST_SENT:3>-10 <RST_RCVD:3>-12 <EOR>"
-        )
-        logs[f"{station}.adi"] = (
-            "<ADIF_VER:5>3.1.4 <EOH>\n" + record + "\n<EOF>\n"
-        )
+    for station in stations:
+        records = []
+        for contact in contact_plan[station]:
+            time_on = contact.occurred_at.strftime("%H%M%S")
+            worked = contact.worked_callsign
+            records.append(
+                f"<STATION_CALLSIGN:{len(station)}>{station} "
+                f"<CALL:{len(worked)}>{worked} <BAND:3>20M <MODE:3>FT8 "
+                f"<QSO_DATE:8>{QSO_DATE} <TIME_ON:6>{time_on} "
+                "<RST_SENT:3>-10 <RST_RCVD:3>-12 <EOR>"
+            )
+        logs[f"{station}.adi"] = "<ADIF_VER:5>3.1.4 <EOH>\n" + "\n".join(records) + "\n<EOF>\n"
     return logs
 
 

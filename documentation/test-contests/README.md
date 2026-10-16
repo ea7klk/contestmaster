@@ -7,7 +7,11 @@ These two synthetic contests exercise the public log intake with no participant 
 | [`cabrillo`](cabrillo/) | `contest.json` | Cabrillo 3.0 | 110 |
 | [`adif`](adif/) | `contest.json` | ADI/ADIF | 56 |
 
-Every station and contact is synthetic. The contest event windows ended on **2024-09-14**. The separate submission cutoff is **2099-12-31 23:59:59 UTC**, and the rulesets accept late logs. Contest import creates each contest as a draft, so a contest manager must open it before the public upload endpoint will accept logs. The event being in the past does not close the submission window.
+Every station and contact is synthetic. Each participant log contains 10, 15, or 20 QSOs. Exactly 80% of worked-call entries name another participant whose log contains the reciprocal QSO; the other 20% name external stations with no log in that contest. Cabrillo QSOs use sequential sent serials and the received serial from the other participant's matching record. The Cabrillo ruleset requires a serial both sent and received.
+
+The generated set contains 1,645 Cabrillo QSOs (1,316 matching and 329 unmatched) and 835 ADIF QSOs (668 matching and 167 unmatched). These counts are reproducible from the checked-in generators.
+
+The contest event windows ended on **2024-09-14**. The separate submission cutoff is **2099-12-31 23:59:59 UTC**, and the rulesets accept late logs. Contest import creates each contest as a draft, so a contest manager must open it before the public upload endpoint will accept logs. The event being in the past does not close the submission window.
 
 ## Import and open the contests
 
@@ -59,4 +63,4 @@ The uploader logs timestamps, batch and per-file progress, accepted entry IDs, r
 uv run pytest documentation/test-contests/test_fixtures.py
 ```
 
-The checks validate the imported JSON schema, generation counts and reproducibility, distinct station callsigns, one valid QSO per file, and successful parsing by the application's Cabrillo and ADIF importers. The uploader itself can be syntax-checked with `python -m py_compile documentation/test-contests/upload_logs.py`.
+The checks validate the imported JSON schema, generation counts and reproducibility, distinct station callsigns, the 5–80 QSO limit, the exact 80/20 reciprocal-call ratio, Cabrillo serial matching in both directions, and successful parsing by the application's Cabrillo and ADIF importers. The uploader itself can be syntax-checked with `python -m py_compile documentation/test-contests/upload_logs.py`.

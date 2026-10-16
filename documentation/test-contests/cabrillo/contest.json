@@ -18,7 +18,7 @@
     "rules": [
       {"id": "submission", "rule": {"kind": "submission", "late_policy": "accept_late", "manager_extension_allowed": false}},
       {"id": "categories", "rule": {"kind": "categories", "dimensions": [{"key": "operator", "label": "Operator class", "required": false, "choices": [{"key": "single", "label": "Single operator"}]}]}},
-      {"id": "exchange", "rule": {"kind": "exchange", "fields": [{"key": "report", "label": "Signal report", "value_type": "text", "direction": "both", "required": true, "max_length": 4}]}},
+      {"id": "exchange", "rule": {"kind": "exchange", "fields": [{"key": "serial", "label": "Serial number", "value_type": "serial", "direction": "both", "required": true, "max_length": 6, "serial_scope": "entry"}]}},
       {"id": "eligibility", "rule": {"kind": "eligibility", "reject_self_contacts": true, "reject_out_of_period": true, "reject_missing_required_exchange": true, "action": "not_credited"}},
       {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band"], "effect": "not_credited", "penalty_points": 0}},
       {"id": "points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1}},

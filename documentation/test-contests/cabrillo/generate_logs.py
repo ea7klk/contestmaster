@@ -4,11 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from contact_graph import build_contact_plan  # noqa: E402
 
 PARTICIPANT_COUNT = 110
 CONTEST = "test-cabrillo-sprint"
 QSO_DATE = "2024-09-14"
+STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 
 
 def callsign(index: int) -> str:
@@ -24,18 +30,25 @@ def callsign(index: int) -> str:
 
 
 def build_logs() -> dict[str, str]:
+    stations = [callsign(index) for index in range(PARTICIPANT_COUNT)]
+    contact_plan = build_contact_plan(stations, STARTS_AT)
     logs: dict[str, str] = {}
-    for index in range(PARTICIPANT_COUNT):
-        station = callsign(index)
-        minute = index % 60
-        time_on = f"{12 + index // 60:02d}{minute:02d}"
+    for station in stations:
+        qso_lines = []
+        for contact in contact_plan[station]:
+            time_on = contact.occurred_at.strftime("%H%M%S")
+            qso_lines.append(
+                "QSO: 14000 CW "
+                f"{QSO_DATE} {time_on} {station} 599 {contact.sent_serial:03d} "
+                f"{contact.worked_callsign} 599 {contact.received_serial:03d}"
+            )
         logs[f"{station}.log"] = "\n".join(
             (
                 "START-OF-LOG: 3.0",
                 "CREATED-BY: Contestmaster synthetic test fixture",
                 f"CONTEST: {CONTEST}",
                 f"CALLSIGN: {station}",
-                f"QSO: 14000 CW {QSO_DATE} {time_on} {station} 599 599 EA7TEST 599 599",
+                *qso_lines,
                 "END-OF-LOG:",
                 "",
             )
