@@ -99,6 +99,13 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 ## GitHub task tracking and delivery
 
 - Before implementing any repository task, create one GitHub parent issue and the needed linked child issue(s). Every task must have at least one child issue, including a small standalone change. Split work into children by independently verifiable deliverable; do not create one issue per file or trivial edit.
+- Write every parent and child issue description in user-story style. Start each issue body with these three statements, each on its own line, before any background or acceptance criteria:
+  ```text
+  As a <role>,
+  I want <capability>,
+  So that <benefit>.
+  ```
+  Keep issue titles concise and outcome-focused; the user story belongs at the start of the issue body. Preserve the following acceptance-criteria and verification sections.
 - Write testable acceptance criteria and relevant verification expectations in each child. The parent issue summarizes the goal, links every child in a checklist, and records overall exit criteria. Include documentation, migration, API/UI, and test work in the criteria when the task needs them.
 - For work in `documentation/implementation-plan/README.md`, keep the phase-specific structure: one parent issue and matching phase milestone per phase, plus a linked child for every numbered plan item. Phase 0 decision bullets are child issues too and should reflect their already-recorded completion state. Assign phase issues to the matching milestone. Standalone tasks that do not belong to a phase do not need a new milestone.
 - Use GitHub's parent/sub-issue relationship for every parent/child pair. Keep each issue body aligned with the actual scope and maintain the parent checklist as children are completed.
