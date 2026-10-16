@@ -42,6 +42,6 @@
   <text x="120" y="726" class="small muted">PUBLIC RESULTS ARE AVAILABLE WITHOUT AN ACCOUNT.</text>
   <path d="M120 754h1200" stroke="#ded2c9"/>
   <text x="120" y="784" class="tiny muted">Contestmaster · Amateur radio contest engine</text>
-  <text x="120" y="808" class="tiny muted">Reference datasets: cty.dat · UNGEGN · United Nations M49 standard and terms</text>
+  <text x="120" y="808" class="tiny muted">Callsign reference data: Big CTY cty.dat</text>
   <text x="120" y="847" class="tiny" fill="#a33c3d" font-weight="700">MOCKUP A · ACTIVITY FEED FIRST</text>
 </svg>

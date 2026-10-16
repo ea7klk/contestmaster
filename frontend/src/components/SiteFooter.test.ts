@@ -29,24 +29,8 @@ describe('SiteFooter', () => {
     expect(license.attributes('target')).toBe('_blank')
     expect(license.attributes('rel')).toContain('noreferrer')
 
-    const ungegnTerms = wrapper.get(
-      'a[href="https://unstats.un.org/unsd/ungegn/meetings/Bureau_Divisions/documents/UNGEGN_Bureau_WGN_November_2023_updated.pdf"]',
-    )
-    expect(ungegnTerms.text()).toBe('open access terms')
-    const m49Source = wrapper.get(
-      'a[href="https://unstats.un.org/unsd/methodology/m49/overview"]',
-    )
-    expect(m49Source.text()).toBe(
-      'Standard Country or Area Codes for Statistical Use (M49)',
-    )
-    const m49Terms = wrapper.get(
-      'a[href="https://www.un.org/en/about-us/terms-of-use"]',
-    )
-    expect(m49Terms.text()).toBe('UN website terms')
-    expect(wrapper.get('footer').text()).toContain(
-      'M49 numeric codes are used as published, without modification or derived geographic classifications.',
-    )
-    for (const link of [repository, projectLicense, license, ungegnTerms, m49Source, m49Terms]) {
+    expect(wrapper.text()).not.toMatch(/UNGEGN|M49|United Nations/i)
+    for (const link of [repository, projectLicense, license]) {
       expect(link.attributes('target')).toBe('_blank')
       expect(link.attributes('rel')).toContain('noreferrer')
     }
@@ -60,8 +44,7 @@ describe('SiteFooter', () => {
     expect(wrapper.get('footer').text()).toContain('license and use terms')
     expect(wrapper.get('footer').text()).toContain('Copyright © 2026 Volker Kerkhoff and contributors.')
     expect(wrapper.find('footer a[href="https://github.com/ea7klk/contestmaster"]').exists()).toBe(true)
-    expect(wrapper.get('footer').text()).toContain('open access terms')
-    expect(wrapper.get('footer').text()).toContain('UN website terms')
+    expect(wrapper.get('footer').text()).not.toMatch(/UNGEGN|M49|United Nations/i)
   })
 
   it('keeps licensed source links in the shared shell across every frontend route', async () => {
@@ -94,9 +77,9 @@ describe('SiteFooter', () => {
     for (const path of paths) {
       await router.push(path)
       await flushPromises()
-      expect(wrapper.get('footer').text(), path).toContain('M49 numeric codes are used as published')
-      expect(wrapper.find('footer a[href="https://unstats.un.org/unsd/methodology/m49/overview"]').exists(), path).toBe(true)
-      expect(wrapper.find('footer a[href="https://www.un.org/en/about-us/terms-of-use"]').exists(), path).toBe(true)
+      expect(wrapper.get('footer').text(), path).toContain('cty.dat')
+      expect(wrapper.find('footer a[href="https://www.country-files.com/cty/"]').exists(), path).toBe(true)
+      expect(wrapper.get('footer').text(), path).not.toMatch(/UNGEGN|M49|United Nations/i)
     }
   })
 })

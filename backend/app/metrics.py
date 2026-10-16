@@ -57,7 +57,7 @@ DATABASE_ERRORS = Counter(
 )
 
 _METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
-_DATASETS = {"cty", "countries-ungegn-wgn", "countries-unsd-m49"}
+_DATASETS = {"cty"}
 for _dataset in _DATASETS:
     MASTER_DATA_SYNC_LAST_ATTEMPT.labels(_dataset).set(0)
     MASTER_DATA_SYNC_LAST_SUCCESS.labels(_dataset).set(0)

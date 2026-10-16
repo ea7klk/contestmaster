@@ -10,11 +10,7 @@ import sys
 from sqlalchemy import desc, select
 
 from backend.app.db import SessionFactory
-from backend.app.master_data.jobs import (
-    sync_cty,
-    sync_m49_country_areas,
-    sync_ungegn_countries,
-)
+from backend.app.master_data.jobs import sync_cty
 from backend.app.models import MasterDataSyncRun, MasterDataVersion, MasterDataVersionStatus
 
 logger = logging.getLogger("contestmaster.master_data.cli")
@@ -23,11 +19,7 @@ logger = logging.getLogger("contestmaster.master_data.cli")
 def _sync_enabled() -> tuple[dict[str, object], bool]:
     outcomes: list[dict[str, object]] = []
     failed = False
-    for dataset_key, importer in (
-        ("cty", sync_cty),
-        ("countries-ungegn-wgn", sync_ungegn_countries),
-        ("countries-unsd-m49", sync_m49_country_areas),
-    ):
+    for dataset_key, importer in (("cty", sync_cty),):
         try:
             outcomes.append({"dataset_key": dataset_key, **importer(SessionFactory)})
         except Exception as exc:
@@ -81,14 +73,8 @@ def _status() -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="contestmaster-master-data")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("sync", help="Fetch and import all enabled master-data sources")
+    subparsers.add_parser("sync", help="Fetch and import the enabled CTY master-data source")
     subparsers.add_parser("sync-cty", help="Fetch and import the latest Big CTY release once")
-    subparsers.add_parser(
-        "sync-ungegn", help="Fetch and import the UNGEGN WGN country reference once"
-    )
-    subparsers.add_parser(
-        "sync-m49", help="Fetch and import the official UNSD M49 country-or-area list once"
-    )
     subparsers.add_parser("status", help="Show active versions and recent sync runs")
     args = parser.parse_args(argv)
     try:
@@ -96,12 +82,6 @@ def main(argv: list[str] | None = None) -> int:
             result, failed = _sync_enabled()
         elif args.command == "sync-cty":
             result = sync_cty(SessionFactory)
-            failed = False
-        elif args.command == "sync-ungegn":
-            result = sync_ungegn_countries(SessionFactory)
-            failed = False
-        elif args.command == "sync-m49":
-            result = sync_m49_country_areas(SessionFactory)
             failed = False
         else:
             result = _status()

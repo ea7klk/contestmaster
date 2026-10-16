@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import inspect, select, text
@@ -11,8 +12,14 @@ from backend.app.db import build_engine
 from backend.app.models import (
     AuditEvent,
     BandCatalogItem,
+    Contest,
     ContestEntity,
+    ContestMasterDataVersion,
+    ContestStatus,
     EntityType,
+    Entry,
+    EntryRevision,
+    EntryStatus,
     MasterDataAuthorityRole,
     MasterDataRunStatus,
     MasterDataSource,
@@ -20,7 +27,14 @@ from backend.app.models import (
     MasterDataVersion,
     MasterDataVersionStatus,
     ModeCatalogItem,
+    Participant,
+    Qso,
     RulesetVersion,
+    ScoreRun,
+    ScoreRunMasterDataVersion,
+    ScoreRunStatus,
+    SystemRole,
+    SystemUser,
 )
 from backend.app.models.types import utc_now
 
@@ -119,7 +133,7 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
             "SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1"
         ).scalar_one()
     assert "operating_catalog_items" not in tables
-    assert version == "0017_contest_free_band_defaults"
+    assert version == "0018_remove_unscored_country_data"
     assert foreign_keys == 1
     assert seeded_bands >= 25
     assert highest_band == "10 GHz"
@@ -302,6 +316,212 @@ def test_band_policy_migration_preserves_legacy_ruleset_references(tmp_path) -> 
         assert ruleset is not None
         assert ruleset.configuration == {"allowed_bands": ["1.25cm"]}
     assert band == 0
+    engine.dispose()
+
+
+def test_country_reference_removal_cleans_pins_and_preserves_scores(tmp_path) -> None:
+    database_path = tmp_path / "remove-country-reference-data.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0017_contest_free_band_defaults"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    moment = utc_now()
+    with Session(engine) as session:
+        versions = {}
+        entities = {}
+        for dataset, source_key, namespace, authority_code in (
+            ("cty", "big-cty", "CTY", "K"),
+            ("countries-ungegn-wgn", "ungegn-wgn-countries", "UN-M49", "001"),
+            ("countries-unsd-m49", "unsd-m49-country-areas", "UN-M49", "840"),
+        ):
+            source = MasterDataSource(
+                source_key=source_key,
+                name=source_key,
+                canonical_url="https://example.test/data",
+                authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
+                enabled=True,
+            )
+            session.add(source)
+            session.flush()
+            run = MasterDataSyncRun(
+                source_id=source.id,
+                dataset_key=dataset,
+                started_at=moment,
+                finished_at=moment,
+                retrieved_at=moment,
+                status=MasterDataRunStatus.SUCCEEDED,
+            )
+            session.add(run)
+            session.flush()
+            version = MasterDataVersion(
+                sync_run_id=run.id,
+                dataset_key=dataset,
+                retrieved_at=moment,
+                checksum=("c" if dataset == "cty" else "d") * 64,
+                valid_from=moment,
+                status=MasterDataVersionStatus.ACTIVE,
+            )
+            session.add(version)
+            session.flush()
+            versions[dataset] = version
+            entity = ContestEntity(
+                version_id=version.id,
+                namespace=namespace,
+                authority_code=authority_code,
+                name=source_key,
+                entity_type=EntityType.AWARD_ENTITY,
+            )
+            session.add(entity)
+            session.flush()
+            entities[dataset] = entity
+
+        admin = SystemUser(
+            username="migration-admin",
+            email_normalized="migration-admin@example.test",
+            display_name="Migration admin",
+            role=SystemRole.GLOBAL_ADMINISTRATOR,
+            password_hash="test-hash",
+        )
+        session.add(admin)
+        session.flush()
+        ruleset = RulesetVersion(ruleset_key="migration", version="1")
+        session.add(ruleset)
+        session.flush()
+        contest = Contest(
+            owner_user_id=admin.id,
+            ruleset_version_id=ruleset.id,
+            name="Migration test",
+            slug="migration-test",
+            starts_at=moment,
+            ends_at=moment + timedelta(hours=1),
+            log_submission_cutoff_at=moment + timedelta(days=1),
+            status=ContestStatus.CLOSED,
+        )
+        session.add(contest)
+        session.flush()
+        participant = Participant(callsign_submitted="K1TEST", callsign_normalized="K1TEST")
+        session.add(participant)
+        session.flush()
+        entry = Entry(
+            contest_id=contest.id,
+            participant_id=participant.id,
+            entry_key="K1TEST",
+            status=EntryStatus.ACCEPTED,
+        )
+        session.add(entry)
+        session.flush()
+        revision = EntryRevision(
+            entry_id=entry.id,
+            revision_number=1,
+            input_format="cabrillo",
+            storage_key="migration-test",
+            original_content="START-OF-LOG: 3.0",
+            content_sha256="e" * 64,
+            byte_size=17,
+            submitted_at=moment,
+        )
+        session.add(revision)
+        session.flush()
+        obsolete_entity = entities["countries-unsd-m49"]
+        qso = Qso(
+            entry_revision_id=revision.id,
+            occurred_at=moment,
+            callsign_submitted="K2TEST",
+            callsign_normalized="K2TEST",
+            resolved_master_data_version_id=versions["countries-unsd-m49"].id,
+            worked_entity_id=obsolete_entity.id,
+        )
+        session.add(qso)
+        session.flush()
+        qso_id = qso.id
+        score = ScoreRun(
+            entry_id=entry.id,
+            entry_revision_id=revision.id,
+            ruleset_version_id=ruleset.id,
+            master_data_version_id=versions["cty"].id,
+            run_number=1,
+            status=ScoreRunStatus.COMPLETED,
+            input_digest="f" * 64,
+            ruleset_snapshot={"rules": []},
+            master_data_snapshot={dataset: version.id for dataset, version in versions.items()},
+            points=12,
+            multiplier_count=1,
+            final_score=12,
+        )
+        session.add(score)
+        session.flush()
+        for dataset, version in versions.items():
+            session.add(
+                ContestMasterDataVersion(
+                    contest_id=contest.id,
+                    dataset_key=dataset,
+                    master_data_version_id=version.id,
+                    pinned_at=moment,
+                )
+            )
+            session.add(
+                ScoreRunMasterDataVersion(
+                    score_run_id=score.id,
+                    dataset_key=dataset,
+                    master_data_version_id=version.id,
+                )
+            )
+        score_id = score.id
+        cty_version_id = versions["cty"].id
+        session.commit()
+    engine.dispose()
+
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        remaining_versions = list(session.scalars(select(MasterDataVersion)))
+        remaining_sources = list(session.scalars(select(MasterDataSource)))
+        remaining_entities = list(session.scalars(select(ContestEntity)))
+        qso = session.get(Qso, qso_id)
+        contest_pins = list(session.scalars(select(ContestMasterDataVersion)))
+        score_pins = list(session.scalars(select(ScoreRunMasterDataVersion)))
+        score = session.get(ScoreRun, score_id)
+        assert [version.dataset_key for version in remaining_versions] == ["cty"]
+        assert [source.source_key for source in remaining_sources] == ["big-cty"]
+        assert [entity.namespace for entity in remaining_entities] == ["CTY"]
+        assert [pin.dataset_key for pin in contest_pins] == ["cty"]
+        assert [pin.dataset_key for pin in score_pins] == ["cty"]
+        assert score is not None
+        assert qso is not None
+        assert qso.callsign_normalized == "K2TEST"
+        assert qso.resolved_master_data_version_id is None
+        assert qso.worked_entity_id is None
+        assert score.master_data_snapshot == {"cty": cty_version_id}
+        assert (score.points, score.multiplier_count, score.final_score) == (12, 1, 12)
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
+            "AND name = 'prevent_active_master_data_version_delete'"
+        ).scalar_one() == 1
+        assert connection.exec_driver_sql(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
+            "AND name = 'immutable_completed_score_run'"
+        ).scalar_one() == 1
+        assert connection.exec_driver_sql(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
+            "AND name = 'immutable_qsos_update'"
+        ).scalar_one() == 1
     engine.dispose()
 
 
