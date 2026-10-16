@@ -549,15 +549,40 @@ def list_published_contests(
     }
 
 
+@public_router.get("/upcoming", responses=API_ERROR_RESPONSES)
+def list_open_contests(
+    session: Annotated[Session, Depends(get_session)],
+    page: Annotated[Page, Depends(pagination_parameters)],
+) -> dict[str, object]:
+    """List public open contests that have not yet reached their end instant."""
+    as_of = datetime.now(UTC)
+    condition = (Contest.status == ContestStatus.OPEN) & (Contest.ends_at > as_of)
+    total = session.scalar(select(func.count()).select_from(Contest).where(condition)) or 0
+    contests = list(
+        session.scalars(
+            select(Contest)
+            .where(condition)
+            .order_by(Contest.starts_at.asc(), Contest.id.asc())
+            .offset((page.page - 1) * page.page_size)
+            .limit(page.page_size)
+        )
+    )
+    return {
+        "items": [public_contest_output(contest) for contest in contests],
+        "meta": page_meta(page, total),
+        "as_of": as_of,
+    }
+
+
 @public_router.get("/{slug}", responses=API_ERROR_RESPONSES)
-def get_published_contest(
+def get_public_contest(
     slug: str,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
     contest = session.scalar(
         select(Contest).where(
             Contest.slug == slug,
-            Contest.status == ContestStatus.PUBLISHED,
+            Contest.status.in_((ContestStatus.OPEN, ContestStatus.PUBLISHED)),
         )
     )
     if contest is None:

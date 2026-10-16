@@ -20,6 +20,7 @@ from backend.app.main import app
 from backend.app.models import (
     AuditEvent,
     Contest,
+    ContestStatus,
     Entry,
     EntryAccessGrant,
     Participant,
@@ -617,6 +618,75 @@ def test_contest_status_requires_ruleset_and_public_routes_only_show_published(
             "contest.status_changed",
             "contest.status_changed",
         ]
+
+
+def test_public_upcoming_contests_include_open_future_and_running_only(
+    identity_database, monkeypatch
+):
+    owner_id = add_user(identity_database)
+    now = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr("backend.app.api.contests.datetime", FixedDateTime)
+    with identity_database.begin() as session:
+        session.add_all(
+            [
+                Contest(
+                    owner_user_id=owner_id,
+                    name="Future public",
+                    slug="future-public",
+                    starts_at=now + timedelta(days=1),
+                    ends_at=now + timedelta(days=1, hours=2),
+                    log_submission_cutoff_at=now + timedelta(days=2),
+                    status=ContestStatus.OPEN,
+                ),
+                Contest(
+                    owner_user_id=owner_id,
+                    name="Running public",
+                    slug="running-public",
+                    starts_at=now,
+                    ends_at=now + timedelta(hours=1),
+                    log_submission_cutoff_at=now + timedelta(days=1),
+                    status=ContestStatus.OPEN,
+                ),
+                Contest(
+                    owner_user_id=owner_id,
+                    name="Ended at boundary",
+                    slug="ended-boundary",
+                    starts_at=now - timedelta(hours=1),
+                    ends_at=now,
+                    log_submission_cutoff_at=now + timedelta(days=1),
+                    status=ContestStatus.OPEN,
+                ),
+                Contest(
+                    owner_user_id=owner_id,
+                    name="Draft future",
+                    slug="draft-future",
+                    starts_at=now + timedelta(days=2),
+                    ends_at=now + timedelta(days=2, hours=2),
+                    log_submission_cutoff_at=now + timedelta(days=3),
+                    status=ContestStatus.DRAFT,
+                ),
+            ]
+        )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/public/contests/upcoming")
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["slug"] for item in payload["items"]] == [
+        "running-public",
+        "future-public",
+    ]
+    assert payload["as_of"] == now.isoformat().replace("+00:00", "Z")
+    details = client.get("/api/v1/public/contests/future-public")
+    assert details.status_code == 200
+    assert details.json()["log_submission_cutoff_at"] == "2026-10-18T12:00:00Z"
+    assert client.get("/api/v1/public/contests/draft-future").status_code == 404
 
 
 def test_manager_can_create_rotate_and_revoke_entry_receipt_grants(identity_database):

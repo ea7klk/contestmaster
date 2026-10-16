@@ -7,12 +7,18 @@ export interface PublicContest {
   description: string | null
   starts_at: string
   ends_at: string
+  log_submission_cutoff_at: string
   status: string
 }
 
 export interface PublicContestList {
   items: PublicContest[]
   meta: { page: number; page_size: number; total: number; pages: number }
+}
+
+export interface UpcomingContestList extends PublicContestList {
+  /** UTC instant used by the API to include future and currently running contests. */
+  as_of: string
 }
 
 export interface ResultExplanation {
@@ -121,6 +127,20 @@ export function listPublicContests(signal?: AbortSignal) {
   )
 }
 
+export function listUpcomingContests(signal?: AbortSignal) {
+  return apiRequest<UpcomingContestList>(
+    '/public/contests/upcoming?page=1&page_size=50',
+    { signal },
+  )
+}
+
+export function getPublicContest(slug: string, signal?: AbortSignal) {
+  return apiRequest<PublicContest>(
+    `/public/contests/${encodeURIComponent(slug)}`,
+    { signal },
+  )
+}
+
 export function getPublicResults(
   slug: string,
   filters: {
@@ -149,11 +169,13 @@ export function getPublicResults(
   )
 }
 
-export function getManagerResultReview(contestId: number, signal?: AbortSignal) {
-  return apiRequest<ResultReview>(
-    `/contests/${contestId}/results/review`,
-    { signal },
-  )
+export function getManagerResultReview(
+  contestId: number,
+  signal?: AbortSignal,
+) {
+  return apiRequest<ResultReview>(`/contests/${contestId}/results/review`, {
+    signal,
+  })
 }
 
 export function generateResults(contestId: number, reason?: string) {
@@ -172,19 +194,22 @@ export function publishResults(
   scoreRunIds: number[],
   reason?: string,
 ) {
-  return apiRequest<PublishedResult>(
-    `/contests/${contestId}/results/publish`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ score_run_ids: scoreRunIds, reason: reason || null }),
-    },
-  )
+  return apiRequest<PublishedResult>(`/contests/${contestId}/results/publish`, {
+    method: 'POST',
+    body: JSON.stringify({
+      score_run_ids: scoreRunIds,
+      reason: reason || null,
+    }),
+  })
 }
 
 export function recordQsoReview(
   contestId: number,
   qsoId: number,
-  review: { status: 'credited' | 'not_credited' | 'needs_review'; reason: string },
+  review: {
+    status: 'credited' | 'not_credited' | 'needs_review'
+    reason: string
+  },
 ) {
   return apiRequest<{ status: string }>(
     `/contests/${contestId}/qsos/${qsoId}/decisions`,

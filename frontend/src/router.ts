@@ -9,6 +9,12 @@ export const router = createRouter({
       component: () => import('./views/HomeView.vue'),
     },
     {
+      path: '/contests/:slug',
+      name: 'public-contest',
+      component: () => import('./views/PublicContestView.vue'),
+      props: true,
+    },
+    {
       path: '/contests/:slug/results',
       name: 'contest-results',
       component: () => import('./views/ContestResultsView.vue'),

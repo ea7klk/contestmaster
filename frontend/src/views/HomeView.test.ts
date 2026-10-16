@@ -14,6 +14,18 @@ const contest = {
   starts_at: '2026-04-01T00:00:00Z',
   ends_at: '2026-04-01T06:00:00Z',
   status: 'published',
+  log_submission_cutoff_at: '2026-04-02T00:00:00Z',
+}
+
+const upcomingContest = {
+  ...contest,
+  id: 8,
+  name: 'Autumn Test',
+  slug: 'autumn-test',
+  starts_at: '2027-10-16T00:00:00Z',
+  ends_at: '2027-10-16T06:00:00Z',
+  log_submission_cutoff_at: '2027-10-17T00:00:00Z',
+  status: 'open',
 }
 
 function response(items: unknown[]) {
@@ -21,6 +33,7 @@ function response(items: unknown[]) {
     JSON.stringify({
       items,
       meta: { page: 1, page_size: 50, total: items.length, pages: 1 },
+      as_of: new Date().toISOString(),
     }),
     { status: 200 },
   )
@@ -32,10 +45,84 @@ function mountHome() {
 }
 
 describe('HomeView public contest activity', () => {
+  it('shows public upcoming contests with UTC times and a contest details link', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        response(String(input).includes('/upcoming') ? [upcomingContest] : []),
+      ),
+    )
+    const wrapper = mountHome()
+    await flushPromises()
+
+    expect(wrapper.get('#upcoming-contests-title').text()).toBe(
+      'Upcoming contests',
+    )
+    expect(wrapper.text()).toContain('Autumn Test')
+    expect(wrapper.text()).toContain('Upcoming')
+    expect(wrapper.text()).toContain('16 Oct 2027, 00:00 UTC')
+    expect(
+      wrapper.get('.contest-feed-card .results-link').attributes('href'),
+    ).toBe('/contests/autumn-test')
+    await expectAccessible(wrapper.element)
+  })
+
+  it('keeps upcoming loading, empty, and error states separate from published results', async () => {
+    let finishUpcoming: ((value: Response) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes('/upcoming')) {
+          return new Promise<Response>((resolve) => {
+            finishUpcoming = resolve
+          })
+        }
+        return Promise.resolve(response([contest]))
+      }),
+    )
+    const loadingWrapper = mountHome()
+    await flushPromises()
+    expect(
+      loadingWrapper.get('.upcoming-contests [role="status"]').text(),
+    ).toContain('Loading upcoming contests')
+    expect(loadingWrapper.text()).toContain('Spring Sprint')
+
+    finishUpcoming?.(response([]))
+    await flushPromises()
+    expect(loadingWrapper.text()).toContain(
+      'No public contests are upcoming or in progress.',
+    )
+    loadingWrapper.unmount()
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/upcoming')) {
+          return new Response(
+            JSON.stringify({
+              error: { message: 'Upcoming service is unavailable.' },
+            }),
+            { status: 503 },
+          )
+        }
+        return response([contest])
+      }),
+    )
+    const errorWrapper = mountHome()
+    await flushPromises()
+    expect(errorWrapper.get('.upcoming-contests [role="alert"]').text()).toBe(
+      'Upcoming service is unavailable.',
+    )
+    expect(errorWrapper.text()).toContain('Spring Sprint')
+    errorWrapper.unmount()
+  })
+
   it('shows published contest dates in UTC and links to standings and log submission', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response([contest])),
+      vi.fn(async (input: RequestInfo | URL) =>
+        response(String(input).includes('/upcoming') ? [] : [contest]),
+      ),
     )
     const router = createRouter({ history: createMemoryHistory(), routes: [] })
     const wrapper = mount(HomeView, { global: { plugins: [router] } })
@@ -57,17 +144,21 @@ describe('HomeView public contest activity', () => {
   it('filters available public contests by name or description', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        response([
-          contest,
-          {
-            ...contest,
-            id: 4,
-            name: 'Winter Rally',
-            slug: 'winter-rally',
-            description: 'Digital modes.',
-          },
-        ]),
+      vi.fn(async (input: RequestInfo | URL) =>
+        response(
+          String(input).includes('/upcoming')
+            ? []
+            : [
+                contest,
+                {
+                  ...contest,
+                  id: 4,
+                  name: 'Winter Rally',
+                  slug: 'winter-rally',
+                  description: 'Digital modes.',
+                },
+              ],
+        ),
       ),
     )
     const wrapper = mountHome()
@@ -81,22 +172,22 @@ describe('HomeView public contest activity', () => {
   })
 
   it('shows explicit loading, empty, unmatched, and error states', async () => {
-    let finishRequest: ((value: Response) => void) | undefined
+    const pending: Array<(value: Response) => void> = []
     vi.stubGlobal(
       'fetch',
       vi.fn(
         () =>
           new Promise<Response>((resolve) => {
-            finishRequest = resolve
+            pending.push(resolve)
           }),
       ),
     )
     const loadingWrapper = mountHome()
-    expect(loadingWrapper.get('[role="status"]').text()).toContain(
-      'Loading published contests',
-    )
+    expect(
+      loadingWrapper.get('.published-contests [role="status"]').text(),
+    ).toContain('Loading published contests')
 
-    finishRequest?.(response([]))
+    pending.forEach((resolve) => resolve(response([])))
     await flushPromises()
     expect(loadingWrapper.text()).toContain(
       'No contest results have been published yet.',

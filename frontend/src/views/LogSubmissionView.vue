@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
   listSubmittableContests,
@@ -21,6 +21,7 @@ const error = ref('')
 const result = ref<LogSubmissionResult | null>(null)
 const submissionKey = ref('')
 const router = useRouter()
+const route = useRoute()
 
 const allMessages = (messages: ImportMessage[]) => messages
 
@@ -29,6 +30,13 @@ async function loadContests() {
   loading.value = true
   try {
     contests.value = await listSubmittableContests()
+    const requestedContest = route.query.contest
+    if (
+      typeof requestedContest === 'string' &&
+      contests.value.some((item) => item.slug === requestedContest)
+    ) {
+      contestSlug.value = requestedContest
+    }
   } catch (reason) {
     error.value =
       reason instanceof ApiError

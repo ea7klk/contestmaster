@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
-import { listPublicContests, type PublicContest } from '../api/results'
+import {
+  listPublicContests,
+  listUpcomingContests,
+  type PublicContest,
+} from '../api/results'
 
 const contests = ref<PublicContest[]>([])
+const upcomingContests = ref<PublicContest[]>([])
 const loading = ref(true)
+const upcomingLoading = ref(true)
 const error = ref('')
+const upcomingError = ref('')
 const query = ref('')
+const serverAsOfMs = ref<number | null>(null)
+const responseReceivedAtMs = ref<number | null>(null)
+const clockNowMs = ref(Date.now())
+let clockTimer: number | undefined
+let refreshTimer: number | undefined
+let upcomingRequestActive = false
 
 const filteredContests = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase()
@@ -19,6 +32,24 @@ const filteredContests = computed(() => {
       .includes(normalizedQuery),
   )
 })
+
+const estimatedServerNowMs = computed(() => {
+  if (serverAsOfMs.value === null || responseReceivedAtMs.value === null)
+    return clockNowMs.value
+  return serverAsOfMs.value + (clockNowMs.value - responseReceivedAtMs.value)
+})
+
+const visibleUpcomingContests = computed(() =>
+  upcomingContests.value.filter(
+    (contest) => Date.parse(contest.ends_at) > estimatedServerNowMs.value,
+  ),
+)
+
+function upcomingStatus(contest: PublicContest) {
+  return Date.parse(contest.starts_at) <= estimatedServerNowMs.value
+    ? 'In progress'
+    : 'Upcoming'
+}
 
 const utcDateTime = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -34,7 +65,7 @@ function formatUtc(value: string) {
   return `${utcDateTime.format(new Date(value))} UTC`
 }
 
-onMounted(async () => {
+async function loadPublishedContests() {
   try {
     contests.value = (await listPublicContests()).items
   } catch (cause) {
@@ -45,6 +76,42 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+async function loadUpcomingContests() {
+  if (upcomingRequestActive) return
+  upcomingRequestActive = true
+  try {
+    const response = await listUpcomingContests()
+    upcomingContests.value = response.items
+    serverAsOfMs.value = Date.parse(response.as_of)
+    responseReceivedAtMs.value = Date.now()
+    upcomingError.value = ''
+  } catch (cause) {
+    upcomingError.value =
+      cause instanceof ApiError
+        ? cause.message
+        : 'Upcoming contests could not be loaded.'
+  } finally {
+    upcomingLoading.value = false
+    upcomingRequestActive = false
+  }
+}
+
+onMounted(() => {
+  void loadPublishedContests()
+  void loadUpcomingContests()
+  clockTimer = globalThis.setInterval(() => {
+    clockNowMs.value = Date.now()
+  }, 10_000)
+  refreshTimer = globalThis.setInterval(() => {
+    void loadUpcomingContests()
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  if (clockTimer !== undefined) globalThis.clearInterval(clockTimer)
+  if (refreshTimer !== undefined) globalThis.clearInterval(refreshTimer)
 })
 </script>
 
@@ -68,6 +135,73 @@ onMounted(async () => {
         <span class="signal signal-three"></span>
         <span class="signal-center">73</span>
       </div>
+    </section>
+
+    <section
+      class="upcoming-contests"
+      aria-labelledby="upcoming-contests-title"
+    >
+      <div class="feed-heading">
+        <div>
+          <p class="eyebrow">Plan your next contest</p>
+          <h2 id="upcoming-contests-title">Upcoming contests</h2>
+          <p class="feed-description">
+            Public contests that are open and have not yet ended, shown in UTC.
+          </p>
+        </div>
+      </div>
+      <p v-if="upcomingLoading" role="status" class="notice feed-state">
+        Loading upcoming contests…
+      </p>
+      <p v-else-if="upcomingError" role="alert" class="error-panel feed-state">
+        {{ upcomingError }}
+      </p>
+      <p
+        v-else-if="visibleUpcomingContests.length === 0"
+        class="notice feed-state"
+      >
+        No public contests are upcoming or in progress.
+      </p>
+      <ul v-else class="contest-feed">
+        <li v-for="contest in visibleUpcomingContests" :key="contest.id">
+          <article class="contest-feed-card">
+            <div class="contest-card-main">
+              <div class="contest-card-title-row">
+                <h3>{{ contest.name }}</h3>
+                <span
+                  class="contest-state-badge"
+                  :class="
+                    upcomingStatus(contest) === 'In progress'
+                      ? 'contest-in-progress'
+                      : 'contest-upcoming'
+                  "
+                >
+                  {{ upcomingStatus(contest) }}
+                </span>
+              </div>
+              <p v-if="contest.description" class="contest-description">
+                {{ contest.description }}
+              </p>
+              <dl class="contest-dates">
+                <div>
+                  <dt>Contest start</dt>
+                  <dd>{{ formatUtc(contest.starts_at) }}</dd>
+                </div>
+                <div>
+                  <dt>Contest end</dt>
+                  <dd>{{ formatUtc(contest.ends_at) }}</dd>
+                </div>
+              </dl>
+            </div>
+            <RouterLink
+              class="results-link"
+              :to="`/contests/${encodeURIComponent(contest.slug)}`"
+            >
+              Contest details <span aria-hidden="true">→</span>
+            </RouterLink>
+          </article>
+        </li>
+      </ul>
     </section>
 
     <section
