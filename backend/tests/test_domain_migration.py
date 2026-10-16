@@ -21,8 +21,10 @@ from backend.app.models import (
 
 def test_api_migration_config_preserves_application_logging() -> None:
     config = _config(Path(__file__).resolve().parents[2])
+    legacy_config = _config(Path(__file__).resolve().parents[2], legacy=True)
 
     assert config.attributes["configure_logger"] is False
+    assert legacy_config.attributes["configure_logger"] is False
 
 
 def _alembic(database_url: str, *arguments: str) -> None:
