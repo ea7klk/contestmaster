@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
 }
 .contest-feed {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.5rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -557,8 +557,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1.3rem 1.4rem;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
   border: 1px solid var(--color-border);
   border-left: 5px solid var(--color-brand-600);
   border-radius: 0.7rem;
@@ -573,11 +573,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 0.5rem;
 }
 .contest-card-title-row h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.08rem;
 }
 .published-badge {
   display: inline-flex;
@@ -592,14 +592,14 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 .contest-description {
-  margin: 0.45rem 0 0;
+  margin: 0.3rem 0 0;
   color: var(--color-muted);
 }
 .contest-dates {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem 2.5rem;
-  margin: 0.9rem 0 0;
+  gap: 0.35rem 1.5rem;
+  margin: 0.5rem 0 0;
 }
 .contest-dates div {
   display: flex;
@@ -619,11 +619,11 @@ onBeforeUnmount(() => {
 }
 .results-link {
   flex: 0 0 auto;
-  padding: 0.7rem 0.8rem;
+  padding: 0.5rem 0.65rem;
   border: 1px solid var(--color-border);
   border-radius: 0.45rem;
   color: var(--color-brand-700);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   font-weight: 750;
   text-decoration: none;
 }
@@ -686,8 +686,8 @@ onBeforeUnmount(() => {
   .contest-feed-card {
     align-items: stretch;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
+    gap: 0.65rem;
+    padding: 0.75rem;
   }
   .contest-dates {
     display: grid;

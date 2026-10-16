@@ -833,7 +833,7 @@ onMounted(refreshData)
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;
-  gap: 1rem;
+  gap: 0.5rem;
   padding: 0.25rem;
 }
 .contest-list-scroll:focus-visible,
@@ -858,7 +858,7 @@ onMounted(refreshData)
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 .file-button {
   position: relative;
@@ -899,6 +899,12 @@ onMounted(refreshData)
   border-radius: 0.8rem;
   background: var(--color-surface);
   box-shadow: 0 10px 28px var(--color-card-shadow);
+}
+.contest-list-scroll .contest-card {
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  box-shadow: 0 4px 12px var(--color-card-shadow);
 }
 .contest-form,
 .form-grid,
@@ -946,7 +952,7 @@ onMounted(refreshData)
 .contest-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem 1.25rem;
+  gap: 0.45rem 1rem;
   margin: 0;
 }
 .contest-meta div {
@@ -954,11 +960,12 @@ onMounted(refreshData)
 }
 .contest-meta dt {
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 .contest-meta dd {
-  margin: 0.15rem 0 0;
+  margin: 0.05rem 0 0;
   overflow-wrap: anywhere;
+  font-size: 0.9rem;
 }
 .primary-button,
 .secondary-button,
