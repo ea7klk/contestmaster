@@ -53,6 +53,108 @@ export interface ManagedEntry {
   contacts: EntryContact[]
 }
 
+export interface ContestLogSummary {
+  entry_id: number
+  entry_key: string
+  callsign: string
+  status: string
+  is_late: boolean
+  category_values: Record<string, string>
+  submitted_at: string
+  revision_id: number | null
+  revision_number: number | null
+  input_format: string | null
+  original_filename: string | null
+  qso_count: number
+}
+
+export interface ContestLogList {
+  items: ContestLogSummary[]
+  meta: { page: number; page_size: number; total: number; pages: number }
+}
+
+export interface ContestLogRevision {
+  id: number
+  revision_number: number
+  input_format: string
+  original_filename: string | null
+  byte_size: number
+  submitted_at: string
+  received_at: string
+  qso_count: number
+}
+
+export interface ContestLogDetails {
+  entry: ContestLogSummary & { revision_count: number }
+  revisions: ContestLogRevision[]
+  contacts: Array<{
+    id: number
+    source_line_number: number | null
+    occurred_at: string
+    callsign: string
+    band: string | null
+    mode: string | null
+    exchange_sent: Record<string, unknown>
+    exchange_received: Record<string, unknown>
+  }>
+  meta: { page: number; page_size: number; total: number; pages: number }
+}
+
+export function listContestLogs(
+  contestId: number,
+  page: number,
+  search: string,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ page: String(page), page_size: '50' })
+  if (search.trim()) params.set('search', search.trim())
+  return apiRequest<ContestLogList>(
+    `/contests/${contestId}/entries?${params.toString()}`,
+    { method: 'GET', signal },
+  )
+}
+
+export function getContestLogDetails(
+  contestId: number,
+  entryId: number,
+  page: number,
+  revisionId?: number,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ page: String(page), page_size: '50' })
+  if (revisionId) params.set('revision_id', String(revisionId))
+  return apiRequest<ContestLogDetails>(
+    `/contests/${contestId}/entries/${entryId}?${params.toString()}`,
+    { method: 'GET', signal },
+  )
+}
+
+export async function downloadContestLogRevision(
+  contestId: number,
+  entryId: number,
+  revisionId: number,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(
+    `${apiPrefix}/contests/${contestId}/entries/${entryId}/revisions/${revisionId}/download`,
+    { credentials: 'same-origin' },
+  )
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null
+    throw new ApiError(
+      payload?.error?.message ?? `The log download failed with HTTP ${response.status}.`,
+      [],
+      response.status,
+    )
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const filename =
+    disposition.match(/filename="([A-Za-z0-9._-]+)"/)?.[1] ??
+    `entry-${entryId}-revision-${revisionId}.log`
+  return { blob: await response.blob(), filename }
+}
+
 export async function downloadEntryRevision(
   entryId: number,
   revisionId: number,

@@ -27,6 +27,11 @@ export const router = createRouter({
       props: true,
     },
     {
+      path: '/manage/contests/:contestId/entries/:entryId?',
+      name: 'contest-entries',
+      component: () => import('./views/ContestEntriesView.vue'),
+    },
+    {
       path: '/submit-log',
       name: 'log-submission',
       component: () => import('./views/LogSubmissionView.vue'),

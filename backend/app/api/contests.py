@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,8 +24,11 @@ from backend.app.models import (
     ContestStatus,
     Entry,
     EntryAccessGrant,
+    EntryRevision,
     EntryStatus,
+    Qso,
     RulesetVersion,
+    Station,
     SystemRole,
 )
 from backend.app.rulesets.catalog_validation import catalog_reference_errors
@@ -381,6 +384,246 @@ def get_contest(
     contest: Annotated[Contest, Depends(require_contest_access)],
 ) -> dict[str, object]:
     return contest_output(contest)
+
+
+def _latest_revision_id():
+    return (
+        select(EntryRevision.id)
+        .where(EntryRevision.entry_id == Entry.id)
+        .order_by(EntryRevision.revision_number.desc(), EntryRevision.id.desc())
+        .limit(1)
+        .correlate(Entry)
+        .scalar_subquery()
+    )
+
+
+def _revision_callsign(revision_id):
+    return (
+        select(Station.callsign_submitted)
+        .where(Station.entry_revision_id == revision_id)
+        .order_by(Station.id)
+        .limit(1)
+        .correlate(Entry)
+        .scalar_subquery()
+    )
+
+
+def _revision_qso_count(revision_id):
+    return (
+        select(func.count(Qso.id))
+        .where(Qso.entry_revision_id == revision_id)
+        .correlate(EntryRevision)
+        .scalar_subquery()
+    )
+
+
+def _entry_summary(
+    entry: Entry,
+    revision: EntryRevision | None,
+    callsign: str | None,
+    qso_count: int,
+) -> dict[str, object]:
+    return {
+        "entry_id": entry.id,
+        "entry_key": entry.entry_key,
+        "callsign": callsign or entry.entry_key,
+        "status": entry.status.value,
+        "is_late": entry.is_late,
+        "category_values": entry.category_values,
+        "submitted_at": entry.submitted_at,
+        "revision_id": revision.id if revision else None,
+        "revision_number": revision.revision_number if revision else None,
+        "input_format": revision.input_format if revision else None,
+        "original_filename": revision.original_filename if revision else None,
+        "qso_count": qso_count,
+    }
+
+
+@router.get("/{contest_id}/entries", responses=API_ERROR_RESPONSES)
+def list_contest_entries(
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    session: Annotated[Session, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 50,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+) -> dict[str, object]:
+    latest_id = _latest_revision_id()
+    callsign = _revision_callsign(latest_id)
+    statement = select(Entry).where(Entry.contest_id == contest.id)
+    count_statement = select(func.count(Entry.id)).where(Entry.contest_id == contest.id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        search_condition = or_(Entry.entry_key.ilike(pattern), callsign.ilike(pattern))
+        statement = statement.where(search_condition)
+        count_statement = count_statement.where(search_condition)
+
+    total = session.scalar(count_statement) or 0
+    rows = session.execute(
+        select(Entry, EntryRevision, callsign, _revision_qso_count(EntryRevision.id))
+        .outerjoin(EntryRevision, EntryRevision.id == latest_id)
+        .where(statement.whereclause)
+        .order_by(Entry.submitted_at.desc(), Entry.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [
+        _entry_summary(entry, revision, station_call, qso_count or 0)
+        for entry, revision, station_call, qso_count in rows
+    ]
+    return {
+        "items": items,
+        "meta": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+    }
+
+
+@router.get("/{contest_id}/entries/{entry_id}", responses=API_ERROR_RESPONSES)
+def get_contest_entry(
+    contest_id: int,
+    entry_id: int,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    session: Annotated[Session, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 50,
+    revision_id: Annotated[int | None, Query(ge=1)] = None,
+) -> dict[str, object]:
+    entry = session.scalar(
+        select(Entry).where(Entry.id == entry_id, Entry.contest_id == contest.id)
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    if revision_id is None:
+        revision = session.scalar(
+            select(EntryRevision)
+            .where(EntryRevision.entry_id == entry.id)
+            .order_by(EntryRevision.revision_number.desc(), EntryRevision.id.desc())
+            .limit(1)
+        )
+    else:
+        revision = session.scalar(
+            select(EntryRevision).where(
+                EntryRevision.id == revision_id,
+                EntryRevision.entry_id == entry.id,
+            )
+        )
+        if revision is None:
+            raise HTTPException(status_code=404, detail="Entry revision not found.")
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Entry has no uploaded log revision.")
+
+    station = session.scalar(
+        select(Station)
+        .where(Station.entry_revision_id == revision.id)
+        .order_by(Station.id)
+        .limit(1)
+    )
+    revisions = list(
+        session.scalars(
+            select(EntryRevision)
+            .where(EntryRevision.entry_id == entry.id)
+            .order_by(EntryRevision.revision_number.desc(), EntryRevision.id.desc())
+        )
+    )
+    revision_qso_counts = (
+        dict(
+            session.execute(
+                select(Qso.entry_revision_id, func.count(Qso.id))
+                .where(Qso.entry_revision_id.in_([row.id for row in revisions]))
+                .group_by(Qso.entry_revision_id)
+            ).all()
+        )
+        if revisions
+        else {}
+    )
+    total = session.scalar(
+        select(func.count(Qso.id)).where(Qso.entry_revision_id == revision.id)
+    ) or 0
+    contacts = session.scalars(
+        select(Qso)
+        .where(Qso.entry_revision_id == revision.id)
+        .order_by(Qso.source_line_number, Qso.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return {
+        "entry": {
+            **_entry_summary(
+                entry, revision, station.callsign_submitted if station else None, total
+            ),
+            "revision_count": len(revisions),
+        },
+        "revisions": [
+            {
+                "id": row.id,
+                "revision_number": row.revision_number,
+                "input_format": row.input_format,
+                "original_filename": row.original_filename,
+                "byte_size": row.byte_size,
+                "submitted_at": row.submitted_at,
+                "received_at": row.received_at,
+                "qso_count": revision_qso_counts.get(row.id, 0),
+            }
+            for row in revisions
+        ],
+        "contacts": [
+            {
+                "id": qso.id,
+                "source_line_number": qso.source_line_number,
+                "occurred_at": qso.occurred_at,
+                "callsign": qso.callsign_submitted,
+                "band": qso.band,
+                "mode": qso.mode,
+                "exchange_sent": qso.exchange_sent_submitted,
+                "exchange_received": qso.exchange_received_submitted,
+            }
+            for qso in contacts
+        ],
+        "meta": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+    }
+
+
+@router.get(
+    "/{contest_id}/entries/{entry_id}/revisions/{revision_id}/download",
+    responses=API_ERROR_RESPONSES,
+)
+def download_contest_entry_revision(
+    contest_id: int,
+    entry_id: int,
+    revision_id: int,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    revision = session.scalar(
+        select(EntryRevision)
+        .join(Entry, Entry.id == EntryRevision.entry_id)
+        .where(
+            Entry.id == entry_id,
+            Entry.contest_id == contest.id,
+            EntryRevision.id == revision_id,
+        )
+    )
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Entry revision not found.")
+    suffix = ".adi" if revision.input_format == "adif" else ".log"
+    return Response(
+        revision.original_content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="entry-{entry_id}-revision-'
+                f'{revision.revision_number}{suffix}"'
+            )
+        },
+    )
 
 
 @router.put("/{contest_id}", responses=API_ERROR_RESPONSES)

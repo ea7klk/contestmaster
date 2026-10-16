@@ -502,6 +502,9 @@ onMounted(refreshData)
           <RouterLink :to="`/manage/contests/${contest.id}/results`">
             Generate and publish results
           </RouterLink>
+          <RouterLink :to="`/manage/contests/${contest.id}/entries`">
+            Submitted logs
+          </RouterLink>
           <dl class="contest-meta">
             <div>
               <dt>Starts</dt>

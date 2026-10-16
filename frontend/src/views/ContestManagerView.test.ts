@@ -163,6 +163,9 @@ describe('ContestManagerView', () => {
       'aria-label': 'Scrollable contest list',
     })
     expect(wrapper.findAll('.contest-card')).toHaveLength(2)
+    expect(
+      wrapper.findAll('.contest-card a').some((link) => link.text() === 'Submitted logs'),
+    ).toBe(true)
 
     await wrapper.get('#contest-filter').setValue('SUMMER-QSO')
     expect(wrapper.findAll('.contest-card')).toHaveLength(1)

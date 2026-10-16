@@ -59,6 +59,10 @@ export function listContests(signal?: AbortSignal) {
   )
 }
 
+export function getContest(id: number, signal?: AbortSignal) {
+  return apiRequest<Contest>(`/contests/${id}`, { method: 'GET', signal })
+}
+
 export function createContest(draft: ContestDraft) {
   return apiRequest<Contest>('/contests', {
     method: 'POST',

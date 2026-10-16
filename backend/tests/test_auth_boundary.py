@@ -24,9 +24,12 @@ from backend.app.models import (
     ContestStatus,
     Entry,
     EntryAccessGrant,
+    EntryRevision,
     Participant,
+    Qso,
     RulesetActivation,
     RulesetVersion,
+    Station,
     SystemRole,
     SystemSession,
     SystemUser,
@@ -379,6 +382,137 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
             "Corrected event title",
         ]
         assert events[1].event_metadata == {"changed_fields": ["name", "periodicity"]}
+
+
+def test_contest_managers_can_browse_entry_logs_only_for_owned_contests(identity_database):
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="log-manager",
+        email="logs@example.test",
+    )
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="other-log-manager",
+        email="other-logs@example.test",
+    )
+    add_user(identity_database)
+    with identity_database.begin() as session:
+        contest = Contest(
+            owner_user_id=manager_id,
+            name="Log Browser Test",
+            slug="log-browser-test",
+            starts_at=datetime(2026, 4, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 4, 1, 6, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 4, 8, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        participant = Participant(display_name="Private entrant", callsign_submitted="K1TEST")
+        session.add(participant)
+        session.flush()
+        entry = Entry(
+            contest_id=contest.id,
+            participant_id=participant.id,
+            entry_key="k1test-entry",
+            category_values={"operator": "single"},
+            submitted_at=datetime(2026, 4, 2, tzinfo=UTC),
+        )
+        session.add(entry)
+        session.flush()
+        revisions = []
+        for revision_number, content in ((1, "old source log"), (2, "latest source log")):
+            revision = EntryRevision(
+                entry_id=entry.id,
+                revision_number=revision_number,
+                input_format="cabrillo",
+                original_filename=f"k1test-r{revision_number}.log",
+                storage_key=f"private/{entry.id}/revision-{revision_number}",
+                original_content=content,
+                content_sha256=str(revision_number) * 64,
+                byte_size=len(content),
+                submitted_at=datetime(2026, 4, revision_number, tzinfo=UTC),
+            )
+            session.add(revision)
+            session.flush()
+            station = Station(
+                entry_revision_id=revision.id,
+                callsign_submitted="K1TEST",
+                callsign_normalized="K1TEST",
+            )
+            session.add(station)
+            session.flush()
+            revisions.append((revision, station))
+        for line, callsign in ((1, "K2ONE"), (2, "K3TWO")):
+            revision, station = revisions[1]
+            session.add(
+                Qso(
+                    entry_revision_id=revision.id,
+                    station_id=station.id,
+                    source_line_number=line,
+                    occurred_at=datetime(2026, 4, 1, 1, line, tzinfo=UTC),
+                    callsign_submitted=callsign,
+                    band="20m",
+                    mode="CW",
+                    exchange_sent_submitted={"serial": f"{line:03d}"},
+                    exchange_received_submitted={"serial": "007"},
+                )
+            )
+        contest_id, entry_id, latest_revision_id = contest.id, entry.id, revisions[1][0].id
+
+    def sign_in(email):
+        client = TestClient(app)
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "Correct horse battery staple"},
+        )
+        assert response.status_code == 200
+        return client
+
+    endpoint = f"/api/v1/contests/{contest_id}/entries"
+    assert TestClient(app).get(endpoint).status_code == 401
+
+    manager = sign_in("logs@example.test")
+    listing = manager.get(endpoint, params={"search": "K1TEST"})
+    assert listing.status_code == 200
+    assert listing.json()["meta"]["total"] == 1
+    assert listing.json()["items"][0] == {
+        "entry_id": entry_id,
+        "entry_key": "k1test-entry",
+        "callsign": "K1TEST",
+        "status": "received",
+        "is_late": False,
+        "category_values": {"operator": "single"},
+        "submitted_at": "2026-04-02T00:00:00Z",
+        "revision_id": latest_revision_id,
+        "revision_number": 2,
+        "input_format": "cabrillo",
+        "original_filename": "k1test-r2.log",
+        "qso_count": 2,
+    }
+    assert "participant_email" not in listing.text
+    assert "receipt_token" not in listing.text
+    assert "token_hash" not in listing.text
+
+    details_url = f"{endpoint}/{entry_id}"
+    details = manager.get(details_url, params={"page_size": 1})
+    assert details.status_code == 200
+    assert details.json()["entry"]["revision_count"] == 2
+    assert [item["revision_number"] for item in details.json()["revisions"]] == [2, 1]
+    assert details.json()["meta"]["pages"] == 2
+    assert details.json()["contacts"][0]["exchange_sent"] == {"serial": "001"}
+    assert "original_content" not in details.json()["entry"]
+    source = manager.get(
+        f"{details_url}/revisions/{latest_revision_id}/download"
+    )
+    assert source.status_code == 200
+    assert source.text == "latest source log"
+
+    other = sign_in("other-logs@example.test")
+    assert other.get(endpoint).status_code == 404
+    assert other.get(details_url).status_code == 404
+    assert manager.get(f"{details_url}/revisions/999999/download").status_code == 404
 
 
 def test_contest_mutations_require_session_and_csrf_and_ignore_client_owner(identity_database):
