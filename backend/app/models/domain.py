@@ -171,7 +171,9 @@ class Contest(Base):
         ForeignKey("contest_series.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     series_occurrence_date: Mapped[date | None] = mapped_column(Date)
-    is_series_anchor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_series_anchor: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     owner_user_id: Mapped[int] = mapped_column(
         ForeignKey("system_users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -185,7 +187,9 @@ class Contest(Base):
     ends_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     periodicity: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     log_submission_cutoff_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
-    cutoff_is_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    cutoff_is_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     status: Mapped[ContestStatus] = mapped_column(
         enum_column(ContestStatus, "contest_status"), nullable=False, default=ContestStatus.DRAFT
     )

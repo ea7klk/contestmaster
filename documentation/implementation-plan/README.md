@@ -210,3 +210,11 @@ The user's schedule and deadline refinements are tracked by parent issue [#215](
 5. [x] [#220 — Architecture, data model, API, and operator documentation](https://github.com/ea7klk/contestmaster/issues/220).
 
 **Verification:** backend `.venv/bin/pytest -q` — 207 passed; frontend Node 24 `npm run typecheck`, `npm test -- --run`, `npm run lint`, and `npm run build` — passed (26 files / 98 tests); `.venv/bin/ruff check backend/app backend/tests` — passed; fresh isolated SQLite `alembic upgrade head` and `alembic check` — passed; `git diff --check` — passed. One existing Alembic configuration deprecation warning remains.
+
+## Supplemental work — SQLite recurring-series migration repair (completed)
+
+The upgrade failure reported against a populated local database is tracked by parent issue [#221](https://github.com/ea7klk/contestmaster/issues/221) and child issue [#222](https://github.com/ea7klk/contestmaster/issues/222), milestone **SQLite migration compatibility repair**. Migration `0022` now avoids recreating the referenced `contests` table and can resume after the earlier failed batch migration left temporary schema artifacts.
+
+1. [x] [#222 — Add recurring-series schema without rebuilding contests](https://github.com/ea7klk/contestmaster/issues/222).
+
+**Verification:** backend `.venv/bin/pytest -q` — 208 passed; the populated-database migration regression preserves the existing contest and entry, recovers leftover temporary schema, checks FK target/action, and passes downgrade/re-upgrade plus `alembic check`. Fresh SQLite `alembic upgrade head` and `alembic check`, `.venv/bin/ruff check backend/app backend/tests backend/migrations`, and `git diff --check` — passed.

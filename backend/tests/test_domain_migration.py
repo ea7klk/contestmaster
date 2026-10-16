@@ -12,6 +12,8 @@ from backend.app.migrations import _config
 from backend.app.models import (
     BandCatalogItem,
     Contest,
+    ContestSeries,
+    ContestSeriesException,
     RulesetVersion,
     SystemRole,
     SystemUser,
@@ -30,14 +32,16 @@ def _alembic(database_url: str, *arguments: str) -> None:
     environment = os.environ.copy()
     environment["DATABASE_URL"] = database_url
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "alembic", *arguments],
         cwd=project_root,
         env=environment,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if result.returncode:
+        raise AssertionError(result.stderr)
 
 
 def _run_python(database_url: str, code: str) -> None:
@@ -239,6 +243,121 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     assert revisions[3].down_revision == "0018_remove_unscored_country_data"
     assert revisions[4].down_revision is None
     assert revisions[4].revision == "0018_remove_unscored_country_data"
+
+
+def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'populated-series-upgrade.sqlite3'}"
+    _alembic(database_url, "upgrade", "0021_authorized_ruleset_deletion")
+
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        manager = SystemUser(
+            username="migration-series-manager",
+            email_normalized="migration-series-manager@example.test",
+            display_name="Migration Series Manager",
+            role=SystemRole.CONTEST_MANAGER,
+            password_hash="test-hash",
+            is_active=True,
+        )
+        session.add(manager)
+        session.commit()
+        manager_id = manager.id
+
+    with engine.begin() as connection:
+        contest_result = connection.execute(
+            text(
+                "INSERT INTO contests "
+                "(owner_user_id, name, slug, starts_at, ends_at, "
+                "log_submission_cutoff_at, status, auto_recalculate_on_upload, "
+                "created_at, updated_at) "
+                "VALUES (:owner_id, 'Existing Contest', 'existing-contest', "
+                "'2026-06-01T12:00:00.000000Z', '2026-06-01T18:00:00.000000Z', "
+                "'2026-06-03T18:00:00.000000Z', 'draft', 0, "
+                "'2026-01-01T00:00:00.000000Z', '2026-01-01T00:00:00.000000Z')"
+            ),
+            {"owner_id": manager_id},
+        )
+        contest_id = contest_result.lastrowid
+        participant_result = connection.execute(
+            text(
+                "INSERT INTO participants (display_name, callsign_submitted, "
+                "callsign_normalized, created_at) VALUES "
+                "('Existing Entrant', 'K1TEST', 'K1TEST', '2026-01-01T00:00:00.000000Z')"
+            )
+        )
+        participant_id = participant_result.lastrowid
+        entry_result = connection.execute(
+            text(
+                "INSERT INTO entries (contest_id, participant_id, entry_key, "
+                "category_values, is_late, status, submitted_at, created_at) "
+                "VALUES (:contest_id, :participant_id, 'k1test-entry', '{}', 0, 'received', "
+                "'2026-06-02T00:00:00.000000Z', '2026-06-02T00:00:00.000000Z')"
+            ),
+            {"contest_id": contest_id, "participant_id": participant_id},
+        )
+        entry_id = entry_result.lastrowid
+
+    # A previous 0022 attempt can leave the series tables and SQLite's
+    # temporary batch-copy table behind after failing to drop `contests`.
+    with engine.begin() as connection:
+        ContestSeries.__table__.create(connection)
+        ContestSeriesException.__table__.create(connection)
+        connection.exec_driver_sql(
+            "CREATE TABLE _alembic_tmp_contests (id INTEGER PRIMARY KEY, "
+            "series_id INTEGER REFERENCES contest_series(id))"
+        )
+        connection.execute(
+            text("INSERT INTO _alembic_tmp_contests (id, series_id) VALUES (:id, NULL)"),
+            {"id": contest_id},
+        )
+
+    _alembic(database_url, "upgrade", "head")
+    _alembic(database_url, "check")
+
+    with engine.connect() as connection:
+        contest = connection.execute(
+            text(
+                "SELECT series_id, is_series_anchor, cutoff_is_override "
+                "FROM contests WHERE id = :contest_id"
+            ),
+            {"contest_id": contest_id},
+        ).one()
+        assert contest == (None, 0, 0)
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM entries WHERE id = :entry_id"),
+                {"entry_id": entry_id},
+            )
+            == 1
+        )
+        series_foreign_key = next(
+            row
+            for row in connection.exec_driver_sql("PRAGMA foreign_key_list(contests)").all()
+            if row[3] == "series_id"
+        )
+        assert series_foreign_key[2:7] == (
+            "contest_series",
+            "series_id",
+            "id",
+            "NO ACTION",
+            "RESTRICT",
+        )
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+
+    _alembic(database_url, "downgrade", "0021_authorized_ruleset_deletion")
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM entries WHERE id = :entry_id"),
+                {"entry_id": entry_id},
+            )
+            == 1
+        )
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    _alembic(database_url, "upgrade", "head")
+    _alembic(database_url, "check")
+
+    engine.dispose()
 
 
 def test_periodicity_migration_copies_legacy_ruleset_recurrence(tmp_path) -> None:

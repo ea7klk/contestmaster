@@ -105,7 +105,9 @@ def upgrade() -> None:
     removed_constraints = [
         constraint
         for constraint in contests.constraints
-        if any(column.name in later_contest_columns for column in getattr(constraint, "columns", ()))
+        if any(
+            column.name in later_contest_columns for column in getattr(constraint, "columns", ())
+        )
     ]
     removed_indexes = [
         index
