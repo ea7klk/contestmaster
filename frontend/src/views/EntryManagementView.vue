@@ -14,6 +14,7 @@ import {
   type ContactWrite,
   type ManagedEntry,
 } from '../api/logs'
+import { formatInteger, formatUtcDateTime } from '../i18n'
 
 const route = useRoute()
 const entryId = Number(route.params.entryId)
@@ -271,15 +272,15 @@ onMounted(() => {
     class="page-card upload-card"
     aria-labelledby="entry-management-title"
   >
-    <p class="eyebrow">Entry access</p>
-    <h1 id="entry-management-title">Manage log entry</h1>
-    <p v-if="error" role="alert" class="form-error">{{ error }}</p>
-    <p v-if="message" role="status" aria-live="polite">{{ message }}</p>
+    <p class="eyebrow">{{ $tr('Entry access') }}</p>
+    <h1 id="entry-management-title">{{ $tr('Manage log entry') }}</h1>
+    <p v-if="error" role="alert" class="form-error">{{ $tr(error) }}</p>
+    <p v-if="message" role="status" aria-live="polite">{{ $tr(message) }}</p>
 
     <form v-if="!entry" class="stacked-form" @submit.prevent="loadEntry">
-      <label for="entry-id">Entry ID</label>
+      <label for="entry-id">{{ $tr('Entry ID') }}</label>
       <input id="entry-id" :value="entryId" readonly />
-      <label for="entry-receipt">Entry receipt token</label>
+      <label for="entry-receipt">{{ $tr('Entry receipt token') }}</label>
       <input
         id="entry-receipt"
         v-model.trim="receiptToken"
@@ -293,7 +294,14 @@ onMounted(() => {
     </form>
 
     <div v-else>
-      <p>Entry {{ entry.entry_key }} · revision {{ entry.revision_number }}</p>
+      <p>
+        {{ $tr('Entry') }} {{ entry.entry_key }} {{ $tr('· revision') }}
+        {{
+          entry.revision_number === null
+            ? '—'
+            : formatInteger(entry.revision_number)
+        }}
+      </p>
       <button
         v-if="entry.revision_id"
         class="secondary-button"
@@ -313,20 +321,34 @@ onMounted(() => {
       >
         <table>
           <caption class="visually-hidden">
-            Contacts in the current entry revision
+            {{
+              $tr('Contacts in the current entry revision')
+            }}
           </caption>
           <thead>
             <tr>
-              <th>UTC time</th>
-              <th>Callsign</th>
-              <th>Frequency</th>
-              <th>Mode</th>
-              <th>Actions</th>
+              <th>{{ $tr('UTC time') }}</th>
+              <th>{{ $tr('Callsign') }}</th>
+              <th>{{ $tr('Frequency') }}</th>
+              <th>{{ $tr('Mode') }}</th>
+              <th>{{ $tr('Actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in entry.contacts" :key="item.id">
-              <td>{{ new Date(item.occurred_at).toISOString() }}</td>
+              <td>
+                {{
+                  formatUtcDateTime(item.occurred_at, {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                  })
+                }}
+              </td>
               <td>{{ item.callsign }}</td>
               <td>{{ item.frequency }}</td>
               <td>{{ item.mode }}</td>
@@ -337,7 +359,7 @@ onMounted(() => {
                   :disabled="saving"
                   @click="beginEdit(item)"
                 >
-                  Edit
+                  {{ $tr('Edit') }}
                 </button>
                 <button
                   class="secondary-button"
@@ -345,12 +367,12 @@ onMounted(() => {
                   :disabled="saving"
                   @click="deleteContact(item.id)"
                 >
-                  Remove
+                  {{ $tr('Remove') }}
                 </button>
               </td>
             </tr>
             <tr v-if="entry.contacts.length === 0">
-              <td colspan="5">No contacts in this revision.</td>
+              <td colspan="5">{{ $tr('No contacts in this revision.') }}</td>
             </tr>
           </tbody>
         </table>
@@ -358,37 +380,39 @@ onMounted(() => {
 
       <form class="stacked-form" @submit.prevent="saveContact">
         <h2>{{ editingContactId ? 'Edit contact' : 'Add contact' }}</h2>
-        <label for="contact-time">Contact time</label>
+        <label for="contact-time">{{ $tr('Contact time') }}</label>
         <input
           id="contact-time"
           v-model="contact.occurredAt"
           type="datetime-local"
           required
         />
-        <label for="contact-callsign">Worked callsign</label>
+        <label for="contact-callsign">{{ $tr('Worked callsign') }}</label>
         <input
           id="contact-callsign"
           v-model.trim="contact.callsign"
           maxlength="32"
           required
         />
-        <label for="contact-frequency">Frequency or band</label>
+        <label for="contact-frequency">{{ $tr('Frequency or band') }}</label>
         <input
           id="contact-frequency"
           v-model.trim="contact.frequency"
           maxlength="24"
           required
         />
-        <label for="contact-mode">Mode</label>
+        <label for="contact-mode">{{ $tr('Mode') }}</label>
         <input
           id="contact-mode"
           v-model.trim="contact.mode"
           maxlength="40"
           required
         />
-        <label for="contact-exchange-sent">Exchange sent</label>
+        <label for="contact-exchange-sent">{{ $tr('Exchange sent') }}</label>
         <input id="contact-exchange-sent" v-model="contact.exchangeSent" />
-        <label for="contact-exchange-received">Exchange received</label>
+        <label for="contact-exchange-received">{{
+          $tr('Exchange received')
+        }}</label>
         <input
           id="contact-exchange-received"
           v-model="contact.exchangeReceived"
@@ -409,13 +433,13 @@ onMounted(() => {
             type="button"
             @click="resetContact"
           >
-            Cancel edit
+            {{ $tr('Cancel edit') }}
           </button>
         </div>
       </form>
 
       <form class="stacked-form" @submit.prevent="resubmit">
-        <h2>Replace log file</h2>
+        <h2>{{ $tr('Replace log file') }}</h2>
         <label for="revision-file">{{ revisionFileLabel }}</label>
         <input
           id="revision-file"
@@ -425,19 +449,23 @@ onMounted(() => {
         />
         <p class="field-hint">
           <template v-if="acceptedFormats.length">
-            This contest accepts
+            {{ $tr('This contest accepts') }}
             {{
               acceptedFormats
                 .map((format) => format.toUpperCase())
                 .join(' and ')
-            }}. Use UTF-8 text, up to 5 MiB.
+            }}{{ $tr('. Use UTF-8 text, up to 5 MiB.') }}
           </template>
           <template v-else>
-            This contest has no supported log format enabled in its ruleset.
+            {{
+              $tr(
+                'This contest has no supported log format enabled in its ruleset.',
+              )
+            }}
           </template>
         </p>
         <p v-if="file && !revisionFileAllowed" class="form-error" role="alert">
-          This file format is not enabled for this contest.
+          {{ $tr('This file format is not enabled for this contest.') }}
         </p>
         <div
           v-if="saving && file"
@@ -446,7 +474,7 @@ onMounted(() => {
           aria-live="polite"
         >
           <label for="revision-progress"
-            >Upload progress: {{ uploadProgress }}%</label
+            >{{ $tr('Upload progress:') }} {{ uploadProgress }}%</label
           >
           <progress id="revision-progress" :value="uploadProgress" max="100">
             {{ uploadProgress }}%

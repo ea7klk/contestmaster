@@ -9,6 +9,7 @@ import {
   type SavedRulesetVersion,
 } from '../api/rulesets'
 import { getCurrentUser } from '../api/identity'
+import { formatInteger } from '../i18n'
 
 const pageSize = 20
 const items = ref<SavedRulesetVersion[]>([])
@@ -121,11 +122,14 @@ onMounted(refresh)
   <section class="ruleset-list-page" aria-labelledby="ruleset-list-title">
     <div class="heading">
       <div>
-        <p class="eyebrow">Contest manager tools</p>
-        <h1 id="ruleset-list-title">Rulesets</h1>
+        <p class="eyebrow">{{ $tr('Contest manager tools') }}</p>
+        <h1 id="ruleset-list-title">{{ $tr('Rulesets') }}</h1>
         <p>
-          Browse immutable ruleset versions, create a new ruleset, or start a
-          revised version from an existing one.
+          {{
+            $tr(
+              'Browse immutable ruleset versions, create a new ruleset, or start a revised version from an existing one.',
+            )
+          }}
         </p>
       </div>
       <div class="actions">
@@ -133,63 +137,72 @@ onMounted(refresh)
           <RouterLink
             class="secondary-button"
             to="/manage/rulesets/new#import-ruleset"
-            >Import ruleset</RouterLink
+            >{{ $tr('Import ruleset') }}</RouterLink
           >
         </span>
         <span>
-          <RouterLink class="secondary-button" to="/manage/contests"
-            >Manage contests</RouterLink
-          >
+          <RouterLink class="secondary-button" to="/manage/contests">{{
+            $tr('Manage contests')
+          }}</RouterLink>
         </span>
         <span>
-          <RouterLink class="primary-button" to="/manage/rulesets/new"
-            >Create ruleset</RouterLink
-          >
+          <RouterLink class="primary-button" to="/manage/rulesets/new">{{
+            $tr('Create ruleset')
+          }}</RouterLink>
         </span>
       </div>
     </div>
-    <p v-if="loading" role="status" class="notice">Loading saved rulesets…</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading saved rulesets…') }}
+    </p>
     <section
       v-else-if="forbidden"
       class="panel"
       aria-labelledby="sign-in-required"
     >
-      <h2 id="sign-in-required">Sign-in required</h2>
+      <h2 id="sign-in-required">{{ $tr('Sign-in required') }}</h2>
       <p>
-        Sign in with a contest-manager or global-administrator account to manage
-        rulesets.
+        {{
+          $tr(
+            'Sign in with a contest-manager or global-administrator account to manage rulesets.',
+          )
+        }}
       </p>
       <RouterLink class="primary-button" to="/sign-in?next=/manage/rulesets">
-        Sign in
+        {{ $tr('Sign in') }}
       </RouterLink>
     </section>
     <template v-else>
-      <p v-if="error" role="alert" class="error-panel">{{ error }}</p>
-      <p v-if="message" role="status" class="success-panel">{{ message }}</p>
+      <p v-if="error" role="alert" class="error-panel">{{ $tr(error) }}</p>
+      <p v-if="message" role="status" class="success-panel">
+        {{ $tr(message) }}
+      </p>
       <label class="filter"
-        >Filter rulesets
+        >{{ $tr('Filter rulesets') }}
         <input
           v-model="query"
           type="search"
           maxlength="120"
-          placeholder="Ruleset key, version, or source edition"
+          :placeholder="$tr('Ruleset key, version, or source edition')"
           autocomplete="off"
           @input="filter"
         />
       </label>
       <p v-if="total === 0 && !query" class="notice">
-        No saved ruleset versions are available yet.
+        {{ $tr('No saved ruleset versions are available yet.') }}
       </p>
       <p v-else-if="filteredItems.length === 0" role="status" class="notice">
-        No rulesets match “{{ query }}”.
+        {{ $tr('No rulesets match “') }}{{ query }}”.
       </p>
-      <ul v-else class="list" aria-label="Saved ruleset versions">
+      <ul v-else class="list" :aria-label="$tr('Saved ruleset versions')">
         <li v-for="saved in filteredItems" :key="saved.id" class="panel row">
           <div class="details">
-            <h2>{{ saved.ruleset_key }} · version {{ saved.version }}</h2>
+            <h2>
+              {{ saved.ruleset_key }} {{ $tr('· version') }} {{ saved.version }}
+            </h2>
             <p>
               {{ saved.source_edition || 'No source edition' }} ·
-              {{ saved.rule_type_keys.length }} rule types
+              {{ saved.rule_type_keys.length }} {{ $tr('rule types') }}
             </p>
             <p class="rule-types">{{ saved.rule_type_keys.join(', ') }}</p>
           </div>
@@ -206,7 +219,7 @@ onMounted(refresh)
               <RouterLink
                 class="secondary-button"
                 :to="`/manage/rulesets/${saved.id}/edit`"
-                >Create version from this ruleset</RouterLink
+                >{{ $tr('Create version from this ruleset') }}</RouterLink
               >
             </span>
             <button
@@ -223,7 +236,11 @@ onMounted(refresh)
           </div>
         </li>
       </ul>
-      <nav v-if="pages > 1" class="pagination" aria-label="Ruleset list pages">
+      <nav
+        v-if="pages > 1"
+        class="pagination"
+        :aria-label="$tr('Ruleset list pages')"
+      >
         <span>
           <button
             class="secondary-button"
@@ -231,11 +248,12 @@ onMounted(refresh)
             :disabled="page <= 1 || loading"
             @click="changePage(page - 1)"
           >
-            Previous
+            {{ $tr('Previous') }}
           </button>
         </span>
         <span aria-live="polite"
-          >Page {{ page }} of {{ pages }} · {{ total }} rulesets</span
+          >{{ $tr('Page') }} {{ page }} {{ $tr('of') }} {{ pages }} ·
+          {{ formatInteger(total) }} {{ $tr('rulesets') }}</span
         >
         <span>
           <button
@@ -244,7 +262,7 @@ onMounted(refresh)
             :disabled="page >= pages || loading"
             @click="changePage(page + 1)"
           >
-            Next
+            {{ $tr('Next') }}
           </button>
         </span>
       </nav>

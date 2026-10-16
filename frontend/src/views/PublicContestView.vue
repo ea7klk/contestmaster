@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import { getPublicContest, type PublicContestDetails } from '../api/results'
+import { formatUtcDateTime } from '../i18n'
 import { renderContestMarkdown } from './contestMarkdown'
 import { describeContestRuleset } from './publicContestDescription'
 
@@ -17,18 +18,8 @@ const contestDescriptionHtml = computed(() =>
   renderContestMarkdown(contest.value?.description ?? null),
 )
 
-const utcDateTime = new Intl.DateTimeFormat('en-GB', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-  timeZone: 'UTC',
-})
-
 function formatUtc(value: string) {
-  return `${utcDateTime.format(new Date(value))} UTC`
+  return formatUtcDateTime(value)
 }
 
 const acceptsLogs = () =>
@@ -54,9 +45,11 @@ onMounted(async () => {
     class="form-card public-contest"
     aria-labelledby="public-contest-title"
   >
-    <p class="eyebrow">Public contest details</p>
-    <p v-if="loading" role="status" class="notice">Loading contest details…</p>
-    <p v-else-if="error" role="alert" class="error-panel">{{ error }}</p>
+    <p class="eyebrow">{{ $tr('Public contest details') }}</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading contest details…') }}
+    </p>
+    <p v-else-if="error" role="alert" class="error-panel">{{ $tr(error) }}</p>
     <template v-else-if="contest">
       <h1 id="public-contest-title">{{ contest.name }}</h1>
       <!-- HTML is parsed and sanitized in contestMarkdown.ts before rendering. -->
@@ -64,7 +57,7 @@ onMounted(async () => {
       <section
         v-if="contestDescriptionHtml"
         class="contest-description markdown-content"
-        aria-label="Contest description"
+        :aria-label="$tr('Contest description')"
         v-html="contestDescriptionHtml"
       />
       <!-- eslint-enable vue/no-v-html -->
@@ -72,30 +65,34 @@ onMounted(async () => {
         class="ruleset-overview"
         aria-labelledby="ruleset-overview-title"
       >
-        <h2 id="ruleset-overview-title">Contest rules at a glance</h2>
+        <h2 id="ruleset-overview-title">
+          {{ $tr('Contest rules at a glance') }}
+        </h2>
         <p class="generated-summary-note">
-          This summary is automatically generated from the ruleset and may be
-          imprecise. Refer to the contest’s official published rules for the
-          authoritative requirements.
+          {{
+            $tr(
+              'This summary is automatically generated from the ruleset and may be imprecise. Refer to the contest’s official published rules for the authoritative requirements.',
+            )
+          }}
         </p>
         <ul v-if="rulesetSummary.length">
           <li v-for="(item, index) in rulesetSummary" :key="index">
             {{ item }}
           </li>
         </ul>
-        <p v-else>Detailed contest rules are not available yet.</p>
+        <p v-else>{{ $tr('Detailed contest rules are not available yet.') }}</p>
       </section>
       <dl class="contest-dates">
         <div>
-          <dt>Contest start</dt>
+          <dt>{{ $tr('Contest start') }}</dt>
           <dd>{{ formatUtc(contest.starts_at) }}</dd>
         </div>
         <div>
-          <dt>Contest end</dt>
+          <dt>{{ $tr('Contest end') }}</dt>
           <dd>{{ formatUtc(contest.ends_at) }}</dd>
         </div>
         <div>
-          <dt>Log submission cutoff</dt>
+          <dt>{{ $tr('Log submission cutoff') }}</dt>
           <dd>{{ formatUtc(contest.log_submission_cutoff_at) }}</dd>
         </div>
       </dl>
@@ -104,18 +101,18 @@ onMounted(async () => {
           class="primary-button"
           :to="{ path: '/submit-log', query: { contest: contest.slug } }"
         >
-          Submit a log for this contest
+          {{ $tr('Submit a log for this contest') }}
         </RouterLink>
       </p>
       <p v-else-if="contest.status === 'open'" class="notice">
-        Log submissions are closed for this contest.
+        {{ $tr('Log submissions are closed for this contest.') }}
       </p>
       <RouterLink
         v-if="contest.status === 'published'"
         class="results-link"
         :to="`/contests/${encodeURIComponent(contest.slug)}/results`"
       >
-        View published results <span aria-hidden="true">→</span>
+        {{ $tr('View published results') }} <span aria-hidden="true">→</span>
       </RouterLink>
     </template>
   </section>

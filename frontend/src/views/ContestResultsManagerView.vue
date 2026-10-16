@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
+import { formatInteger } from '../i18n'
 import {
   generateResults,
   getManagerResultReview,
@@ -143,15 +144,23 @@ onMounted(refresh)
 
 <template>
   <section class="manager-results" aria-labelledby="manager-results-title">
-    <RouterLink to="/manage/contests">← Back to contests</RouterLink>
-    <p class="eyebrow">Contest staff</p>
-    <h1 id="manager-results-title">Generate and publish results</h1>
-    <p v-if="loading" role="status" class="notice">Loading result review…</p>
-    <p v-if="error" role="alert" class="error-panel">{{ error }}</p>
-    <p v-if="message" role="status" class="success-panel">{{ message }}</p>
+    <RouterLink to="/manage/contests">
+{{
+      $tr('← Back to contests')
+    }}
+</RouterLink>
+    <p class="eyebrow">{{ $tr('Contest staff') }}</p>
+    <h1 id="manager-results-title">
+      {{ $tr('Generate and publish results') }}
+    </h1>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading result review…') }}
+    </p>
+    <p v-if="error" role="alert" class="error-panel">{{ $tr(error) }}</p>
+    <p v-if="message" role="status" class="success-panel">{{ $tr(message) }}</p>
     <template v-if="review && !loading">
       <p>
-        Contest status: <strong>{{ review.status }}</strong>
+        {{ $tr('Contest status:') }} <strong>{{ review.status }}</strong>
       </p>
       <div class="action-row">
         <button
@@ -168,22 +177,26 @@ onMounted(refresh)
           :disabled="busy || !canPublish || selectedRunIds.length === 0"
           @click="publish"
         >
-          Publish selected score runs
+          {{ $tr('Publish selected score runs') }}
         </button>
       </div>
       <div v-if="generating" class="generation-progress">
-        <progress aria-label="Calculating contest results"></progress>
+        <progress :aria-label="$tr('Calculating contest results')"></progress>
         <p role="status" class="notice">
-          Calculating contest results. This may take a while; keep this page open.
+          {{
+            $tr(
+              'Calculating contest results. This may take a while; keep this page open.',
+            )
+          }}
         </p>
       </div>
 
       <section class="panel" aria-labelledby="review-title">
         <h2 id="review-title">
-          Unresolved items ({{ review.unresolved_count }})
+          {{ $tr('Unresolved items (') }}{{ review.unresolved_count }})
         </h2>
         <p v-if="review.unresolved.length === 0" class="notice">
-          No unresolved scoring items.
+          {{ $tr('No unresolved scoring items.') }}
         </p>
         <ul v-else class="unresolved-list">
           <li
@@ -191,7 +204,7 @@ onMounted(refresh)
             :key="`${item.entry_id}-${item.status}-${index}`"
           >
             <span
-              >Entry {{ item.entry_id }} ·
+              >{{ $tr('Entry') }} {{ item.entry_id }} ·
               {{ String(item.status).replaceAll('_', ' ') }}</span
             >
             <span
@@ -211,17 +224,21 @@ onMounted(refresh)
                 class="qso-review"
                 @submit.prevent="decideQso(Number(qsoId))"
               >
-                <strong>Contact {{ qsoId }}</strong>
-                <label :for="`decision-${qsoId}`">Decision</label>
+                <strong>{{ $tr('Contact') }} {{ qsoId }}</strong>
+                <label :for="`decision-${qsoId}`">{{ $tr('Decision') }}</label>
                 <select
                   :id="`decision-${qsoId}`"
                   v-model="reviewChoices[Number(qsoId)]"
                 >
-                  <option value="not_credited">Not credited</option>
-                  <option value="credited">Credited</option>
-                  <option value="needs_review">Keep under review</option>
+                  <option value="not_credited">
+                    {{ $tr('Not credited') }}
+                  </option>
+                  <option value="credited">{{ $tr('Credited') }}</option>
+                  <option value="needs_review">
+                    {{ $tr('Keep under review') }}
+                  </option>
                 </select>
-                <label :for="`reason-${qsoId}`">Reason</label>
+                <label :for="`reason-${qsoId}`">{{ $tr('Reason') }}</label>
                 <input
                   :id="`reason-${qsoId}`"
                   v-model="reviewReasons[Number(qsoId)]"
@@ -229,7 +246,7 @@ onMounted(refresh)
                   maxlength="4000"
                 />
                 <button class="secondary-button" type="submit" :disabled="busy">
-                  Save decision
+                  {{ $tr('Save decision') }}
                 </button>
               </form>
             </div>
@@ -241,7 +258,7 @@ onMounted(refresh)
               "
               class="entry-review"
             >
-              Entry disposition
+              {{ $tr('Entry disposition') }}
               <select
                 :value="item.status === 'checklog' ? 'checklog' : 'accepted'"
                 :disabled="busy"
@@ -253,10 +270,10 @@ onMounted(refresh)
                   )
                 "
               >
-                <option value="accepted">Accept</option>
-                <option value="checklog">Checklog</option>
-                <option value="withdrawn">Withdraw</option>
-                <option value="disqualified">Disqualify</option>
+                <option value="accepted">{{ $tr('Accept') }}</option>
+                <option value="checklog">{{ $tr('Checklog') }}</option>
+                <option value="withdrawn">{{ $tr('Withdraw') }}</option>
+                <option value="disqualified">{{ $tr('Disqualify') }}</option>
               </select>
             </label>
           </li>
@@ -264,14 +281,16 @@ onMounted(refresh)
       </section>
 
       <section class="panel" aria-labelledby="selection-title">
-        <h2 id="selection-title">Result list selection</h2>
+        <h2 id="selection-title">{{ $tr('Result list selection') }}</h2>
         <p>
-          Select completed runs to include in the next immutable publication.
-          Withdrawn entries are excluded. Entries withheld by the ruleset policy
-          cannot be selected.
+          {{
+            $tr(
+              'Select completed runs to include in the next immutable publication. Withdrawn entries are excluded. Entries withheld by the ruleset policy cannot be selected.',
+            )
+          }}
         </p>
         <p v-if="review.items.length === 0" class="notice">
-          Generate score runs before selecting a result list.
+          {{ $tr('Generate score runs before selecting a result list.') }}
         </p>
         <div
           v-for="item in review.items"
@@ -290,13 +309,13 @@ onMounted(refresh)
             />
             <span
               >{{ item.callsign }} ·
-              {{ item.result_status.replaceAll('_', ' ') }} · score
-              {{ item.score }}</span
+              {{ item.result_status.replaceAll('_', ' ') }} {{ $tr('· score') }}
+              {{ formatInteger(item.score) }}</span
             >
           </label>
-          <span v-if="!item.included_by_default" class="field-help"
-            >Withheld by publication policy</span
-          >
+          <span v-if="!item.included_by_default" class="field-help">{{
+            $tr('Withheld by publication policy')
+          }}</span>
         </div>
       </section>
     </template>

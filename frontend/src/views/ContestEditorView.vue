@@ -17,6 +17,7 @@ import {
   type ContestSeriesException,
 } from '../api/contests'
 import { getCurrentUser } from '../api/identity'
+import { formatUtcDateTime, formatUtcMonth } from '../i18n'
 
 const props = defineProps<{ contestId?: string }>()
 const router = useRouter()
@@ -347,26 +348,31 @@ watch(
 <template>
   <section class="editor-page" aria-labelledby="contest-editor-title">
     <RouterLink class="back-link" to="/manage/contests">
-      ← Back to contests
+      {{ $tr('← Back to contests') }}
     </RouterLink>
-    <p class="eyebrow">Contest staff</p>
+    <p class="eyebrow">{{ $tr('Contest staff') }}</p>
     <h1 id="contest-editor-title">{{ pageTitle }}</h1>
-    <p v-if="loading" role="status" class="notice">Loading contest…</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading contest…') }}
+    </p>
     <section
       v-else-if="forbidden"
       class="panel"
       aria-labelledby="sign-in-required"
     >
-      <h2 id="sign-in-required">Sign-in required</h2>
+      <h2 id="sign-in-required">{{ $tr('Sign-in required') }}</h2>
       <p>
-        Sign in with a contest-manager or global-administrator account to manage
-        contests.
+        {{
+          $tr(
+            'Sign in with a contest-manager or global-administrator account to manage contests.',
+          )
+        }}
       </p>
       <RouterLink
         class="primary-button"
         to="/sign-in?next=/manage/contests/new"
       >
-        Sign in
+        {{ $tr('Sign in') }}
       </RouterLink>
     </section>
     <template v-else>
@@ -374,12 +380,12 @@ watch(
         {{ errorMessage }}
       </p>
       <p v-if="statusMessage" role="status" class="success-panel">
-        {{ statusMessage }}
+        {{ $tr(statusMessage) }}
       </p>
       <form class="panel contest-form" @submit.prevent="save">
         <div class="form-grid">
           <label>
-            Contest name
+            {{ $tr('Contest name') }}
             <input
               v-model="form.name"
               required
@@ -388,7 +394,7 @@ watch(
             />
           </label>
           <label>
-            URL slug
+            {{ $tr('URL slug') }}
             <input
               v-model="form.slug"
               required
@@ -397,72 +403,79 @@ watch(
               autocomplete="off"
               aria-describedby="slug-help"
             />
-            <span id="slug-help" class="field-help"
-              >Letters, numbers, and hyphens.</span
-            >
+            <span id="slug-help" class="field-help">{{
+              $tr('Letters, numbers, and hyphens.')
+            }}</span>
           </label>
           <label class="full-width">
-            Contest description (Markdown)
+            {{ $tr('Contest description (Markdown)') }}
             <textarea
               v-model="form.description"
               maxlength="10000"
               rows="6"
               aria-describedby="contest-description-help"
             />
-            <span id="contest-description-help" class="field-help"
-              >Supports Markdown such as paragraphs, lists, emphasis, and links.
-              This description is shown to participants above the generated
-              rules summary.</span
-            >
+            <span id="contest-description-help" class="field-help">{{
+              $tr(
+                'Supports Markdown such as paragraphs, lists, emphasis, and links. This description is shown to participants above the generated rules summary.',
+              )
+            }}</span>
           </label>
           <label
-            >Contest starts (UTC)<input
+            >{{ $tr('Contest starts (UTC)')
+            }}<input
               v-model="form.starts_at"
               required
               type="datetime-local"
               :disabled="form.series_id !== null && !form.is_series_anchor"
           /></label>
           <label
-            >Contest ends (UTC)<input
+            >{{ $tr('Contest ends (UTC)')
+            }}<input
               v-model="form.ends_at"
               required
               type="datetime-local"
               :disabled="form.series_id !== null && !form.is_series_anchor"
           /></label>
           <fieldset class="full-width schedule-controls">
-            <legend>Contest periodicity</legend>
+            <legend>{{ $tr('Contest periodicity') }}</legend>
             <p>
-              Recurring schedules are stored in UTC and create separate contest
-              editions. Times above set the anchor edition's start and duration.
+              {{
+                $tr(
+                  "Recurring schedules are stored in UTC and create separate contest editions. Times above set the anchor edition's start and duration.",
+                )
+              }}
             </p>
             <label
-              >Schedule type
+              >{{ $tr('Schedule type') }}
               <select v-model="form.periodicity_frequency">
                 <option value="fixed" :disabled="form.series_id !== null">
-                  One-time contest
+                  {{ $tr('One-time contest') }}
                 </option>
-                <option value="annual_date">Annual date</option>
-                <option value="nth_weekday">Nth weekday</option>
-                <option value="first_full_weekend">First full weekend</option>
-                <option value="last_full_weekend">Last full weekend</option>
-                <option value="nth_full_weekend">Nth full weekend</option>
+                <option value="annual_date">{{ $tr('Annual date') }}</option>
+                <option value="nth_weekday">{{ $tr('Nth weekday') }}</option>
+                <option value="first_full_weekend">
+                  {{ $tr('First full weekend') }}
+                </option>
+                <option value="last_full_weekend">
+                  {{ $tr('Last full weekend') }}
+                </option>
+                <option value="nth_full_weekend">
+                  {{ $tr('Nth full weekend') }}
+                </option>
               </select>
             </label>
             <label v-if="form.periodicity_frequency !== 'fixed'"
-              >UTC month
+              >{{ $tr('UTC month') }}
               <select v-model.number="form.periodicity_month">
                 <option v-for="month in 12" :key="month" :value="month">
-                  {{
-                    new Date(Date.UTC(2020, month - 1, 1)).toLocaleString(
-                      'en',
-                      { month: 'long', timeZone: 'UTC' },
-                    )
-                  }}
+                  {{ formatUtcMonth(month) }}
                 </option>
               </select>
             </label>
             <label v-if="form.periodicity_frequency === 'annual_date'"
-              >UTC day of month<input
+              >{{ $tr('UTC day of month')
+              }}<input
                 v-model.number="form.periodicity_day"
                 type="number"
                 min="1"
@@ -475,7 +488,8 @@ watch(
               "
             >
               <label v-if="form.periodicity_frequency === 'nth_weekday'"
-                >Weekday<select v-model.number="form.periodicity_weekday">
+                >{{ $tr('Weekday')
+                }}<select v-model.number="form.periodicity_weekday">
                   <option
                     v-for="(weekday, index) in [
                       'Monday',
@@ -500,12 +514,12 @@ watch(
                     : 'Occurrence'
                 }}
                 <select v-model.number="form.periodicity_occurrence">
-                  <option :value="1">First</option>
-                  <option :value="2">Second</option>
-                  <option :value="3">Third</option>
-                  <option :value="4">Fourth</option>
-                  <option :value="5">Fifth</option>
-                  <option :value="-1">Last</option>
+                  <option :value="1">{{ $tr('First') }}</option>
+                  <option :value="2">{{ $tr('Second') }}</option>
+                  <option :value="3">{{ $tr('Third') }}</option>
+                  <option :value="4">{{ $tr('Fourth') }}</option>
+                  <option :value="5">{{ $tr('Fifth') }}</option>
+                  <option :value="-1">{{ $tr('Last') }}</option>
                 </select></label
               >
             </template>
@@ -515,7 +529,7 @@ watch(
                 class="secondary-button"
                 @click="loadSchedulePreview"
               >
-                Preview UTC dates
+                {{ $tr('Preview UTC dates') }}
               </button>
               <ol
                 v-if="schedulePreview.length"
@@ -523,7 +537,8 @@ watch(
                 class="preview-list"
               >
                 <li v-for="(occurrence, index) in schedulePreview" :key="index">
-                  {{ occurrence.starts_at }} – {{ occurrence.ends_at }}
+                  {{ formatUtcDateTime(occurrence.starts_at) }} –
+                  {{ formatUtcDateTime(occurrence.ends_at) }}
                 </li>
               </ol>
               <p v-if="schedulePreviewError" role="alert">
@@ -532,19 +547,22 @@ watch(
             </template>
           </fieldset>
           <fieldset class="full-width schedule-controls">
-            <legend>Log submission cutoff</legend>
+            <legend>{{ $tr('Log submission cutoff') }}</legend>
             <template v-if="form.periodicity_frequency === 'fixed'">
               <label
-                >Deadline (UTC)<input
+                >{{ $tr('Deadline (UTC)')
+                }}<input
                   v-model="form.log_submission_cutoff_at"
                   required
                   type="datetime-local"
               /></label>
-              <p>One-time contests use an absolute UTC deadline.</p>
+              <p>
+                {{ $tr('One-time contests use an absolute UTC deadline.') }}
+              </p>
             </template>
             <template v-else>
               <label v-if="form.series_id === null || form.is_series_anchor">
-                Default time after each edition ends
+                {{ $tr('Default time after each edition ends') }}
                 <span class="inline-controls">
                   <input
                     v-model.number="form.cutoff_offset_value"
@@ -554,21 +572,21 @@ watch(
                     required
                   />
                   <select v-model="form.cutoff_offset_unit">
-                    <option value="hours">hours</option>
-                    <option value="days">days</option>
+                    <option value="hours">{{ $tr('hours') }}</option>
+                    <option value="days">{{ $tr('days') }}</option>
                   </select>
                 </span>
               </label>
               <p v-else>
-                Series default: {{ form.cutoff_offset_value }}
-                {{ form.cutoff_offset_unit }} after contest end.
+                {{ $tr('Series default:') }} {{ form.cutoff_offset_value }}
+                {{ form.cutoff_offset_unit }} {{ $tr('after contest end.') }}
               </p>
               <label class="checkbox-field">
                 <input v-model="form.cutoff_is_override" type="checkbox" />
-                Use a custom absolute UTC deadline for this edition
+                {{ $tr('Use a custom absolute UTC deadline for this edition') }}
               </label>
               <label v-if="form.cutoff_is_override">
-                Edition deadline (UTC)
+                {{ $tr('Edition deadline (UTC)') }}
                 <input
                   v-model="form.log_submission_cutoff_at"
                   required
@@ -583,7 +601,7 @@ watch(
                   v-model="form.automatic_creation_enabled"
                   type="checkbox"
                 />
-                Automatically create future contest editions
+                {{ $tr('Automatically create future contest editions') }}
               </label>
               <label
                 v-if="
@@ -591,7 +609,7 @@ watch(
                   form.automatic_creation_enabled
                 "
               >
-                Rolling window (days ahead)
+                {{ $tr('Rolling window (days ahead)') }}
                 <input
                   v-model.number="form.automatic_window_days"
                   type="number"
@@ -601,24 +619,28 @@ watch(
                 />
               </label>
               <p class="field-help">
-                Each edition stores its resolved UTC deadline. A derived
-                deadline follows the edition end and series offset; a custom
-                deadline stays fixed when the schedule changes.
+                {{
+                  $tr(
+                    'Each edition stores its resolved UTC deadline. A derived deadline follows the edition end and series offset; a custom deadline stays fixed when the schedule changes.',
+                  )
+                }}
               </p>
             </template>
           </fieldset>
         </div>
         <label class="checkbox-field"
           ><input v-model="form.auto_recalculate_on_upload" type="checkbox" />
-          Recalculate results after an accepted log upload</label
+          {{ $tr('Recalculate results after an accepted log upload') }}</label
         >
         <section
           v-if="form.series_id !== null"
           class="full-width schedule-controls"
           aria-labelledby="series-exceptions-heading"
         >
-          <h2 id="series-exceptions-heading">Schedule exceptions</h2>
-          <p>Skip or move a single scheduled UTC occurrence.</p>
+          <h2 id="series-exceptions-heading">
+            {{ $tr('Schedule exceptions') }}
+          </h2>
+          <p>{{ $tr('Skip or move a single scheduled UTC occurrence.') }}</p>
           <ul v-if="seriesExceptions.length">
             <li
               v-for="exception in seriesExceptions"
@@ -635,22 +657,25 @@ watch(
                 class="secondary-button"
                 @click="removeException(exception.occurrence_date)"
               >
-                Remove exception
+                {{ $tr('Remove exception') }}
               </button>
             </li>
           </ul>
           <div class="exception-controls">
             <label
-              >Scheduled date<input v-model="exceptionDate" type="date"
+              >{{ $tr('Scheduled date')
+              }}<input v-model="exceptionDate" type="date"
             /></label>
             <label
-              >Action<select v-model="exceptionAction">
-                <option value="skip">Skip this occurrence</option>
-                <option value="move">Move this occurrence</option>
+              >{{ $tr('Action')
+              }}<select v-model="exceptionAction">
+                <option value="skip">{{ $tr('Skip this occurrence') }}</option>
+                <option value="move">{{ $tr('Move this occurrence') }}</option>
               </select></label
             >
             <label v-if="exceptionAction === 'move'"
-              >New UTC date<input v-model="exceptionMovedToDate" type="date"
+              >{{ $tr('New UTC date')
+              }}<input v-model="exceptionMovedToDate" type="date"
             /></label>
             <button
               type="button"
@@ -676,8 +701,11 @@ watch(
           }}
         </button>
         <p class="field-help">
-          Contest dates are UTC instants. Category and exchange setup is part of
-          the selected ruleset.
+          {{
+            $tr(
+              'Contest dates are UTC instants. Category and exchange setup is part of the selected ruleset.',
+            )
+          }}
         </p>
         <button class="primary-button" type="submit" :disabled="saving">
           {{

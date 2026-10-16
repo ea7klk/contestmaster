@@ -29,17 +29,21 @@ function toggle(key: string, checked: boolean, selected: string[]) {
   <fieldset class="eligibility-catalog">
     <legend>{{ kind === 'band' ? 'Eligible bands' : 'Allowed modes' }}</legend>
     <p v-if="kind === 'band'" class="schema-description">
-      Select the catalog bands accepted by this contest. A band marked
-      no-contest is highlighted in red from the shared administrator-managed
-      catalog. This advisory does not automatically exclude the band; the
-      contest’s published rules remain authoritative.
+      {{
+        $tr(
+          'Select the catalog bands accepted by this contest. A band marked no-contest is highlighted in red from the shared administrator-managed catalog. This advisory does not automatically exclude the band; the contest’s published rules remain authoritative.',
+        )
+      }}
     </p>
     <p v-else class="schema-description">
-      Select the operating modes accepted by this contest. Leave all unchecked
-      to allow every mode. The contest’s published rules remain authoritative.
+      {{
+        $tr(
+          'Select the operating modes accepted by this contest. Leave all unchecked to allow every mode. The contest’s published rules remain authoritative.',
+        )
+      }}
     </p>
     <p v-if="items.length === 0" role="status">
-      No active {{ kind }} values are configured.
+      {{ $tr('No active') }} {{ kind }} {{ $tr('values are configured.') }}
     </p>
     <div class="eligibility-options">
       <label
@@ -67,7 +71,7 @@ function toggle(key: string, checked: boolean, selected: string[]) {
             v-if="kind === 'band' && item.contest_free"
             class="contest-free-label"
           >
-            No-contest band (advisory)</strong
+            {{ $tr('No-contest band (advisory)') }}</strong
           >
           <small v-if="item.description">{{ item.description }}</small>
         </span>

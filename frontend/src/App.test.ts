@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { expectAccessible } from './test/a11y'
+import { i18n } from './i18n'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -102,6 +103,10 @@ describe('App privileged navigation', () => {
           path: '/:pathMatch(.*)*',
           component: { template: '<p>Not found</p>' },
         },
+        {
+          path: '/:pathMatch(.*)*',
+          component: { template: '<p>Not found</p>' },
+        },
       ],
     })
     await router.push('/')
@@ -181,5 +186,50 @@ describe('App privileged navigation', () => {
     )
     expect(wrapper.find('a[href="/sign-in"]').exists()).toBe(false)
     wrapper.unmount()
+  })
+
+  it('switches language from the shared navigation and persists the choice', async () => {
+    localStorage.clear()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'Authentication is required.' },
+            }),
+            { status: 401 },
+          ),
+      ),
+    )
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<p>Page</p>' } }],
+    })
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    await wrapper.get('.menu-toggle').trigger('click')
+    const localePicker = wrapper.get('#application-locale')
+    await localePicker.setValue('it')
+    await vi.waitFor(() => expect(i18n.global.locale.value).toBe('it'))
+    await flushPromises()
+    expect(
+      wrapper.get('#application-locale').attributes('aria-labelledby'),
+    ).toBeUndefined()
+    expect(wrapper.get('label[for="application-locale"]').text()).toBe('Lingua')
+    expect(wrapper.get('#main-navigation a[href="/"]').text()).toBe(
+      'Risultati pubblicati',
+    )
+    expect(document.documentElement.lang).toBe('it')
+    expect(localStorage.getItem('contestmaster.uiLocale')).toBe('it')
+    await expectAccessible(wrapper.element)
+    wrapper.unmount()
+    localStorage.clear()
   })
 })

@@ -213,6 +213,26 @@ a:hover {
   text-decoration: none;
   white-space: nowrap;
 }
+.locale-picker {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem 0.75rem;
+}
+.locale-picker label {
+  color: var(--color-brand-on-dark-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.locale-picker select {
+  width: min(100%, 16rem);
+  min-height: 2.5rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-header-outline);
+  border-radius: 0.4rem;
+  color: var(--color-brand-on-dark);
+  background: var(--color-brand-900);
+  font: inherit;
+}
 .site-navigation a:hover,
 .site-navigation a.router-link-active {
   color: var(--color-surface);

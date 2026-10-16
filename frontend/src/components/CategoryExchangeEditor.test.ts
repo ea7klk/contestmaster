@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { expectAccessible } from '../test/a11y'
+import { setLocale } from '../i18n'
 import CategoryExchangeEditor from './CategoryExchangeEditor.vue'
 
 describe('CategoryExchangeEditor', () => {
@@ -53,6 +54,38 @@ describe('CategoryExchangeEditor', () => {
       value_type: 'serial',
       direction: 'both',
     })
+  })
+
+  it('localizes preset labels without changing the configured key or label', async () => {
+    await setLocale('de', undefined)
+    const wrapper = mount(CategoryExchangeEditor, {
+      props: {
+        kind: 'categories',
+        modelValue: {
+          kind: 'categories',
+          dimensions: [
+            {
+              key: 'power',
+              label: 'Power',
+              required: true,
+              choices: [],
+            },
+          ],
+        },
+      },
+    })
+
+    expect(wrapper.get('.controlled-row select').text()).toContain(
+      'Leistung (power)',
+    )
+    await wrapper.get('.controlled-row select').setValue('operator')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
+      dimensions: [
+        expect.objectContaining({ key: 'operator', label: 'Operator' }),
+      ],
+    })
+    wrapper.unmount()
+    await setLocale('en', undefined)
   })
 
   it('groups category and choice controls into wrapping editor rows', async () => {

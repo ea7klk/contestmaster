@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { JsonSchema } from '../api/rulesets'
+import { translateText } from '../i18n'
 
 defineOptions({ name: 'RuleSchemaEditor' })
 
@@ -49,6 +50,17 @@ const effectiveSchema = computed(() => resolveSchema(props.schema))
 const fieldLabel = computed(
   () => props.label || effectiveSchema.value.title || 'Value',
 )
+function displayLabel(source: string): string {
+  const dynamicValueLabel = /^Value for (.+)$/.exec(source)
+  return dynamicValueLabel
+    ? translateText('Value for {key}', { key: dynamicValueLabel[1] })
+    : translateText(source)
+}
+function enumLabel(value: unknown): string {
+  const words = String(value).replaceAll('_', ' ')
+  const title = words.replace(/\b\w/g, (letter) => letter.toUpperCase())
+  return translateText(title)
+}
 const isObject = computed(() => effectiveSchema.value.type === 'object')
 const isArray = computed(() => effectiveSchema.value.type === 'array')
 const isMap = computed(
@@ -81,6 +93,18 @@ const unionTypeOptions = computed(() => {
     )
   return [...new Set(types)]
 })
+const unionTypeLabel = (type: string) =>
+  translateText(
+    (
+      {
+        string: 'Text',
+        integer: 'Integer',
+        number: 'Number',
+        boolean: 'Boolean',
+        array: 'List',
+      } as Record<string, string>
+    )[type] ?? type,
+  )
 const hasUnionTypeSelector = computed(() => unionTypeOptions.value.length > 1)
 const isRequired = (key: string) =>
   effectiveSchema.value.required?.includes(key) ?? false
@@ -269,7 +293,7 @@ function onEnumInput(event: Event) {
     :class="{ 'schema-editor-nested': depth > 0 }"
   >
     <legend v-if="showsLegend && (label || effectiveSchema.title)">
-      {{ fieldLabel }}
+      {{ displayLabel(fieldLabel) }}
     </legend>
 
     <template v-if="isObject && !isMap">
@@ -295,10 +319,10 @@ function onEnumInput(event: Event) {
                   )
                 "
               />
-              {{ childSchema.title || key.replaceAll('_', ' ') }}
+              {{ displayLabel(childSchema.title || key.replaceAll('_', ' ')) }}
             </label>
             <p v-if="childSchema.description" class="schema-description">
-              {{ childSchema.description }}
+              {{ displayLabel(childSchema.description) }}
             </p>
           </template>
           <template v-else>
@@ -314,7 +338,8 @@ function onEnumInput(event: Event) {
                   )
                 "
               />
-              Configure {{ childSchema.title || key.replaceAll('_', ' ') }}
+              {{ $tr('Configure') }}
+              {{ displayLabel(childSchema.title || key.replaceAll('_', ' ')) }}
             </label>
             <RuleSchemaEditor
               v-if="isRequired(key) || Object.hasOwn(objectValue, key)"
@@ -324,7 +349,7 @@ function onEnumInput(event: Event) {
               :label="
                 key === 'kind'
                   ? ''
-                  : childSchema.title || key.replaceAll('_', ' ')
+                  : displayLabel(childSchema.title || key.replaceAll('_', ' '))
               "
               :path="`${path}-${key}`"
               :depth="depth + 1"
@@ -338,7 +363,7 @@ function onEnumInput(event: Event) {
 
     <template v-else-if="isArray">
       <p v-if="effectiveSchema.description" class="schema-description">
-        {{ effectiveSchema.description }}
+        {{ displayLabel(effectiveSchema.description) }}
       </p>
       <div
         v-for="(item, index) in arrayValue"
@@ -359,7 +384,7 @@ function onEnumInput(event: Event) {
           class="quiet-button"
           @click="removeArrayItem(index)"
         >
-          Remove
+          {{ $tr('Remove') }}
         </button>
       </div>
       <button
@@ -368,13 +393,13 @@ function onEnumInput(event: Event) {
         :disabled="arrayValue.length >= (effectiveSchema.maxItems ?? 500)"
         @click="addArrayItem"
       >
-        Add {{ fieldLabel.toLowerCase() }}
+        {{ $tr('Add') }} {{ fieldLabel.toLowerCase() }}
       </button>
     </template>
 
     <template v-else-if="isMap">
       <p v-if="effectiveSchema.description" class="schema-description">
-        {{ effectiveSchema.description }}
+        {{ displayLabel(effectiveSchema.description) }}
       </p>
       <div
         v-for="([key, value], index) in mapRows()"
@@ -382,7 +407,7 @@ function onEnumInput(event: Event) {
         class="schema-map-row"
       >
         <div class="schema-map-key">
-          <label :for="`${path}-${index}-key`">Key</label>
+          <label :for="`${path}-${index}-key`">{{ $tr('Key') }}</label>
           <input
             :id="`${path}-${index}-key`"
             :value="key"
@@ -404,23 +429,23 @@ function onEnumInput(event: Event) {
           />
         </div>
         <button type="button" class="quiet-button" @click="removeProperty(key)">
-          Remove {{ key }}
+          {{ $tr('Remove') }} {{ key }}
         </button>
       </div>
       <button type="button" class="secondary-button" @click="addMapRow">
-        Add {{ fieldLabel.toLowerCase() }}
+        {{ $tr('Add') }} {{ fieldLabel.toLowerCase() }}
       </button>
     </template>
 
     <template v-else>
       <label v-if="hasUnionTypeSelector" class="schema-control">
-        Value type
+        {{ $tr('Value type') }}
         <select
           :value="primitiveType"
           @change="selectUnionType(($event.target as HTMLSelectElement).value)"
         >
           <option v-for="type in unionTypeOptions" :key="type" :value="type">
-            {{ type === 'array' ? 'list' : type }}
+            {{ unionTypeLabel(type) }}
           </option>
         </select>
       </label>
@@ -435,24 +460,24 @@ function onEnumInput(event: Event) {
           :checked="Boolean(modelValue)"
           @change="onBooleanInput"
         />
-        {{ fieldLabel }}
+        {{ displayLabel(fieldLabel) }}
       </label>
 
       <label v-else-if="enumOptions.length" class="schema-control">
-        {{ fieldLabel }}
+        {{ displayLabel(fieldLabel) }}
         <select :value="inputValue" @change="onEnumInput">
           <option
             v-for="option in enumOptions"
             :key="String(option)"
             :value="String(option)"
           >
-            {{ option }}
+            {{ enumLabel(option) }}
           </option>
         </select>
       </label>
 
       <label v-else class="schema-control">
-        {{ fieldLabel }}
+        {{ displayLabel(fieldLabel) }}
         <textarea
           v-if="
             primitiveType === 'string' && (effectiveSchema.maxLength ?? 0) > 160
@@ -478,7 +503,7 @@ function onEnumInput(event: Event) {
         />
       </label>
       <p v-if="effectiveSchema.description" class="schema-description">
-        {{ effectiveSchema.description }}
+        {{ displayLabel(effectiveSchema.description) }}
       </p>
     </template>
   </fieldset>

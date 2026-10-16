@@ -1,3 +1,5 @@
+import { translateText } from '../i18n'
+
 export interface ApiIssue {
   location: Array<string | number>
   message: string
@@ -9,9 +11,12 @@ export class ApiError extends Error {
   readonly statusCode: number | undefined
 
   constructor(message: string, issues: ApiIssue[] = [], statusCode?: number) {
-    super(message)
+    super(translateText(message))
     this.name = 'ApiError'
-    this.issues = issues
+    this.issues = issues.map((issue) => ({
+      ...issue,
+      message: translateText(issue.message),
+    }))
     this.statusCode = statusCode
   }
 }
@@ -70,7 +75,10 @@ export async function apiRequest<T>(
             .error
         : undefined
     throw new ApiError(
-      error?.message ?? `The API returned HTTP ${response.status}.`,
+      error?.message ??
+        translateText('The API returned HTTP {status}.', {
+          status: response.status,
+        }),
       error?.details ?? [],
       response.status,
     )

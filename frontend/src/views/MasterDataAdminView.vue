@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { ApiError } from '../api/client'
 import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
+import { formatUtcDateTime } from '../i18n'
 import {
   activateMasterDataVersion,
   deleteMasterDataVersion,
@@ -22,7 +23,7 @@ const statusMessage = ref('')
 const denied = ref(false)
 
 function displayDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '—'
+  return value ? formatUtcDateTime(value) : '—'
 }
 
 async function refresh() {
@@ -113,21 +114,27 @@ onMounted(refresh)
 
 <template>
   <section class="master-data-page" aria-labelledby="master-data-heading">
-    <h1 id="master-data-heading">Master data versions</h1>
-    <p v-if="denied" role="alert">Global administrator access is required.</p>
-    <p v-if="error" role="alert" class="master-data-error">{{ error }}</p>
-    <p v-if="statusMessage" role="status">{{ statusMessage }}</p>
-    <p v-if="loading" role="status">Loading master data history…</p>
+    <h1 id="master-data-heading">{{ $tr('Master data versions') }}</h1>
+    <p v-if="denied" role="alert">
+      {{ $tr('Global administrator access is required.') }}
+    </p>
+    <p v-if="error" role="alert" class="master-data-error">{{ $tr(error) }}</p>
+    <p v-if="statusMessage" role="status">{{ $tr(statusMessage) }}</p>
+    <p v-if="loading" role="status">
+      {{ $tr('Loading master data history…') }}
+    </p>
     <template
       v-else-if="!denied && currentUser?.role === 'global_administrator'"
     >
       <div class="master-data-heading-row">
-        <h2>Dataset versions</h2>
+        <h2>{{ $tr('Dataset versions') }}</h2>
         <button type="button" class="master-data-secondary" @click="refresh">
-          Refresh
+          {{ $tr('Refresh') }}
         </button>
       </div>
-      <p v-if="versions.length === 0">No master data versions are available.</p>
+      <p v-if="versions.length === 0">
+        {{ $tr('No master data versions are available.') }}
+      </p>
       <KeyboardScrollRegion
         v-else
         class="master-data-table-wrap"
@@ -136,26 +143,31 @@ onMounted(refresh)
         <table>
           <thead>
             <tr>
-              <th>Dataset/version</th>
-              <th>State/effective interval</th>
-              <th>Source provenance</th>
-              <th>References</th>
-              <th>Actions</th>
+              <th>{{ $tr('Dataset/version') }}</th>
+              <th>{{ $tr('State/effective interval') }}</th>
+              <th>{{ $tr('Source provenance') }}</th>
+              <th>{{ $tr('References') }}</th>
+              <th>{{ $tr('Actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="version in versions" :key="version.id">
               <td>
                 <strong>{{ version.dataset_key }}</strong>
-                <div>Version {{ version.id }} · {{ version.status }}</div>
-                <div v-if="version.is_current">Current</div>
+                <div>
+                  {{ $tr('Version') }} {{ version.id }} · {{ version.status }}
+                </div>
+                <div v-if="version.is_current">{{ $tr('Current') }}</div>
               </td>
               <td>
                 <div>
                   {{ displayDate(version.valid_from) }} →
                   {{ displayDate(version.valid_to) }}
                 </div>
-                <div>Activated: {{ displayDate(version.activated_at) }}</div>
+                <div>
+                  {{ $tr('Activated:') }}
+                  {{ displayDate(version.activated_at) }}
+                </div>
               </td>
               <td>
                 <div>
@@ -163,10 +175,11 @@ onMounted(refresh)
                   {{ version.provenance.status }}
                 </div>
                 <div>
-                  Release: {{ version.provenance.source_release ?? '—' }}
+                  {{ $tr('Release:') }}
+                  {{ version.provenance.source_release ?? '—' }}
                 </div>
                 <div>
-                  Checksum:
+                  {{ $tr('Checksum:') }}
                   <code>{{ version.provenance.checksum ?? '—' }}</code>
                 </div>
                 <a
@@ -174,14 +187,19 @@ onMounted(refresh)
                   :href="version.provenance.source_url"
                   target="_blank"
                   rel="noreferrer"
-                  >Source</a
+                  >{{ $tr('Source') }}</a
                 >
               </td>
               <td>
-                <div>Contests: {{ version.references.contest }}</div>
-                <div>Score runs: {{ version.references.score_run }}</div>
                 <div>
-                  QSO resolutions: {{ version.references.qso_resolution }}
+                  {{ $tr('Contests:') }} {{ version.references.contest }}
+                </div>
+                <div>
+                  {{ $tr('Score runs:') }} {{ version.references.score_run }}
+                </div>
+                <div>
+                  {{ $tr('QSO resolutions:') }}
+                  {{ version.references.qso_resolution }}
                 </div>
               </td>
               <td class="master-data-actions">
@@ -191,7 +209,7 @@ onMounted(refresh)
                   :disabled="busyVersionId !== null"
                   @click="activate(version)"
                 >
-                  Activate
+                  {{ $tr('Activate') }}
                 </button>
                 <button
                   v-if="version.can_delete"
@@ -200,19 +218,21 @@ onMounted(refresh)
                   :disabled="busyVersionId !== null"
                   @click="remove(version)"
                 >
-                  Delete
+                  {{ $tr('Delete') }}
                 </button>
-                <span v-if="!version.can_activate && !version.can_delete"
-                  >No actions</span
-                >
+                <span v-if="!version.can_activate && !version.can_delete">{{
+                  $tr('No actions')
+                }}</span>
               </td>
             </tr>
           </tbody>
         </table>
       </KeyboardScrollRegion>
 
-      <h2>Recent sync runs</h2>
-      <p v-if="runs.length === 0">No sync runs have been recorded.</p>
+      <h2>{{ $tr('Recent sync runs') }}</h2>
+      <p v-if="runs.length === 0">
+        {{ $tr('No sync runs have been recorded.') }}
+      </p>
       <KeyboardScrollRegion
         v-else
         class="master-data-table-wrap"
@@ -221,10 +241,10 @@ onMounted(refresh)
         <table>
           <thead>
             <tr>
-              <th>Dataset/source</th>
-              <th>Started/finished</th>
-              <th>Outcome</th>
-              <th>Details</th>
+              <th>{{ $tr('Dataset/source') }}</th>
+              <th>{{ $tr('Started/finished') }}</th>
+              <th>{{ $tr('Outcome') }}</th>
+              <th>{{ $tr('Details') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -240,15 +260,17 @@ onMounted(refresh)
               <td>
                 {{ run.status }}
                 <div v-if="run.change_detected === false">
-                  No content change
+                  {{ $tr('No content change') }}
                 </div>
                 <div v-else-if="run.change_detected === true">
-                  Content changed
+                  {{ $tr('Content changed') }}
                 </div>
-                <div v-else>Change status unknown</div>
+                <div v-else>{{ $tr('Change status unknown') }}</div>
               </td>
               <td>
-                <div>Records: {{ JSON.stringify(run.record_counts) }}</div>
+                <div>
+                  {{ $tr('Records:') }} {{ JSON.stringify(run.record_counts) }}
+                </div>
                 <div v-if="run.error_summary" class="master-data-error">
                   {{ run.error_summary }}
                 </div>

@@ -7,6 +7,7 @@ import {
   listUpcomingContests,
   type PublicContest,
 } from '../api/results'
+import { formatUtcDateTime } from '../i18n'
 
 const contests = ref<PublicContest[]>([])
 const upcomingContests = ref<PublicContest[]>([])
@@ -75,18 +76,8 @@ const visibleUpcomingContests = computed(() =>
   ),
 )
 
-const utcDateTime = new Intl.DateTimeFormat('en-GB', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-  timeZone: 'UTC',
-})
-
 function formatUtc(value: string) {
-  return `${utcDateTime.format(new Date(value))} UTC`
+  return formatUtcDateTime(value)
 }
 
 async function loadPublishedContests() {
@@ -143,14 +134,19 @@ onBeforeUnmount(() => {
   <div class="activity-home">
     <section class="activity-hero" aria-labelledby="welcome-title">
       <div class="activity-hero-copy">
-        <p class="eyebrow">Public contest activity</p>
-        <h1 id="welcome-title">Find a contest. Make your next contact.</h1>
+        <p class="eyebrow">{{ $tr('Public contest activity') }}</p>
+        <h1 id="welcome-title">
+          {{ $tr('Find a contest. Make your next contact.') }}
+        </h1>
         <p class="intro">
-          Browse published amateur radio contest results, see when each contest
-          ran, and upload a log without creating an account.
+          {{
+            $tr(
+              'Browse published amateur radio contest results, see when each contest ran, and upload a log without creating an account.',
+            )
+          }}
         </p>
         <RouterLink class="primary-button hero-upload" to="/submit-log">
-          Submit a log <span aria-hidden="true">→</span>
+          {{ $tr('Submit a log') }} <span aria-hidden="true">→</span>
         </RouterLink>
       </div>
       <div class="activity-hero-mark" aria-hidden="true">
@@ -164,21 +160,21 @@ onBeforeUnmount(() => {
     <section class="active-contests" aria-labelledby="active-contests-title">
       <div class="feed-heading">
         <div>
-          <p class="eyebrow">On the air now</p>
-          <h2 id="active-contests-title">Active contests</h2>
+          <p class="eyebrow">{{ $tr('On the air now') }}</p>
+          <h2 id="active-contests-title">{{ $tr('Active contests') }}</h2>
           <p class="feed-description">
-            Open contests currently in progress, shown in UTC.
+            {{ $tr('Open contests currently in progress, shown in UTC.') }}
           </p>
         </div>
       </div>
       <p v-if="upcomingLoading" role="status" class="notice feed-state">
-        Loading active contests…
+        {{ $tr('Loading active contests…') }}
       </p>
       <p v-else-if="upcomingError" role="alert" class="error-panel feed-state">
         {{ upcomingError }}
       </p>
       <p v-else-if="activeContests.length === 0" class="notice feed-state">
-        No contests are in progress right now.
+        {{ $tr('No contests are in progress right now.') }}
       </p>
       <ul v-else class="contest-feed">
         <li v-for="contest in activeContests" :key="contest.id">
@@ -186,18 +182,18 @@ onBeforeUnmount(() => {
             <div class="contest-card-main">
               <div class="contest-card-title-row">
                 <h3>{{ contest.name }}</h3>
-                <span class="published-badge">In progress</span>
+                <span class="published-badge">{{ $tr('In progress') }}</span>
               </div>
               <p v-if="contest.description" class="contest-description">
                 {{ contest.description }}
               </p>
               <dl class="contest-dates">
                 <div>
-                  <dt>Contest start</dt>
+                  <dt>{{ $tr('Contest start') }}</dt>
                   <dd>{{ formatUtc(contest.starts_at) }}</dd>
                 </div>
                 <div>
-                  <dt>Contest end</dt>
+                  <dt>{{ $tr('Contest end') }}</dt>
                   <dd>{{ formatUtc(contest.ends_at) }}</dd>
                 </div>
               </dl>
@@ -206,7 +202,7 @@ onBeforeUnmount(() => {
               class="results-link"
               :to="`/contests/${encodeURIComponent(contest.slug)}`"
             >
-              Contest details <span aria-hidden="true">→</span>
+              {{ $tr('Contest details') }} <span aria-hidden="true">→</span>
             </RouterLink>
           </article>
         </li>
@@ -219,24 +215,27 @@ onBeforeUnmount(() => {
     >
       <div class="feed-heading">
         <div>
-          <p class="eyebrow">Plan your next contest</p>
-          <h2 id="upcoming-contests-title">Upcoming contests</h2>
+          <p class="eyebrow">{{ $tr('Plan your next contest') }}</p>
+          <h2 id="upcoming-contests-title">{{ $tr('Upcoming contests') }}</h2>
           <p class="feed-description">
-            Open contests starting within your selected date range, shown in
-            UTC.
+            {{
+              $tr(
+                'Open contests starting within your selected date range, shown in UTC.',
+              )
+            }}
           </p>
         </div>
         <div class="upcoming-range-control">
-          <label for="upcoming-range">Show contests for</label>
+          <label for="upcoming-range">{{ $tr('Show contests for') }}</label>
           <select id="upcoming-range" v-model="upcomingRange">
-            <option value="week">Next week</option>
-            <option value="month">Next month</option>
-            <option value="three-months">Next 3 months</option>
+            <option value="week">{{ $tr('Next week') }}</option>
+            <option value="month">{{ $tr('Next month') }}</option>
+            <option value="three-months">{{ $tr('Next 3 months') }}</option>
           </select>
         </div>
       </div>
       <p v-if="upcomingLoading" role="status" class="notice feed-state">
-        Loading upcoming contests…
+        {{ $tr('Loading upcoming contests…') }}
       </p>
       <p v-else-if="upcomingError" role="alert" class="error-panel feed-state">
         {{ upcomingError }}
@@ -245,7 +244,7 @@ onBeforeUnmount(() => {
         v-else-if="visibleUpcomingContests.length === 0"
         class="notice feed-state"
       >
-        No contests are scheduled for the next
+        {{ $tr('No contests are scheduled for the next') }}
         {{
           upcomingRange === 'week'
             ? 'week'
@@ -260,18 +259,18 @@ onBeforeUnmount(() => {
             <div class="contest-card-main">
               <div class="contest-card-title-row">
                 <h3>{{ contest.name }}</h3>
-                <span class="published-badge">Upcoming</span>
+                <span class="published-badge">{{ $tr('Upcoming') }}</span>
               </div>
               <p v-if="contest.description" class="contest-description">
                 {{ contest.description }}
               </p>
               <dl class="contest-dates">
                 <div>
-                  <dt>Contest start</dt>
+                  <dt>{{ $tr('Contest start') }}</dt>
                   <dd>{{ formatUtc(contest.starts_at) }}</dd>
                 </div>
                 <div>
-                  <dt>Contest end</dt>
+                  <dt>{{ $tr('Contest end') }}</dt>
                   <dd>{{ formatUtc(contest.ends_at) }}</dd>
                 </div>
               </dl>
@@ -280,7 +279,7 @@ onBeforeUnmount(() => {
               class="results-link"
               :to="`/contests/${encodeURIComponent(contest.slug)}`"
             >
-              Contest details <span aria-hidden="true">→</span>
+              {{ $tr('Contest details') }} <span aria-hidden="true">→</span>
             </RouterLink>
           </article>
         </li>
@@ -293,20 +292,22 @@ onBeforeUnmount(() => {
     >
       <div class="feed-heading">
         <div>
-          <p class="eyebrow">Explore the logbook</p>
-          <h2 id="published-contests-title">Contest activity</h2>
+          <p class="eyebrow">{{ $tr('Explore the logbook') }}</p>
+          <h2 id="published-contests-title">{{ $tr('Contest activity') }}</h2>
           <p class="feed-description">
-            Published contests and their final standings, in UTC.
+            {{ $tr('Published contests and their final standings, in UTC.') }}
           </p>
         </div>
         <form class="contest-search" role="search" @submit.prevent>
-          <label for="contest-search">Find a published contest</label>
+          <label for="contest-search">{{
+            $tr('Find a published contest')
+          }}</label>
           <div class="contest-search-control">
             <input
               id="contest-search"
               v-model="query"
               type="search"
-              placeholder="Search name or description"
+              :placeholder="$tr('Search name or description')"
               autocomplete="off"
             />
             <button
@@ -315,30 +316,30 @@ onBeforeUnmount(() => {
               class="quiet-button"
               @click="query = ''"
             >
-              Clear
+              {{ $tr('Clear') }}
             </button>
           </div>
         </form>
       </div>
 
       <p v-if="loading" role="status" class="notice feed-state">
-        Loading published contests…
+        {{ $tr('Loading published contests…') }}
       </p>
       <p v-else-if="error" role="alert" class="error-panel feed-state">
-        {{ error }}
+        {{ $tr(error) }}
       </p>
       <p v-else-if="contests.length === 0" class="notice feed-state">
-        No contest results have been published yet.
+        {{ $tr('No contest results have been published yet.') }}
       </p>
       <template v-else>
         <p class="feed-count" aria-live="polite">
-          Showing {{ filteredContests.length }} of
-          {{ contests.length }} published
+          {{ $tr('Showing') }} {{ filteredContests.length }} {{ $tr('of') }}
+          {{ contests.length }} {{ $tr('published') }}
           {{ contests.length === 1 ? 'contest' : 'contests' }}.
         </p>
         <p v-if="filteredContests.length === 0" class="notice feed-state">
-          No published contests match “{{ query }}”. Try another name or
-          description.
+          {{ $tr('No published contests match “') }}{{ query
+          }}{{ $tr('”. Try another name or description.') }}
         </p>
         <ul v-else class="contest-feed">
           <li v-for="contest in filteredContests" :key="contest.id">
@@ -346,18 +347,20 @@ onBeforeUnmount(() => {
               <div class="contest-card-main">
                 <div class="contest-card-title-row">
                   <h3>{{ contest.name }}</h3>
-                  <span class="published-badge">Results published</span>
+                  <span class="published-badge">{{
+                    $tr('Results published')
+                  }}</span>
                 </div>
                 <p v-if="contest.description" class="contest-description">
                   {{ contest.description }}
                 </p>
                 <dl class="contest-dates">
                   <div>
-                    <dt>Contest start</dt>
+                    <dt>{{ $tr('Contest start') }}</dt>
                     <dd>{{ formatUtc(contest.starts_at) }}</dd>
                   </div>
                   <div>
-                    <dt>Contest end</dt>
+                    <dt>{{ $tr('Contest end') }}</dt>
                     <dd>{{ formatUtc(contest.ends_at) }}</dd>
                   </div>
                 </dl>
@@ -366,7 +369,8 @@ onBeforeUnmount(() => {
                 class="results-link"
                 :to="`/contests/${encodeURIComponent(contest.slug)}/results`"
               >
-                View published results <span aria-hidden="true">→</span>
+                {{ $tr('View published results') }}
+                <span aria-hidden="true">→</span>
               </RouterLink>
             </article>
           </li>

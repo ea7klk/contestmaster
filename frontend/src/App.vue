@@ -1,16 +1,32 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from './api/client'
 import { getCurrentUser, signOut, type PrivilegedUser } from './api/identity'
 import SiteFooter from './components/SiteFooter.vue'
+import { i18n, setLocale, supportedLocales, type SupportedLocale } from './i18n'
 
 const route = useRoute()
 const router = useRouter()
 const staffUser = ref<PrivilegedUser | null>(null)
 const signOutError = ref('')
+const localeError = ref('')
 const menuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
+const selectedLocale = computed(
+  () => i18n.global.locale.value as SupportedLocale,
+)
+
+async function changeLocale(event: Event) {
+  const locale = (event.target as HTMLSelectElement).value
+  if (supportedLocales.includes(locale as SupportedLocale)) {
+    try {
+      await setLocale(locale as SupportedLocale)
+    } catch {
+      localeError.value = 'The selected language could not be loaded.'
+    }
+  }
+}
 
 function closeMenu(restoreFocus = false) {
   menuOpen.value = false
@@ -70,7 +86,7 @@ watch(
 
 <template>
   <div class="app-shell">
-    <a class="skip-link" href="#main-content">Skip to content</a>
+    <a class="skip-link" href="#main-content">{{ $tr('Skip to content') }}</a>
     <header class="site-header">
       <div class="site-header-row">
         <button
@@ -79,55 +95,90 @@ watch(
           type="button"
           :aria-expanded="menuOpen"
           aria-controls="main-navigation"
-          :aria-label="menuOpen ? 'Close main menu' : 'Open main menu'"
+          :aria-label="$tr(menuOpen ? 'Close main menu' : 'Open main menu')"
           @click="menuOpen = !menuOpen"
         >
           <span aria-hidden="true" class="menu-toggle-lines"></span>
         </button>
-        <a class="wordmark" href="/" aria-label="Contestmaster home"
-          >Contestmaster</a
-        >
-        <span class="header-caption">Amateur radio contest engine</span>
+        <a class="wordmark" href="/" :aria-label="$tr('Contestmaster home')">{{
+          $tr('Contestmaster')
+        }}</a>
+        <span class="header-caption">{{
+          $tr('Amateur radio contest engine')
+        }}</span>
         <RouterLink class="header-upload-action" to="/submit-log">
-          Submit a log
+          {{ $tr('Submit a log') }}
         </RouterLink>
       </div>
       <nav
         id="main-navigation"
-        aria-label="Main navigation"
+        :aria-label="$tr('Main navigation')"
         class="site-navigation"
         :class="{ 'is-open': menuOpen }"
         @click="closeMenu()"
       >
-        <RouterLink to="/">Published results</RouterLink>
-        <RouterLink to="/manage/contests">Manage contests</RouterLink>
-        <RouterLink to="/manage/rulesets">Manage rulesets</RouterLink>
-        <RouterLink to="/participant/access">Participant access</RouterLink>
+        <RouterLink to="/">{{ $tr('Published results') }}</RouterLink>
+        <RouterLink to="/manage/contests">
+{{
+          $tr('Manage contests')
+        }}
+</RouterLink>
+        <RouterLink to="/manage/rulesets">
+{{
+          $tr('Manage rulesets')
+        }}
+</RouterLink>
+        <RouterLink to="/participant/access">
+{{
+          $tr('Participant access')
+        }}
+</RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"
           to="/admin/master-data"
         >
-          Master data
+          {{ $tr('Master data') }}
         </RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"
           to="/admin/operating-catalog"
         >
-          Bands and modes
+          {{ $tr('Bands and modes') }}
         </RouterLink>
-        <RouterLink v-if="!staffUser" to="/sign-in">Staff sign-in</RouterLink>
+        <RouterLink v-if="!staffUser" to="/sign-in">
+{{
+          $tr('Staff sign-in')
+        }}
+</RouterLink>
         <button
           v-else
           class="sign-out-button"
           type="button"
           @click="handleSignOut"
         >
-          Sign out {{ staffUser.display_name }}
+          {{ $tr('Sign out {name}', { name: staffUser.display_name }) }}
         </button>
+        <div class="locale-picker" @click.stop>
+          <label for="application-locale">{{ $tr('Language') }}</label>
+          <select
+            id="application-locale"
+            :value="selectedLocale"
+            @change="changeLocale"
+          >
+            <option lang="en" value="en">{{ $tr('English') }}</option>
+            <option lang="de" value="de">{{ $tr('Deutsch') }}</option>
+            <option lang="fr" value="fr">{{ $tr('Français') }}</option>
+            <option lang="es" value="es">{{ $tr('Español') }}</option>
+            <option lang="it" value="it">{{ $tr('Italiano') }}</option>
+          </select>
+        </div>
       </nav>
     </header>
+    <p v-if="localeError" class="shell-error" role="alert">
+      {{ $tr(localeError) }}
+    </p>
     <p v-if="signOutError" class="shell-error" role="alert">
-      {{ signOutError }}
+      {{ $tr(signOutError) }}
     </p>
     <main id="main-content" class="main-content">
       <RouterView />

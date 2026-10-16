@@ -14,6 +14,7 @@ import {
   type ContestStatus,
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
+import { formatInteger, formatUtcDateTime } from '../i18n'
 import {
   getSavedRulesetVersion,
   listAllRulesetVersions,
@@ -262,10 +263,10 @@ onMounted(refreshData)
   <section class="manager-page" aria-labelledby="manager-title">
     <div class="manager-heading">
       <div>
-        <p class="eyebrow">Contest staff</p>
-        <h1 id="manager-title">Contest manager</h1>
+        <p class="eyebrow">{{ $tr('Contest staff') }}</p>
+        <h1 id="manager-title">{{ $tr('Contest manager') }}</h1>
         <p v-if="user" class="intro">
-          Signed in as {{ user.display_name }} ({{
+          {{ $tr('Signed in as') }} {{ user.display_name }} ({{
             user.role.replaceAll('_', ' ')
           }}).
         </p>
@@ -282,27 +283,32 @@ onMounted(refreshData)
           />
         </label>
         <RouterLink class="secondary-button" to="/manage/contests/new">
-          Create a contest
+          {{ $tr('Create a contest') }}
         </RouterLink>
         <RouterLink class="secondary-button" to="/manage/rulesets">
-          Manage rulesets
+          {{ $tr('Manage rulesets') }}
         </RouterLink>
       </div>
     </div>
 
-    <p v-if="loading" role="status" class="notice">Loading your contests…</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading your contests…') }}
+    </p>
     <section
       v-else-if="forbidden"
       class="panel"
       aria-labelledby="sign-in-required"
     >
-      <h2 id="sign-in-required">Sign-in required</h2>
+      <h2 id="sign-in-required">{{ $tr('Sign-in required') }}</h2>
       <p>
-        Sign in with a contest-manager or global-administrator account to manage
-        contests.
+        {{
+          $tr(
+            'Sign in with a contest-manager or global-administrator account to manage contests.',
+          )
+        }}
       </p>
       <RouterLink class="primary-link" to="/sign-in?next=/manage/contests">
-        Sign in
+        {{ $tr('Sign in') }}
       </RouterLink>
     </section>
     <template v-else>
@@ -310,41 +316,44 @@ onMounted(refreshData)
         {{ errorMessage }}
       </p>
       <p v-if="statusMessage" class="success-panel" role="status">
-        {{ statusMessage }}
+        {{ $tr(statusMessage) }}
       </p>
       <p class="field-help">
-        Import a JSON package with contest metadata and an optional
-        schema-version-2 ruleset draft. The imported contest starts as a draft.
+        {{
+          $tr(
+            'Import a JSON package with contest metadata and an optional schema-version-2 ruleset draft. The imported contest starts as a draft.',
+          )
+        }}
       </p>
       <section class="contest-list" aria-labelledby="contest-list-title">
         <div class="contest-list-heading">
-          <h2 id="contest-list-title">Your contests</h2>
+          <h2 id="contest-list-title">{{ $tr('Your contests') }}</h2>
           <label for="contest-filter"
-            >Filter contests
+            >{{ $tr('Filter contests') }}
             <input
               id="contest-filter"
               v-model="contestFilter"
               type="search"
               maxlength="120"
               autocomplete="off"
-              placeholder="Name, slug, or status"
+              :placeholder="$tr('Name, slug, or status')"
               aria-describedby="contest-filter-help"
               @input="applyFilter"
             />
-            <span id="contest-filter-help" class="field-help"
-              >Search by contest name, URL slug, or exact status.</span
-            >
+            <span id="contest-filter-help" class="field-help">{{
+              $tr('Search by contest name, URL slug, or exact status.')
+            }}</span>
           </label>
         </div>
         <p v-if="total === 0 && !contestFilter" class="notice">
-          You have not created a contest yet.
+          {{ $tr('You have not created a contest yet.') }}
         </p>
         <p
           v-else-if="filteredContests.length === 0"
           class="notice"
           role="status"
         >
-          No contests match “{{ contestFilter }}”.
+          {{ $tr('No contests match “') }}{{ contestFilter }}”.
         </p>
         <div v-else class="contest-card-list">
           <article
@@ -360,7 +369,7 @@ onMounted(refreshData)
               </div>
               <div class="contest-card-actions">
                 <details class="export-actions">
-                  <summary>Export contest</summary>
+                  <summary>{{ $tr('Export contest') }}</summary>
                   <div class="export-action-options">
                     <button
                       class="secondary-button"
@@ -368,7 +377,7 @@ onMounted(refreshData)
                       :disabled="exportingContestId === contest.id"
                       @click="exportContest(contest, false)"
                     >
-                      Contest only
+                      {{ $tr('Contest only') }}
                     </button>
                     <button
                       class="secondary-button"
@@ -379,7 +388,7 @@ onMounted(refreshData)
                       "
                       @click="exportContest(contest, true)"
                     >
-                      Contest with ruleset
+                      {{ $tr('Contest with ruleset') }}
                     </button>
                   </div>
                 </details>
@@ -428,7 +437,7 @@ onMounted(refreshData)
                   class="secondary-button"
                   :to="`/manage/contests/${contest.id}/edit`"
                 >
-                  Edit details
+                  {{ $tr('Edit details') }}
                 </RouterLink>
                 <RouterLink
                   v-if="
@@ -438,7 +447,7 @@ onMounted(refreshData)
                   class="secondary-button"
                   :to="`/manage/contests/${contest.id}/edit`"
                 >
-                  Manage series
+                  {{ $tr('Manage series') }}
                 </RouterLink>
                 <button
                   v-else
@@ -462,46 +471,47 @@ onMounted(refreshData)
               "
               class="field-help"
             >
-              Opening makes this contest public and eligible for log
-              submissions.
+              {{
+                $tr(
+                  'Opening makes this contest public and eligible for log submissions.',
+                )
+              }}
             </p>
             <div class="contest-links">
               <span>
-                <RouterLink :to="`/manage/contests/${contest.id}/results`"
-                  >Generate and publish results</RouterLink
-                >
+                <RouterLink :to="`/manage/contests/${contest.id}/results`">{{
+                  $tr('Generate and publish results')
+                }}</RouterLink>
               </span>
               <span>
-                <RouterLink :to="`/manage/contests/${contest.id}/entries`"
-                  >Submitted logs</RouterLink
-                >
+                <RouterLink :to="`/manage/contests/${contest.id}/entries`">{{
+                  $tr('Submitted logs')
+                }}</RouterLink>
               </span>
             </div>
             <dl class="contest-meta">
               <div>
-                <dt>Starts</dt>
-                <dd>{{ new Date(contest.starts_at).toLocaleString() }}</dd>
+                <dt>{{ $tr('Starts') }}</dt>
+                <dd>{{ formatUtcDateTime(contest.starts_at) }}</dd>
               </div>
               <div>
-                <dt>Ends</dt>
-                <dd>{{ new Date(contest.ends_at).toLocaleString() }}</dd>
+                <dt>{{ $tr('Ends') }}</dt>
+                <dd>{{ formatUtcDateTime(contest.ends_at) }}</dd>
               </div>
               <div>
-                <dt>Log cutoff</dt>
+                <dt>{{ $tr('Log cutoff') }}</dt>
                 <dd>
-                  {{
-                    new Date(contest.log_submission_cutoff_at).toLocaleString()
-                  }}
+                  {{ formatUtcDateTime(contest.log_submission_cutoff_at) }}
                 </dd>
               </div>
               <div>
-                <dt>Automatic recalculation</dt>
+                <dt>{{ $tr('Automatic recalculation') }}</dt>
                 <dd>{{ contest.auto_recalculate_on_upload ? 'On' : 'Off' }}</dd>
               </div>
             </dl>
             <div class="ruleset-row">
               <label :for="`ruleset-${contest.id}`"
-                >Ruleset and category definition
+                >{{ $tr('Ruleset and category definition') }}
                 <select
                   :id="`ruleset-${contest.id}`"
                   v-model="rulesetSelections[contest.id]"
@@ -509,7 +519,7 @@ onMounted(refreshData)
                     contest.status !== 'draft' || rulesets.length === 0
                   "
                 >
-                  <option value="">Select a saved ruleset</option>
+                  <option value="">{{ $tr('Select a saved ruleset') }}</option>
                   <option
                     v-for="version in rulesets"
                     :key="version.id"
@@ -544,18 +554,22 @@ onMounted(refreshData)
                 class="secondary-button"
                 :to="`/manage/rulesets/${contest.ruleset_version_id}/edit`"
               >
-                Edit ruleset
+                {{ $tr('Edit ruleset') }}
               </RouterLink>
             </div>
             <p v-if="contest.ruleset_version_id === null" class="field-help">
-              This draft needs a validated ruleset before it can be opened.
+              {{
+                $tr(
+                  'This draft needs a validated ruleset before it can be opened.',
+                )
+              }}
             </p>
           </article>
         </div>
         <nav
           v-if="pages > 1"
           class="pagination"
-          aria-label="Contest list pages"
+          :aria-label="$tr('Contest list pages')"
         >
           <button
             class="secondary-button"
@@ -563,10 +577,11 @@ onMounted(refreshData)
             :disabled="page <= 1 || loading"
             @click="changePage(page - 1)"
           >
-            Previous
+            {{ $tr('Previous') }}
           </button>
           <span aria-live="polite"
-            >Page {{ page }} of {{ pages }} · {{ total }} contests</span
+            >{{ $tr('Page') }} {{ page }} {{ $tr('of') }} {{ pages }} ·
+            {{ formatInteger(total) }} {{ $tr('contests') }}</span
           >
           <button
             class="secondary-button"
@@ -574,7 +589,7 @@ onMounted(refreshData)
             :disabled="page >= pages || loading"
             @click="changePage(page + 1)"
           >
-            Next
+            {{ $tr('Next') }}
           </button>
         </nav>
       </section>

@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint .",
+    "i18n:check": "node scripts/check-locale-catalogs.mjs",
     "typecheck": "vue-tsc --noEmit",
     "format": "prettier --write src index.html vite.config.ts vitest.config.ts"
   },
@@ -21,6 +22,7 @@
     "marked": "^18.1.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.44",
+    "vue-i18n": "^11.4.14",
     "vue-router": "^5.4.0"
   },
   "devDependencies": {

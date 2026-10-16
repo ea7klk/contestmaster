@@ -184,60 +184,69 @@ onMounted(refresh)
 
 <template>
   <section class="master-data-page" aria-labelledby="operating-catalog-heading">
-    <h1 id="operating-catalog-heading">Bands and modes</h1>
+    <h1 id="operating-catalog-heading">{{ $tr('Bands and modes') }}</h1>
     <p>
-      Maintain shared values offered by the ruleset composer. These catalogs do
-      not describe national frequency authorization; each contest’s published
-      rules decide which values apply.
+      {{
+        $tr(
+          'Maintain shared values offered by the ruleset composer. These catalogs do not describe national frequency authorization; each contest’s published rules decide which values apply.',
+        )
+      }}
     </p>
-    <p v-if="denied" role="alert">Global administrator access is required.</p>
-    <p v-if="error" role="alert" class="master-data-error">{{ error }}</p>
-    <p v-if="message" role="status">{{ message }}</p>
-    <p v-if="loading" role="status">Loading bands and modes…</p>
+    <p v-if="denied" role="alert">
+      {{ $tr('Global administrator access is required.') }}
+    </p>
+    <p v-if="error" role="alert" class="master-data-error">{{ $tr(error) }}</p>
+    <p v-if="message" role="status">{{ $tr(message) }}</p>
+    <p v-if="loading" role="status">{{ $tr('Loading bands and modes…') }}</p>
     <template v-else-if="!denied && user?.role === 'global_administrator'">
       <section class="catalog-section" aria-labelledby="bands-heading">
-        <h2 id="bands-heading">Bands</h2>
+        <h2 id="bands-heading">{{ $tr('Bands') }}</h2>
         <form class="catalog-editor-form" @submit.prevent="saveBand">
           <h3>
             {{ editingBandId === null ? 'Add catalog item' : 'Edit band' }}
           </h3>
           <label
-            >Stable key<input
+            >{{ $tr('Stable key')
+            }}<input
               v-model="bandForm.key"
               required
               maxlength="40"
               pattern="[A-Za-z0-9][A-Za-z0-9._-]*"
           /></label>
           <label
-            >Label<input v-model="bandForm.label" required maxlength="120"
+            >{{ $tr('Label')
+            }}<input v-model="bandForm.label" required maxlength="120"
           /></label>
           <label
-            >Frequency reference<input
+            >{{ $tr('Frequency reference')
+            }}<input
               v-model="bandForm.frequency_range"
               maxlength="120"
-              placeholder="e.g. 14 MHz"
+              :placeholder="$tr('e.g. 14 MHz')"
           /></label>
           <label
-            >Description<textarea
+            >{{ $tr('Description')
+            }}<textarea
               v-model="bandForm.description"
               maxlength="2000"
               rows="2"
             />
           </label>
           <label
-            >Display order<input
+            >{{ $tr('Display order')
+            }}<input
               v-model.number="bandForm.sort_order"
               type="number"
               min="0"
               max="10000"
           /></label>
           <label class="catalog-check"
-            ><input v-model="bandForm.is_active" type="checkbox" /> Active in
-            ruleset composer</label
+            ><input v-model="bandForm.is_active" type="checkbox" />
+            {{ $tr('Active in ruleset composer') }}</label
           >
           <label class="catalog-check"
-            ><input v-model="bandForm.contest_free" type="checkbox" /> Mark as
-            contest-free (highlighted notice only)</label
+            ><input v-model="bandForm.contest_free" type="checkbox" />
+            {{ $tr('Mark as contest-free (highlighted notice only)') }}</label
           >
           <div class="catalog-actions">
             <button class="primary-button" type="submit" :disabled="saving">
@@ -254,7 +263,7 @@ onMounted(refresh)
               type="button"
               @click="clearBandForm"
             >
-              Clear
+              {{ $tr('Clear') }}
             </button>
           </div>
         </form>
@@ -265,11 +274,11 @@ onMounted(refresh)
           <table>
             <thead>
               <tr>
-                <th>Band</th>
-                <th>Frequency reference</th>
-                <th>Description</th>
-                <th>State</th>
-                <th>Actions</th>
+                <th>{{ $tr('Band') }}</th>
+                <th>{{ $tr('Frequency reference') }}</th>
+                <th>{{ $tr('Description') }}</th>
+                <th>{{ $tr('State') }}</th>
+                <th>{{ $tr('Actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -289,22 +298,24 @@ onMounted(refresh)
                 <td>
                   {{ item.is_active ? 'Active' : 'Inactive' }}
                   <div v-if="item.contest_free" class="contest-free-label">
-                    No-contest band (advisory)
+                    {{ $tr('No-contest band (advisory)') }}
                   </div>
                 </td>
                 <td class="master-data-actions">
-                  <button type="button" @click="editBand(item)">Edit</button
+                  <button type="button" @click="editBand(item)">
+                    {{ $tr('Edit') }}
+</button
                   ><button
                     class="master-data-danger"
                     type="button"
                     @click="removeBand(item)"
                   >
-                    Delete
+                    {{ $tr('Delete') }}
                   </button>
                 </td>
               </tr>
               <tr v-if="bands.length === 0">
-                <td colspan="5">No bands configured.</td>
+                <td colspan="5">{{ $tr('No bands configured.') }}</td>
               </tr>
             </tbody>
           </table>
@@ -312,38 +323,42 @@ onMounted(refresh)
       </section>
 
       <section class="catalog-section" aria-labelledby="modes-heading">
-        <h2 id="modes-heading">Modes</h2>
+        <h2 id="modes-heading">{{ $tr('Modes') }}</h2>
         <form class="catalog-editor-form" @submit.prevent="saveMode">
           <h3>
             {{ editingModeId === null ? 'Add catalog item' : 'Edit mode' }}
           </h3>
           <label
-            >Stable key<input
+            >{{ $tr('Stable key')
+            }}<input
               v-model="modeForm.key"
               required
               maxlength="40"
               pattern="[A-Za-z0-9][A-Za-z0-9._-]*"
           /></label>
           <label
-            >Label<input v-model="modeForm.label" required maxlength="120"
+            >{{ $tr('Label')
+            }}<input v-model="modeForm.label" required maxlength="120"
           /></label>
           <label
-            >Description<textarea
+            >{{ $tr('Description')
+            }}<textarea
               v-model="modeForm.description"
               maxlength="2000"
               rows="2"
             />
           </label>
           <label
-            >Display order<input
+            >{{ $tr('Display order')
+            }}<input
               v-model.number="modeForm.sort_order"
               type="number"
               min="0"
               max="10000"
           /></label>
           <label class="catalog-check"
-            ><input v-model="modeForm.is_active" type="checkbox" /> Active in
-            ruleset composer</label
+            ><input v-model="modeForm.is_active" type="checkbox" />
+            {{ $tr('Active in ruleset composer') }}</label
           >
           <div class="catalog-actions">
             <button class="primary-button" type="submit" :disabled="saving">
@@ -360,7 +375,7 @@ onMounted(refresh)
               type="button"
               @click="clearModeForm"
             >
-              Clear
+              {{ $tr('Clear') }}
             </button>
           </div>
         </form>
@@ -371,10 +386,10 @@ onMounted(refresh)
           <table>
             <thead>
               <tr>
-                <th>Mode</th>
-                <th>Description</th>
-                <th>State</th>
-                <th>Actions</th>
+                <th>{{ $tr('Mode') }}</th>
+                <th>{{ $tr('Description') }}</th>
+                <th>{{ $tr('State') }}</th>
+                <th>{{ $tr('Actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -388,18 +403,20 @@ onMounted(refresh)
                 <td>{{ item.description || '—' }}</td>
                 <td>{{ item.is_active ? 'Active' : 'Inactive' }}</td>
                 <td class="master-data-actions">
-                  <button type="button" @click="editMode(item)">Edit</button
+                  <button type="button" @click="editMode(item)">
+                    {{ $tr('Edit') }}
+</button
                   ><button
                     class="master-data-danger"
                     type="button"
                     @click="removeMode(item)"
                   >
-                    Delete
+                    {{ $tr('Delete') }}
                   </button>
                 </td>
               </tr>
               <tr v-if="modes.length === 0">
-                <td colspan="4">No modes configured.</td>
+                <td colspan="4">{{ $tr('No modes configured.') }}</td>
               </tr>
             </tbody>
           </table>

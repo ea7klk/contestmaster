@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apiRequest } from './client'
+import { setLocale } from '../i18n'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -64,6 +65,27 @@ describe('shared API client', () => {
       statusCode: 404,
       issues: [{ message: 'Missing.' }],
     })
+  })
+
+  it('localizes known API error messages in the active interface language', async () => {
+    await setLocale('de', undefined)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'Authentication is required.' },
+            }),
+            { status: 401 },
+          ),
+      ),
+    )
+
+    await expect(apiRequest('/auth/me')).rejects.toMatchObject({
+      message: 'Eine Anmeldung ist erforderlich.',
+    })
+    await setLocale('en', undefined)
   })
 
   it('uses the separate participant CSRF cookie for participant mutations', async () => {

@@ -37,15 +37,17 @@ async function submit() {
 
 <template>
   <section class="welcome-card auth-card" aria-labelledby="sign-in-title">
-    <p class="eyebrow">Contest staff</p>
-    <h1 id="sign-in-title">Sign in</h1>
+    <p class="eyebrow">{{ $tr('Contest staff') }}</p>
+    <h1 id="sign-in-title">{{ $tr('Sign in') }}</h1>
     <p class="intro">
-      Use your Contestmaster administrator or contest-manager account.
+      {{
+        $tr('Use your Contestmaster administrator or contest-manager account.')
+      }}
     </p>
 
     <form class="stacked-form" @submit.prevent="submit">
       <label>
-        Email address
+        {{ $tr('Email address') }}
         <input
           v-model="email"
           autocomplete="username"
@@ -56,7 +58,7 @@ async function submit() {
         />
       </label>
       <label>
-        Password
+        {{ $tr('Password') }}
         <input
           v-model="password"
           autocomplete="current-password"

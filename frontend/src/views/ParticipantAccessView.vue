@@ -9,6 +9,7 @@ import {
   signOutParticipant,
   type ParticipantEntry,
 } from '../api/participantIdentity'
+import { formatUtcDateTime } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -104,34 +105,34 @@ onMounted(async () => {
 
 <template>
   <section class="page-card" aria-labelledby="participant-access-heading">
-    <h1 id="participant-access-heading">Participant access</h1>
-    <p v-if="error" role="alert" class="form-error">{{ error }}</p>
-    <p v-if="message" role="status">{{ message }}</p>
+    <h1 id="participant-access-heading">{{ $tr('Participant access') }}</h1>
+    <p v-if="error" role="alert" class="form-error">{{ $tr(error) }}</p>
+    <p v-if="message" role="status">{{ $tr(message) }}</p>
 
     <div v-if="signedIn">
       <div class="section-heading-row">
-        <h2>Your entries</h2>
+        <h2>{{ $tr('Your entries') }}</h2>
         <button
           class="secondary-button"
           type="button"
           :disabled="busy"
           @click="handleSignOut"
         >
-          Sign out
+          {{ $tr('Sign out') }}
         </button>
       </div>
       <p v-if="entries.length === 0">
-        There are no entries associated with this email yet.
+        {{ $tr('There are no entries associated with this email yet.') }}
       </p>
       <div v-else class="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Contest</th>
-              <th>Entry</th>
-              <th>Status</th>
-              <th>Submitted</th>
-              <th>Actions</th>
+              <th>{{ $tr('Contest') }}</th>
+              <th>{{ $tr('Entry') }}</th>
+              <th>{{ $tr('Status') }}</th>
+              <th>{{ $tr('Submitted') }}</th>
+              <th>{{ $tr('Actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -139,10 +140,10 @@ onMounted(async () => {
               <td>{{ entry.contest_name }}</td>
               <td>{{ entry.entry_key }}</td>
               <td>{{ entry.status }}</td>
-              <td>{{ new Date(entry.submitted_at).toLocaleString() }}</td>
+              <td>{{ formatUtcDateTime(entry.submitted_at) }}</td>
               <td>
                 <RouterLink :to="`/entries/${entry.id}/manage`">
-                  Manage entry
+                  {{ $tr('Manage entry') }}
                 </RouterLink>
               </td>
             </tr>
@@ -153,10 +154,13 @@ onMounted(async () => {
 
     <form v-else class="stacked-form" @submit.prevent="requestLink">
       <p>
-        Enter your verified participant email address to receive a short-lived
-        sign-in link.
+        {{
+          $tr(
+            'Enter your verified participant email address to receive a short-lived sign-in link.',
+          )
+        }}
       </p>
-      <label for="participant-email">Email address</label>
+      <label for="participant-email">{{ $tr('Email address') }}</label>
       <input
         id="participant-email"
         v-model.trim="email"

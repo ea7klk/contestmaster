@@ -6,6 +6,8 @@ For the ordered delivery sequence, task breakdown, and release acceptance criter
 
 Operational and user guides: [operators](operations/README.md), [participants](participants/README.md), [supported file formats](formats/README.md), and [security/accessibility review](security/README.md).
 
+For supported interface languages and the localization workflow, see [internationalization](internationalization/README.md).
+
 ## Initial feature list
 
 ### Core platform

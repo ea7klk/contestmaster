@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/client'
 import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import { getPublicResults, type PublicResultsPage } from '../api/results'
+import { formatInteger, formatUtcDateTime } from '../i18n'
 
 const props = defineProps<{ slug: string }>()
 const result = ref<PublicResultsPage | null>(null)
@@ -88,11 +89,11 @@ watch(
 
 <template>
   <section class="results-page" aria-labelledby="results-title">
-    <p class="eyebrow">Published contest results</p>
+    <p class="eyebrow">{{ $tr('Published contest results') }}</p>
     <h1 id="results-title">{{ result?.contest.name ?? 'Contest results' }}</h1>
     <p v-if="result" class="results-publication">
-      Publication {{ result.contest.publication.number }} ·
-      {{ new Date(result.contest.publication.published_at).toLocaleString() }}
+      {{ $tr('Publication') }} {{ result.contest.publication.number }} ·
+      {{ formatUtcDateTime(result.contest.publication.published_at) }}
     </p>
     <p v-if="result?.contest.description" class="intro">
       {{ result.contest.description }}
@@ -102,35 +103,42 @@ watch(
       class="notice"
       role="status"
     >
-      {{ result.contest.publication.withheld_count }} entr{{
+      {{ result.contest.publication.withheld_count }} {{ $tr('entr')
+      }}{{
         result.contest.publication.withheld_count === 1 ? 'y was' : 'ies were'
       }}
-      withheld from this publication.
+      {{ $tr('withheld from this publication.') }}
     </p>
     <nav
       v-if="result"
-      aria-label="Download published results"
+      :aria-label="$tr('Download published results')"
       class="export-links"
     >
-      <a :href="`${exportBase}?format=json`" download>Download JSON v1</a>
-      <a :href="`${exportBase}?format=csv`" download>Download CSV v1</a>
+      <a :href="`${exportBase}?format=json`" download>{{
+        $tr('Download JSON v1')
+      }}</a>
+      <a :href="`${exportBase}?format=csv`" download>{{
+        $tr('Download CSV v1')
+      }}</a>
     </nav>
 
-    <p v-if="loading" role="status" class="notice">Loading results…</p>
-    <p v-else-if="error" role="alert" class="error-panel">{{ error }}</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading results…') }}
+    </p>
+    <p v-else-if="error" role="alert" class="error-panel">{{ $tr(error) }}</p>
     <template v-else-if="result">
       <form
         class="result-filters panel"
-        aria-label="Filter results"
+        :aria-label="$tr('Filter results')"
         @submit.prevent
       >
         <label v-if="result.filters.categories.length">
-          Category dimension
+          {{ $tr('Category dimension') }}
           <select
             :value="category"
             @change="changeCategory(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">All categories</option>
+            <option value="">{{ $tr('All categories') }}</option>
             <option
               v-for="item in result.filters.categories"
               :key="item.key"
@@ -141,18 +149,18 @@ watch(
           </select>
         </label>
         <label v-if="category">
-          Category value
+          {{ $tr('Category value') }}
           <select v-model="value" :disabled="categoryValues.length === 0">
-            <option value="">All values</option>
+            <option value="">{{ $tr('All values') }}</option>
             <option v-for="item in categoryValues" :key="item" :value="item">
               {{ item }}
             </option>
           </select>
         </label>
         <label v-if="result.filters.bands.length">
-          Band
+          {{ $tr('Band') }}
           <select v-model="band">
-            <option value="">All bands</option>
+            <option value="">{{ $tr('All bands') }}</option>
             <option
               v-for="item in result.filters.bands"
               :key="item"
@@ -163,9 +171,9 @@ watch(
           </select>
         </label>
         <label v-if="result.filters.modes.length">
-          Mode
+          {{ $tr('Mode') }}
           <select v-model="mode">
-            <option value="">All modes</option>
+            <option value="">{{ $tr('All modes') }}</option>
             <option
               v-for="item in result.filters.modes"
               :key="item"
@@ -176,9 +184,9 @@ watch(
           </select>
         </label>
         <label>
-          Result status
+          {{ $tr('Result status') }}
           <select v-model="status">
-            <option value="">All published statuses</option>
+            <option value="">{{ $tr('All published statuses') }}</option>
             <option
               v-for="item in result.filters.statuses"
               :key="item"
@@ -189,13 +197,13 @@ watch(
           </select>
         </label>
         <button class="quiet-button" type="button" @click="resetFilters">
-          Clear filters
+          {{ $tr('Clear filters') }}
         </button>
       </form>
 
       <p class="result-count" aria-live="polite">
-        Showing {{ result.items.length }} of {{ result.meta.total }} published
-        entries.
+        {{ $tr('Showing') }} {{ result.items.length }} {{ $tr('of') }}
+        {{ formatInteger(result.meta.total) }} {{ $tr('published entries.') }}
       </p>
       <KeyboardScrollRegion
         v-if="result.items.length"
@@ -204,17 +212,19 @@ watch(
       >
         <table class="results-table">
           <caption class="visually-hidden">
-            Published contest standings
+            {{
+              $tr('Published contest standings')
+            }}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Place</th>
-              <th scope="col">Callsign</th>
-              <th scope="col">Categories</th>
-              <th scope="col">Credited QSOs</th>
-              <th scope="col">Score</th>
-              <th scope="col">Status</th>
-              <th scope="col">Explanation</th>
+              <th scope="col">{{ $tr('Place') }}</th>
+              <th scope="col">{{ $tr('Callsign') }}</th>
+              <th scope="col">{{ $tr('Categories') }}</th>
+              <th scope="col">{{ $tr('Credited QSOs') }}</th>
+              <th scope="col">{{ $tr('Score') }}</th>
+              <th scope="col">{{ $tr('Status') }}</th>
+              <th scope="col">{{ $tr('Explanation') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -228,8 +238,11 @@ watch(
                     .join(', ') || '—'
                 }}
               </td>
-              <td>{{ item.credited_qso_count }} / {{ item.qso_count }}</td>
-              <td>{{ item.score }}</td>
+              <td>
+                {{ formatInteger(item.credited_qso_count) }} /
+                {{ formatInteger(item.qso_count) }}
+              </td>
+              <td>{{ formatInteger(item.score) }}</td>
               <td>
                 <span class="result-status">{{
                   item.status.replaceAll('_', ' ')
@@ -237,27 +250,31 @@ watch(
               </td>
               <td>
                 <details>
-                  <summary>Score details</summary>
+                  <summary>{{ $tr('Score details') }}</summary>
                   <dl class="score-explanation">
                     <div>
-                      <dt>QSO points</dt>
-                      <dd>{{ item.explanation.points }}</dd>
+                      <dt>{{ $tr('QSO points') }}</dt>
+                      <dd>{{ formatInteger(item.explanation.points) }}</dd>
                     </div>
                     <div>
-                      <dt>Multipliers</dt>
-                      <dd>{{ item.explanation.multipliers }}</dd>
+                      <dt>{{ $tr('Multipliers') }}</dt>
+                      <dd>{{ formatInteger(item.explanation.multipliers) }}</dd>
                     </div>
                     <div>
-                      <dt>Bonuses</dt>
-                      <dd>{{ item.explanation.bonus_points }}</dd>
+                      <dt>{{ $tr('Bonuses') }}</dt>
+                      <dd>
+                        {{ formatInteger(item.explanation.bonus_points) }}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Penalties</dt>
-                      <dd>{{ item.explanation.penalty_points }}</dd>
+                      <dt>{{ $tr('Penalties') }}</dt>
+                      <dd>
+                        {{ formatInteger(item.explanation.penalty_points) }}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Final score</dt>
-                      <dd>{{ item.explanation.score }}</dd>
+                      <dt>{{ $tr('Final score') }}</dt>
+                      <dd>{{ formatInteger(item.explanation.score) }}</dd>
                     </div>
                   </dl>
                   <p>{{ item.explanation.summary }}</p>
@@ -267,18 +284,20 @@ watch(
           </tbody>
         </table>
       </KeyboardScrollRegion>
-      <p v-else class="notice">No published entries match these filters.</p>
-      <nav class="pagination" aria-label="Results pages">
+      <p v-else class="notice">
+        {{ $tr('No published entries match these filters.') }}
+      </p>
+      <nav class="pagination" :aria-label="$tr('Results pages')">
         <button
           class="secondary-button"
           type="button"
           :disabled="page <= 1"
           @click="page--"
         >
-          Previous page
+          {{ $tr('Previous page') }}
         </button>
         <span
-          >Page {{ result.meta.page }} of
+          >{{ $tr('Page') }} {{ result.meta.page }} {{ $tr('of') }}
           {{ Math.max(result.meta.pages, 1) }}</span
         >
         <button
@@ -287,7 +306,7 @@ watch(
           :disabled="page >= result.meta.pages"
           @click="page++"
         >
-          Next page
+          {{ $tr('Next page') }}
         </button>
       </nav>
     </template>

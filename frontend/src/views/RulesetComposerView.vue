@@ -499,68 +499,88 @@ function catalogErrorMessage(reason: unknown) {
 
 <template>
   <section class="composer-page" aria-labelledby="composer-title">
-    <p class="eyebrow">Contest manager tools</p>
-    <h1 id="composer-title">Ruleset composer</h1>
+    <p class="eyebrow">{{ $tr('Contest manager tools') }}</p>
+    <h1 id="composer-title">{{ $tr('Ruleset composer') }}</h1>
     <p class="intro">
-      Turn the sponsor’s published rules into a reusable, versioned set of
-      configuration. The API validates the settings and explains the scoring
-      behavior; it remains authoritative when the contest is run.
+      {{
+        $tr(
+          'Turn the sponsor’s published rules into a reusable, versioned set of configuration. The API validates the settings and explains the scoring behavior; it remains authoritative when the contest is run.',
+        )
+      }}
     </p>
-    <a class="secondary-button" href="/manage/rulesets">← Back to rulesets</a>
+    <a class="secondary-button" href="/manage/rulesets">{{
+      $tr('← Back to rulesets')
+    }}</a>
 
     <section class="workflow-guide" aria-labelledby="workflow-title">
-      <h2 id="workflow-title">How to create a ruleset</h2>
+      <h2 id="workflow-title">{{ $tr('How to create a ruleset') }}</h2>
       <ol>
         <li>
-          <strong>Start from the published rules.</strong> Use the rules URL and
-          edition below so the configuration can be traced to its source.
+          <strong>{{ $tr('Start from the published rules.') }}</strong>
+          {{
+            $tr(
+              'Use the rules URL and edition below so the configuration can be traced to its source.',
+            )
+          }}
         </li>
         <li>
-          <strong>Configure the required rule types.</strong> These provide the
-          basic entry categories, exchange, contact eligibility, duplicate
-          handling, point calculation, and accepted log format.
+          <strong>{{ $tr('Configure the required rule types.') }}</strong>
+          {{
+            $tr(
+              'These provide the basic entry categories, exchange, contact eligibility, duplicate handling, point calculation, and accepted log format.',
+            )
+          }}
         </li>
         <li>
-          <strong>Add optional rule types only when needed.</strong> Add
-          multipliers, bonuses, penalties, operating constraints, or workflow
-          steps only when the sponsor’s rules define them. Use each section’s
-          help to translate that rule into settings.
+          <strong>{{
+            $tr('Add optional rule types only when needed.')
+          }}</strong>
+          {{
+            $tr(
+              'Add multipliers, bonuses, penalties, operating constraints, or workflow steps only when the sponsor’s rules define them. Use each section’s help to translate that rule into settings.',
+            )
+          }}
         </li>
         <li>
-          <strong>Validate, then save and assign.</strong> Fix any field errors,
-          review the generated summary and example, and save a new immutable
-          version. Assign that version to a contest from the contest manager.
+          <strong>{{ $tr('Validate, then save and assign.') }}</strong>
+          {{
+            $tr(
+              'Fix any field errors, review the generated summary and example, and save a new immutable version. Assign that version to a contest from the contest manager.',
+            )
+          }}
         </li>
       </ol>
       <p>
-        Event dates, recurrence, and the UTC log-submission cutoff belong to the
-        contest configuration. A ruleset can be reused by contests with
-        different dates; its submission rule only defines late-log handling. If
-        a sponsor requirement cannot be expressed by the available settings, do
-        not approximate it with a different rule; record the gap for review.
+        {{
+          $tr(
+            'Event dates, recurrence, and the UTC log-submission cutoff belong to the contest configuration. A ruleset can be reused by contests with different dates; its submission rule only defines late-log handling. If a sponsor requirement cannot be expressed by the available settings, do not approximate it with a different rule; record the gap for review.',
+          )
+        }}
       </p>
     </section>
 
     <p v-if="generalError" role="alert" class="error-panel">
-      {{ generalError }}
+      {{ $tr(generalError) }}
     </p>
     <p v-if="savedMessage" role="status" class="notice">
-      {{ savedMessage }}
+      {{ $tr(savedMessage) }}
     </p>
     <p v-if="catalogLoading" role="status" class="notice">
-      Loading the built-in rule catalog…
+      {{ $tr('Loading the built-in rule catalog…') }}
     </p>
     <template v-else-if="catalog.length">
       <fieldset class="panel metadata-panel">
-        <legend>Ruleset identity</legend>
+        <legend>{{ $tr('Ruleset identity') }}</legend>
         <p class="section-help">
-          These values identify the reusable configuration and its source. A
-          saved version is immutable; changing its settings requires a new
-          version identifier.
+          {{
+            $tr(
+              'These values identify the reusable configuration and its source. A saved version is immutable; changing its settings requires a new version identifier.',
+            )
+          }}
         </p>
         <div class="metadata-grid">
           <label>
-            <span class="metadata-field-label">Ruleset key</span>
+            <span class="metadata-field-label">{{ $tr('Ruleset key') }}</span>
             <input
               v-model="rulesetKey"
               maxlength="120"
@@ -568,13 +588,21 @@ function catalogErrorMessage(reason: unknown) {
               @input="clearValidation"
             />
             <span class="field-help">
-              Stable, lowercase identifier for this family of rules, such as
-              <code>spring-sprint</code>. Keep it the same when saving a later
-              version of the same contest rules.
+              {{
+                $tr(
+                  'Stable, lowercase identifier for this family of rules, such as',
+                )
+              }}
+              <code>spring-sprint</code
+              >{{
+                $tr(
+                  '. Keep it the same when saving a later version of the same contest rules.',
+                )
+              }}
             </span>
           </label>
           <label>
-            <span class="metadata-field-label">Version</span>
+            <span class="metadata-field-label">{{ $tr('Version') }}</span>
             <input
               v-model="version"
               maxlength="80"
@@ -583,18 +611,25 @@ function catalogErrorMessage(reason: unknown) {
               @input="clearValidation"
             />
             <span v-if="editingSource" class="field-help">
-              Editing {{ editingSource }}. Enter a new version identifier; saved
-              versions cannot be changed.
+              {{ $tr('Editing') }} {{ editingSource
+              }}{{
+                $tr(
+                  '. Enter a new version identifier; saved versions cannot be changed.',
+                )
+              }}
             </span>
             <span v-else class="field-help">
-              Use a year, edition, or other unique label. Validation requires a
-              version, and each saved version is a permanent snapshot.
+              {{
+                $tr(
+                  'Use a year, edition, or other unique label. Validation requires a version, and each saved version is a permanent snapshot.',
+                )
+              }}
             </span>
           </label>
           <label>
             <span class="metadata-field-label">
-              Published rules URL
-              <span class="optional-label">Optional</span>
+              {{ $tr('Published rules URL') }}
+              <span class="optional-label">{{ $tr('Optional') }}</span>
             </span>
             <input
               v-model="sourceUrl"
@@ -604,14 +639,17 @@ function catalogErrorMessage(reason: unknown) {
               @input="clearValidation"
             />
             <span class="field-help">
-              Link the official rules page or document used to configure this
-              version. The contest sponsor’s rules remain authoritative.
+              {{
+                $tr(
+                  'Link the official rules page or document used to configure this version. The contest sponsor’s rules remain authoritative.',
+                )
+              }}
             </span>
           </label>
           <label>
             <span class="metadata-field-label">
-              Source edition or year
-              <span class="optional-label">Optional</span>
+              {{ $tr('Source edition or year') }}
+              <span class="optional-label">{{ $tr('Optional') }}</span>
             </span>
             <input
               v-model="sourceEdition"
@@ -619,8 +657,11 @@ function catalogErrorMessage(reason: unknown) {
               @input="clearValidation"
             />
             <span class="field-help">
-              Record the published year or edition so managers can tell which
-              revision of the sponsor’s rules this version follows.
+              {{
+                $tr(
+                  'Record the published year or edition so managers can tell which revision of the sponsor’s rules this version follows.',
+                )
+              }}
             </span>
           </label>
         </div>
@@ -629,18 +670,22 @@ function catalogErrorMessage(reason: unknown) {
       <section aria-labelledby="configured-rules-title" class="rules-section">
         <div class="section-heading">
           <div>
-            <h2 id="configured-rules-title">Configured rule types</h2>
+            <h2 id="configured-rules-title">
+              {{ $tr('Configured rule types') }}
+            </h2>
             <p>
-              Required sections form the built-in baseline and cannot be
-              removed. Configure their values to match the sponsor’s rules;
-              optional sections add other supported behavior.
+              {{
+                $tr(
+                  'Required sections form the built-in baseline and cannot be removed. Configure their values to match the sponsor’s rules; optional sections add other supported behavior.',
+                )
+              }}
             </p>
           </div>
           <div class="add-rule-control">
             <label for="add-rule-type"
-              >Add an optional rule type
+              >{{ $tr('Add an optional rule type') }}
               <select id="add-rule-type" v-model="selectedType">
-                <option value="">Choose a rule type</option>
+                <option value="">{{ $tr('Choose a rule type') }}</option>
                 <option
                   v-for="type in optionalTypes"
                   :key="type.key"
@@ -664,12 +709,14 @@ function catalogErrorMessage(reason: unknown) {
               :disabled="!selectedType"
               @click="addSelectedRule"
             >
-              Add rule
+              {{ $tr('Add rule') }}
             </button>
             <p class="field-help">
-              Choose a supported optional rule type, then add it. You can add
-              repeatable types more than once and remove an optional rule that
-              does not apply.
+              {{
+                $tr(
+                  'Choose a supported optional rule type, then add it. You can add repeatable types more than once and remove an optional rule that does not apply.',
+                )
+              }}
             </p>
           </div>
         </div>
@@ -683,12 +730,21 @@ function catalogErrorMessage(reason: unknown) {
             <div>
               <h3>
                 {{
-                  descriptorFor(String(configured.rule.kind))?.label ??
-                  configured.rule.kind
+                  $tr(
+                    String(
+                      descriptorFor(String(configured.rule.kind))?.label ??
+                        configured.rule.kind,
+                    ),
+                  )
                 }}
               </h3>
               <p>
-                {{ descriptorFor(String(configured.rule.kind))?.description }}
+                {{
+                  $tr(
+                    descriptorFor(String(configured.rule.kind))?.description ??
+                      '',
+                  )
+                }}
               </p>
             </div>
             <button
@@ -697,20 +753,23 @@ function catalogErrorMessage(reason: unknown) {
               class="quiet-button"
               @click="removeRule(index)"
             >
-              Remove rule
+              {{ $tr('Remove rule') }}
             </button>
-            <span v-else class="required-badge">Required</span>
+            <span v-else class="required-badge">{{ $tr('Required') }}</span>
           </div>
           <label class="rule-id-control">
-            Rule identifier
+            {{ $tr('Rule identifier') }}
             <input
               v-model="configured.id"
               maxlength="80"
               @input="clearValidation"
             />
             <span class="field-help">
-              A unique lowercase key for this rule inside the ruleset. It helps
-              identify the rule in validation messages and score explanations.
+              {{
+                $tr(
+                  'A unique lowercase key for this rule inside the ruleset. It helps identify the rule in validation messages and score explanations.',
+                )
+              }}
             </span>
           </label>
           <RuleSchemaEditor
@@ -744,7 +803,7 @@ function catalogErrorMessage(reason: unknown) {
             v-if="helpText[String(configured.rule.kind)]"
             class="rule-explanation"
           >
-            {{ helpText[String(configured.rule.kind)] }}
+            {{ $tr(helpText[String(configured.rule.kind)] ?? '') }}
           </p>
           <template v-if="configured.rule.kind === 'eligibility'">
             <label
@@ -761,7 +820,7 @@ function catalogErrorMessage(reason: unknown) {
                   )
                 "
               />
-              Configure allowed bands</label
+              {{ $tr('Configure allowed bands') }}</label
             >
             <EligibilityCatalogEditor
               v-if="Array.isArray(configured.rule.allowed_bands)"
@@ -786,7 +845,7 @@ function catalogErrorMessage(reason: unknown) {
                   )
                 "
               />
-              Configure allowed modes</label
+              {{ $tr('Configure allowed modes') }}</label
             >
             <EligibilityCatalogEditor
               v-if="Array.isArray(configured.rule.allowed_modes)"
@@ -820,13 +879,14 @@ function catalogErrorMessage(reason: unknown) {
                   )
                 "
               />
-              Require contacts to match an eligibility condition
+              {{ $tr('Require contacts to match an eligibility condition') }}
             </label>
             <p class="field-help">
-              This controls whether a contact is eligible at all. Use it only
-              for a contact-level restriction in the sponsor’s rules, such as
-              requiring a particular entity. The API reports unsupported facts
-              when you validate.
+              {{
+                $tr(
+                  'This controls whether a contact is eligible at all. Use it only for a contact-level restriction in the sponsor’s rules, such as requiring a particular entity. The API reports unsupported facts when you validate.',
+                )
+              }}
             </p>
             <ConditionEditor
               v-if="configured.rule.eligible_if"
@@ -855,13 +915,14 @@ function catalogErrorMessage(reason: unknown) {
                   )
                 "
               />
-              Apply this rule only when a condition matches
+              {{ $tr('Apply this rule only when a condition matches') }}
             </label>
             <p class="field-help">
-              This makes the whole rule conditional instead of applying it to
-              every entry or contact. For example, a points or multiplier rule
-              may apply only on a particular band. This is separate from QSO
-              eligibility, which decides whether the contact can count at all.
+              {{
+                $tr(
+                  'This makes the whole rule conditional instead of applying it to every entry or contact. For example, a points or multiplier rule may apply only on a particular band. This is separate from QSO eligibility, which decides whether the contact can count at all.',
+                )
+              }}
             </p>
             <ConditionEditor
               v-if="configured.when"
@@ -882,10 +943,10 @@ function catalogErrorMessage(reason: unknown) {
           {{ validating ? 'Validating…' : 'Validate ruleset' }}
         </button>
         <button type="button" class="secondary-button" @click="exportDraft">
-          Download JSON draft
+          {{ $tr('Download JSON draft') }}
         </button>
         <label id="import-ruleset" class="file-button">
-          Import JSON draft
+          {{ $tr('Import JSON draft') }}
           <input
             ref="fileInput"
             type="file"
@@ -898,10 +959,10 @@ function catalogErrorMessage(reason: unknown) {
       <ul
         v-if="issues.length"
         class="error-list"
-        aria-label="Ruleset validation errors"
+        :aria-label="$tr('Ruleset validation errors')"
       >
         <li v-for="(issue, index) in issues" :key="`${index}-${issue.message}`">
-          {{ displayIssue(issue) }}
+          {{ $tr(displayIssue(issue)) }}
         </li>
       </ul>
       <section
@@ -910,15 +971,15 @@ function catalogErrorMessage(reason: unknown) {
         class="validation-panel"
         role="status"
       >
-        <h2 id="validation-result-title">Ruleset is valid</h2>
+        <h2 id="validation-result-title">{{ $tr('Ruleset is valid') }}</h2>
         <pre class="rules-summary">{{ validation.summary }}</pre>
         <div
           v-if="validation.worked_score_example.final_score !== undefined"
           class="example-card"
         >
-          <h3>Worked integer score example</h3>
+          <h3>{{ $tr('Worked integer score example') }}</h3>
           <p>
-            Example inputs:
+            {{ $tr('Example inputs:') }}
             {{ JSON.stringify(validation.worked_score_example.variables) }}
           </p>
           <ol>
@@ -931,12 +992,15 @@ function catalogErrorMessage(reason: unknown) {
           </ol>
         </div>
         <p v-else-if="validation.worked_score_example.error" class="notice">
-          Formula preview: {{ validation.worked_score_example.error }}
+          {{ $tr('Formula preview:') }}
+          {{ validation.worked_score_example.error }}
         </p>
         <p class="draft-note">
-          Saving creates an immutable version. Existing versions and contest
-          assignments remain unchanged; assign a new version from the contest
-          manager when you are ready.
+          {{
+            $tr(
+              'Saving creates an immutable version. Existing versions and contest assignments remain unchanged; assign a new version from the contest manager when you are ready.',
+            )
+          }}
         </p>
         <button
           type="button"

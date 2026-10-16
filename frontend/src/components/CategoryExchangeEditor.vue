@@ -65,6 +65,13 @@ const exchangeFields = [
   ['call_area', 'Call area', 'text', 'received'],
   ['power', 'Power', 'enum', 'received'],
 ]
+const directionLabel = (direction: string) =>
+  ({
+    sent: 'Sent',
+    received: 'Received',
+    both: 'Both',
+    entry: 'Entry',
+  })[direction] ?? direction
 const fieldsName = computed(() =>
   props.kind === 'categories' ? 'dimensions' : 'fields',
 )
@@ -136,6 +143,18 @@ function setInteger(
 function integerField(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
+function valueTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    text: 'Text',
+    integer: 'Integer',
+    callsign: 'Callsign',
+    serial: 'Serial number',
+    enum: 'Enumeration',
+    grid: 'Grid locator',
+    zone: 'Zone',
+  }
+  return labels[type] ? labels[type] : type
+}
 function addChoice(rowIndex: number) {
   const choicesForRow = choices(rows.value[rowIndex] ?? {})
   updateChoices(rowIndex, [
@@ -189,20 +208,17 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   <section class="controlled-rule-fields">
     <div v-if="kind === 'categories'">
       <p>
-        <strong>Dimensions</strong> are separate entry-classification axes, such
-        as operator, power, band, mode, or assistance. Their choices are the
-        values entrants may select, and together they determine the result
-        categories. Stable keys are used in saved rules and data; labels are
-        shown to entrants. Built-in labels follow their presets; custom labels
-        can be changed without changing the stable key. Mark a dimension
-        required only if the sponsor requires an entrant to choose one.
-        “Requires declaration” means the choice needs an entry declaration such
-        as a section or station class. Use mutually exclusive groups only for
-        combinations the sponsor disallows.
+        <strong>{{ $tr('Dimensions') }}</strong>
+        {{
+          $tr(
+            'are separate entry-classification axes, such as operator, power, band, mode, or assistance. Their choices are the values entrants may select, and together they determine the result categories. Stable keys are used in saved rules and data; labels are shown to entrants. Built-in labels follow their presets; custom labels can be changed without changing the stable key. Mark a dimension required only if the sponsor requires an entrant to choose one. “Requires declaration” means the choice needs an entry declaration such as a section or station class. Use mutually exclusive groups only for combinations the sponsor disallows.',
+          )
+        }}
       </p>
       <article v-for="(row, index) in rows" :key="index" class="controlled-row">
         <label
-          >Dimension key<select
+          >{{ $tr('Dimension key')
+          }}<select
             :value="
               categoryDimensions.some(([key]) => key === row.key)
                 ? row.key
@@ -217,20 +233,22 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               :key="key"
               :value="key"
             >
-              {{ label }} ({{ key }})
+              {{ $tr(label) }} ({{ key }})
             </option>
-            <option value="custom">Custom dimension…</option>
+            <option value="custom">{{ $tr('Custom dimension…') }}</option>
           </select></label
         >
         <label v-if="!categoryDimensions.some(([key]) => key === row.key)"
-          >Custom stable key<input
+          >{{ $tr('Custom stable key')
+          }}<input
             :value="String(row.key ?? '')"
             @input="
               update(index, { key: ($event.target as HTMLInputElement).value })
             "
         /></label>
         <label
-          >Dimension label<select
+          >{{ $tr('Dimension label')
+          }}<select
             v-if="categoryDimensions.some(([key]) => key === row.key)"
             :value="String(row.label ?? '')"
             @change="
@@ -245,7 +263,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               :key="key"
               :value="label"
             >
-              {{ label }}
+              {{ $tr(label) }}
             </option></select
           ><input
             v-else
@@ -266,17 +284,18 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               })
             "
           />
-          Required for entries</label
+          {{ $tr('Required for entries') }}</label
         >
         <div class="controlled-choice-list">
-          <strong>Allowed choices</strong>
+          <strong>{{ $tr('Allowed choices') }}</strong>
           <div
             v-for="(choice, choiceIndex) in choices(row)"
             :key="choiceIndex"
             class="controlled-choice"
           >
             <label
-              >Choice key<select
+              >{{ $tr('Choice key')
+              }}<select
                 :value="
                   (categoryValues[String(row.key)] ?? []).some(
                     ([key]) => key === choice.key,
@@ -297,16 +316,18 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                   :key="key"
                   :value="key"
                 >
-                  {{ label }} ({{ key }})
+                  {{ $tr(label) }} ({{ key }})
                 </option>
-                <option value="custom">Custom choice…</option></select
+                <option value="custom">
+                  {{ $tr('Custom choice…') }}
+                </option></select
               ><input
                 v-if="
                   !(categoryValues[String(row.key)] ?? []).some(
                     ([key]) => key === choice.key,
                   )
                 "
-                aria-label="Custom stable choice key"
+                :aria-label="$tr('Custom stable choice key')"
                 :value="String(choice.key ?? '')"
                 @input="
                   updateChoices(
@@ -323,7 +344,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                 "
             /></label>
             <label
-              >Choice label<select
+              >{{ $tr('Choice label')
+              }}<select
                 v-if="
                   (categoryValues[String(row.key)] ?? []).some(
                     ([key]) => key === choice.key,
@@ -350,7 +372,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                   :key="key"
                   :value="label"
                 >
-                  {{ label }}
+                  {{ $tr(label) }}
                 </option></select
               ><input
                 v-else
@@ -389,7 +411,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                   )
                 "
               />
-              Requires declaration</label
+              {{ $tr('Requires declaration') }}</label
             >
             <button
               type="button"
@@ -401,7 +423,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                 )
               "
             >
-              Remove choice
+              {{ $tr('Remove choice') }}
             </button>
           </div>
           <button
@@ -409,23 +431,30 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             class="secondary-button"
             @click="addChoice(index)"
           >
-            Add choice
+            {{ $tr('Add choice') }}
           </button>
         </div>
         <button type="button" class="quiet-button" @click="remove(index)">
-          Remove dimension
+          {{ $tr('Remove dimension') }}
         </button>
       </article>
       <button type="button" class="secondary-button" @click="add">
-        Add dimension
+        {{ $tr('Add dimension') }}
       </button>
       <label class="mutually-exclusive"
-        >Mutually exclusive dimension groups
+        >{{ $tr('Mutually exclusive dimension groups') }}
         <span class="field-help">
-          Enter stable dimension keys separated by commas, one incompatible
-          group per line. For example, if you define custom dimensions named
-          <code>single_band</code> and <code>all_band</code>, listing both means
-          an entry cannot configure both dimensions. </span
+          {{
+            $tr(
+              'Enter stable dimension keys separated by commas, one incompatible group per line. For example, if you define custom dimensions named',
+            )
+          }}
+          <code>single_band</code> {{ $tr('and') }} <code>all_band</code
+          >{{
+            $tr(
+              ', listing both means an entry cannot configure both dimensions.',
+            )
+          }} </span
         ><textarea
           :value="
             Array.isArray(modelValue.mutually_exclusive)
@@ -454,22 +483,17 @@ function setChoice(index: number, choiceIndex: number, key: string) {
     </div>
     <div v-else>
       <p>
-        <strong>Exchange schema</strong> describes the fields sent and received
-        for each contact, plus values declared once for the whole entry. It is
-        the canonical vocabulary used by validation and scoring; the format
-        mapping section connects these fields to names in uploaded Cabrillo or
-        ADIF logs. Field keys are stable references used by the system; labels
-        are for display. Select a common field to prefill its key, label, type,
-        and direction, or choose “Custom exchange field” for a contest-specific
-        value. Choose “sent”, “received”, or “both” for contact exchanges, and
-        “entry” for a single entry-level declaration. Mark a field required only
-        if the sponsor requires it. Serial scope controls when a sent sequence
-        number increments; enum values restrict accepted text to the listed
-        choices.
+        <strong>{{ $tr('Exchange schema') }}</strong>
+        {{
+          $tr(
+            'describes the fields sent and received for each contact, plus values declared once for the whole entry. It is the canonical vocabulary used by validation and scoring; the format mapping section connects these fields to names in uploaded Cabrillo or ADIF logs. Field keys are stable references used by the system; labels are for display. Select a common field to prefill its key, label, type, and direction, or choose “Custom exchange field” for a contest-specific value. Choose “sent”, “received”, or “both” for contact exchanges, and “entry” for a single entry-level declaration. Mark a field required only if the sponsor requires it. Serial scope controls when a sent sequence number increments; enum values restrict accepted text to the listed choices.',
+          )
+        }}
       </p>
       <article v-for="(row, index) in rows" :key="index" class="controlled-row">
         <label
-          >Field key<select
+          >{{ $tr('Field key')
+          }}<select
             :value="
               exchangeFields.some(([key]) => key === row.key)
                 ? row.key
@@ -484,20 +508,22 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               :key="key"
               :value="key"
             >
-              {{ label }} ({{ key }})
+              {{ $tr(label) }} ({{ key }})
             </option>
-            <option value="custom">Custom exchange field…</option>
+            <option value="custom">{{ $tr('Custom exchange field…') }}</option>
           </select></label
         >
         <label v-if="!exchangeFields.some(([key]) => key === row.key)"
-          >Custom stable key<input
+          >{{ $tr('Custom stable key')
+          }}<input
             :value="String(row.key ?? '')"
             @input="
               update(index, { key: ($event.target as HTMLInputElement).value })
             "
         /></label>
         <label
-          >Field label<select
+          >{{ $tr('Field label')
+          }}<select
             v-if="exchangeFields.some(([key]) => key === row.key)"
             :value="String(row.label ?? '')"
             @change="
@@ -512,7 +538,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               :key="key"
               :value="label"
             >
-              {{ label }}
+              {{ $tr(label) }}
             </option></select
           ><input
             v-else
@@ -524,7 +550,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             "
         /></label>
         <label
-          >Value type<select
+          >{{ $tr('Value type')
+          }}<select
             :value="String(row.value_type ?? 'text')"
             @change="
               update(index, {
@@ -543,13 +570,15 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                 'zone',
               ]"
               :key="type"
+              :value="type"
             >
-              {{ type }}
+              {{ $tr(valueTypeLabel(type)) }}
             </option>
           </select></label
         >
         <label
-          >Direction<select
+          >{{ $tr('Direction')
+          }}<select
             :value="String(row.direction ?? 'both')"
             @change="
               update(index, {
@@ -560,13 +589,15 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             <option
               v-for="direction in ['sent', 'received', 'both', 'entry']"
               :key="direction"
+              :value="direction"
             >
-              {{ direction }}
+              {{ $tr(directionLabel(direction)) }}
             </option>
           </select></label
         >
         <label v-if="row.value_type === 'serial'"
-          >Serial increments per<select
+          >{{ $tr('Serial increments per')
+          }}<select
             :value="String(row.serial_scope ?? 'entry')"
             @change="
               update(index, {
@@ -583,19 +614,21 @@ function setChoice(index: number, choiceIndex: number, key: string) {
           </select></label
         >
         <label v-if="row.value_type === 'enum'"
-          >Allowed enum choices<input
+          >{{ $tr('Allowed enum choices')
+          }}<input
             :value="
               Array.isArray(row.choices)
                 ? (row.choices as string[]).join(', ')
                 : ''
             "
-            placeholder="Comma-separated allowed values"
+            :placeholder="$tr('Comma-separated allowed values')"
             @change="
               setEnumChoices(index, ($event.target as HTMLInputElement).value)
             "
         /></label>
         <label v-if="row.value_type === 'integer'"
-          >Minimum integer<input
+          >{{ $tr('Minimum integer')
+          }}<input
             type="number"
             :value="integerField(row.min_integer)"
             @input="
@@ -607,7 +640,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             "
         /></label>
         <label v-if="row.value_type === 'integer'"
-          >Maximum integer<input
+          >{{ $tr('Maximum integer')
+          }}<input
             type="number"
             :value="integerField(row.max_integer)"
             @input="
@@ -628,14 +662,14 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               })
             "
           />
-          Required</label
+          {{ $tr('Required') }}</label
         >
         <button type="button" class="quiet-button" @click="remove(index)">
-          Remove field
+          {{ $tr('Remove field') }}
         </button>
       </article>
       <button type="button" class="secondary-button" @click="add">
-        Add exchange field
+        {{ $tr('Add exchange field') }}
       </button>
     </div>
   </section>

@@ -153,30 +153,33 @@ onMounted(loadContests)
 
 <template>
   <section class="form-card upload-card" aria-labelledby="upload-title">
-    <p class="eyebrow">Contest entry</p>
-    <h1 id="upload-title">Submit a log</h1>
+    <p class="eyebrow">{{ $tr('Contest entry') }}</p>
+    <h1 id="upload-title">{{ $tr('Submit a log') }}</h1>
     <p>
-      Choose an open contest and upload a log in one of its accepted formats.
-      You do not need a system account.
+      {{
+        $tr(
+          'Choose an open contest and upload a log in one of its accepted formats. You do not need a system account.',
+        )
+      }}
     </p>
 
-    <p v-if="loading" role="status">Loading contests…</p>
+    <p v-if="loading" role="status">{{ $tr('Loading contests…') }}</p>
     <p v-else-if="error && !contests.length" class="form-error" role="alert">
-      {{ error }}
+      {{ $tr(error) }}
     </p>
     <p v-else-if="!contests.length" class="empty-state">
-      There are no contests accepting logs right now.
+      {{ $tr('There are no contests accepting logs right now.') }}
     </p>
 
     <form v-else @submit.prevent="submit">
-      <label for="upload-contest">Contest</label>
+      <label for="upload-contest">{{ $tr('Contest') }}</label>
       <select
         id="upload-contest"
         v-model="contestSlug"
         required
         :disabled="uploading"
       >
-        <option value="" disabled>Select a contest</option>
+        <option value="" disabled>{{ $tr('Select a contest') }}</option>
         <option
           v-for="contest in contests"
           :key="contest.id"
@@ -198,19 +201,24 @@ onMounted(loadContests)
       />
       <p class="field-hint">
         <template v-if="acceptedFormats.length">
-          UTF-8 text, up to 5 MiB. Accepted formats for this contest:
+          {{
+            $tr('UTF-8 text, up to 5 MiB. Accepted formats for this contest:')
+          }}
           {{
             acceptedFormats.map((format) => format.toUpperCase()).join(' and ')
           }}.
         </template>
         <template v-else>
-          Select a contest with a configured supported log format.
+          {{ $tr('Select a contest with a configured supported log format.') }}
         </template>
-        ADIF records need UTC date/time, callsign, mode, band or frequency, and
-        the exchange required by the contest.
+        {{
+          $tr(
+            'ADIF records need UTC date/time, callsign, mode, band or frequency, and the exchange required by the contest.',
+          )
+        }}
       </p>
       <p v-if="file && !selectedFileAllowed" class="form-error" role="alert">
-        This file format is not enabled for the selected contest.
+        {{ $tr('This file format is not enabled for the selected contest.') }}
       </p>
 
       <div
@@ -219,13 +227,15 @@ onMounted(loadContests)
         role="status"
         aria-live="polite"
       >
-        <label for="upload-progress">Upload progress: {{ progress }}%</label>
+        <label for="upload-progress"
+          >{{ $tr('Upload progress:') }} {{ progress }}%</label
+        >
         <progress id="upload-progress" :value="progress" max="100">
           {{ progress }}%
         </progress>
       </div>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <p v-if="error" class="form-error" role="alert">{{ $tr(error) }}</p>
       <button
         class="primary-button"
         type="submit"
@@ -253,19 +263,25 @@ onMounted(loadContests)
         }}
       </h2>
       <p>
-        {{ result.summary.accepted_qsos }} contacts accepted;
-        {{ result.summary.rejected_qsos }} rejected;
-        {{ result.summary.warning_count }} warnings.
+        {{ result.summary.accepted_qsos }} {{ $tr('contacts accepted;') }}
+        {{ result.summary.rejected_qsos }} {{ $tr('rejected;') }}
+        {{ result.summary.warning_count }} {{ $tr('warnings.') }}
       </p>
       <p v-if="result.replayed">
-        This retry matched an earlier submission and did not create another
-        entry.
+        {{
+          $tr(
+            'This retry matched an earlier submission and did not create another entry.',
+          )
+        }}
       </p>
       <div v-if="result.receipt_token" class="receipt-token">
-        <h3>Save your entry receipt token</h3>
+        <h3>{{ $tr('Save your entry receipt token') }}</h3>
         <p>
-          This token gives access to this entry only. It is shown once; save it
-          somewhere private.
+          {{
+            $tr(
+              'This token gives access to this entry only. It is shown once; save it somewhere private.',
+            )
+          }}
         </p>
         <code>{{ result.receipt_token }}</code>
         <button
@@ -273,7 +289,7 @@ onMounted(loadContests)
           type="button"
           @click="manageCreatedEntry"
         >
-          Manage this entry in this tab
+          {{ $tr('Manage this entry in this tab') }}
         </button>
       </div>
       <ul
@@ -285,7 +301,7 @@ onMounted(loadContests)
           :key="`${item.line}-${item.code}-${index}`"
         >
           <strong>{{ item.line ? `Line ${item.line}: ` : '' }}</strong
-          >{{ item.message }}
+          >{{ $tr(item.message) }}
         </li>
       </ul>
       <ul
@@ -297,7 +313,7 @@ onMounted(loadContests)
           :key="`${item.line}-${item.code}-${index}`"
         >
           <strong>{{ item.line ? `Line ${item.line}: ` : '' }}</strong
-          >{{ item.message }}
+          >{{ $tr(item.message) }}
         </li>
       </ul>
     </section>

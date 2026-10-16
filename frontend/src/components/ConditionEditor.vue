@@ -168,41 +168,43 @@ function updateNegated(condition: Record<string, unknown>) {
 
 <template>
   <fieldset class="condition-editor">
-    <legend>Condition</legend>
+    <legend>{{ $tr('Condition') }}</legend>
     <p class="condition-help">
-      A condition compares supported contest data with a value. Choose a fact
-      path, select how it should compare, then enter the value to match. A
-      condition narrows when a rule applies; it does not define a new exchange
-      field or create a scoring rule.
+      {{
+        $tr(
+          'A condition compares supported contest data with a value. Choose a fact path, select how it should compare, then enter the value to match. A condition narrows when a rule applies; it does not define a new exchange field or create a scoring rule.',
+        )
+      }}
     </p>
     <div class="condition-controls-grid">
       <label class="condition-structure-control">
-        Condition structure
+        {{ $tr('Condition structure') }}
         <select
           :value="kind"
           @change="
             setKind(($event.target as HTMLSelectElement).value as ConditionKind)
           "
         >
-          <option value="compare">Compare a value</option>
-          <option value="all">All conditions</option>
-          <option value="any">Any condition</option>
-          <option value="not">Not a condition</option>
+          <option value="compare">{{ $tr('Compare a value') }}</option>
+          <option value="all">{{ $tr('All conditions') }}</option>
+          <option value="any">{{ $tr('Any condition') }}</option>
+          <option value="not">{{ $tr('Not a condition') }}</option>
         </select>
       </label>
 
       <template v-if="kind === 'compare'">
         <label class="condition-fact-control">
-          Fact path
+          {{ $tr('Fact path') }}
           <input
             :value="modelValue.fact"
             :list="factsListId"
             maxlength="160"
-            placeholder="qso.band"
+            :placeholder="$tr('qso.band')"
             @input="update({ fact: ($event.target as HTMLInputElement).value })"
           />
           <small
-            >Examples: <code>qso.band</code>, <code>qso.entity</code>.</small
+            >{{ $tr('Examples:') }} <code>qso.band</code>,
+            <code>qso.entity</code>.</small
           >
         </label>
         <datalist :id="factsListId">
@@ -218,7 +220,7 @@ function updateNegated(condition: Record<string, unknown>) {
           <option value="station.callsign" />
         </datalist>
         <label class="condition-comparison-control">
-          Comparison
+          {{ $tr('Comparison') }}
           <select
             :value="modelValue.operator"
             @change="updateOperator(($event.target as HTMLSelectElement).value)"
@@ -228,23 +230,23 @@ function updateNegated(condition: Record<string, unknown>) {
               :key="operator"
               :value="operator"
             >
-              {{ operatorLabels[operator] }} ({{ operator }})
+              {{ $tr(operatorLabels[operator] ?? operator) }} ({{ operator }})
             </option>
           </select>
         </label>
         <template v-if="modelValue.operator !== 'exists'">
           <label class="condition-value-type-control">
-            Value type
+            {{ $tr('Value type') }}
             <select
               :value="valueKind"
               @change="
                 updateValueKind(($event.target as HTMLSelectElement).value)
               "
             >
-              <option value="text">Text</option>
-              <option value="integer">Integer</option>
-              <option value="boolean">Boolean</option>
-              <option value="list">Text list</option>
+              <option value="text">{{ $tr('Text') }}</option>
+              <option value="integer">{{ $tr('Integer') }}</option>
+              <option value="boolean">{{ $tr('Boolean') }}</option>
+              <option value="list">{{ $tr('Text list') }}</option>
             </select>
           </label>
           <label
@@ -258,7 +260,7 @@ function updateNegated(condition: Record<string, unknown>) {
                 update({ value: ($event.target as HTMLInputElement).checked })
               "
             />
-            Value is true
+            {{ $tr('Value is true') }}
           </label>
           <label v-else class="condition-value-control">
             {{
@@ -275,24 +277,37 @@ function updateNegated(condition: Record<string, unknown>) {
               "
             />
             <small v-if="valueKind === 'list'">
-              Separate values with commas. The “Is one of” and “Is not one of”
-              comparisons use this list.
+              {{
+                $tr(
+                  'Separate values with commas. The “Is one of” and “Is not one of” comparisons use this list.',
+                )
+              }}
             </small>
             <small v-if="modelValue.operator === 'matches'">
-              Enter the pattern the fact must match. Validation checks that the
-              pattern is supported before the ruleset can be saved.
+              {{
+                $tr(
+                  'Enter the pattern the fact must match. Validation checks that the pattern is supported before the ruleset can be saved.',
+                )
+              }}
             </small>
           </label>
         </template>
         <p v-if="modelValue.operator === 'exists'" class="condition-help">
-          “Is present” checks whether the fact has a value; it does not compare
-          against another value.
+          {{
+            $tr(
+              '“Is present” checks whether the fact has a value; it does not compare against another value.',
+            )
+          }}
         </p>
       </template>
 
       <div v-else-if="kind === 'not'" class="condition-child">
         <p class="condition-help">
-          This condition is true only when its nested condition is false.
+          {{
+            $tr(
+              'This condition is true only when its nested condition is false.',
+            )
+          }}
         </p>
         <ConditionEditor
           :model-value="negatedCondition"
@@ -304,9 +319,11 @@ function updateNegated(condition: Record<string, unknown>) {
       <div v-else class="condition-group">
         <p>
           {{
-            kind === 'all'
-              ? 'Every condition below must match for this group to be true. Use this to combine limits.'
-              : 'At least one condition below must match for this group to be true. Use this when any listed alternative is allowed.'
+            $tr(
+              kind === 'all'
+                ? 'Every condition below must match for this group to be true. Use this to combine limits.'
+                : 'At least one condition below must match for this group to be true. Use this when any listed alternative is allowed.',
+            )
           }}
         </p>
         <div
@@ -325,11 +342,11 @@ function updateNegated(condition: Record<string, unknown>) {
             class="quiet-button"
             @click="removeCondition(index)"
           >
-            Remove condition
+            {{ $tr('Remove condition') }}
           </button>
         </div>
         <button type="button" class="secondary-button" @click="addCondition">
-          Add condition
+          {{ $tr('Add condition') }}
         </button>
       </div>
     </div>

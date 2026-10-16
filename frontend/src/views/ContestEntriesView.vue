@@ -10,6 +10,7 @@ import {
   type ContestLogDetails,
   type ContestLogList,
 } from '../api/logs'
+import { formatInteger, formatUtcDateTime } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -102,14 +103,17 @@ function changeDetailPage(nextPage: number) {
 function selectRevision(event: Event) {
   const selected = Number((event.target as HTMLSelectElement).value)
   const query = { ...route.query }
-  if (Number.isInteger(selected) && selected > 0) query.revision = String(selected)
+  if (Number.isInteger(selected) && selected > 0)
+    query.revision = String(selected)
   else delete query.revision
   detailPage.value = 1
   void router.replace({ query })
 }
 
 function exchangeText(values: Record<string, unknown>) {
-  const parts = Object.entries(values).map(([key, value]) => `${key}: ${String(value)}`)
+  const parts = Object.entries(values).map(
+    ([key, value]) => `${key}: ${String(value)}`,
+  )
   return parts.join(', ') || '—'
 }
 
@@ -130,7 +134,10 @@ async function downloadSelectedRevision() {
     anchor.click()
     URL.revokeObjectURL(url)
   } catch (cause) {
-    detailError.value = messageFor(cause, 'The original log could not be downloaded.')
+    detailError.value = messageFor(
+      cause,
+      'The original log could not be downloaded.',
+    )
   } finally {
     downloading.value = false
   }
@@ -170,22 +177,31 @@ watch(
 
 <template>
   <section class="submitted-logs-page" aria-labelledby="submitted-logs-title">
-    <p class="eyebrow">Contest staff</p>
-    <h1 id="submitted-logs-title">Submitted logs</h1>
+    <p class="eyebrow">{{ $tr('Contest staff') }}</p>
+    <h1 id="submitted-logs-title">{{ $tr('Submitted logs') }}</h1>
     <p v-if="contest" class="intro">{{ contest.name }}</p>
-    <p v-if="error" class="error-panel" role="alert">{{ error }}</p>
-    <p v-if="loading" role="status" class="notice">Loading submitted logs…</p>
+    <p v-if="error" class="error-panel" role="alert">{{ $tr(error) }}</p>
+    <p v-if="loading" role="status" class="notice">
+      {{ $tr('Loading submitted logs…') }}
+    </p>
 
     <template v-if="!loading && logList">
-      <section class="panel submitted-log-list" aria-labelledby="log-list-title">
+      <section
+        class="panel submitted-log-list"
+        aria-labelledby="log-list-title"
+      >
         <div class="section-title">
-          <h2 id="log-list-title">Log entries ({{ logList.meta.total }})</h2>
+          <h2 id="log-list-title">
+            {{ $tr('Log entries (') }}{{ formatInteger(logList.meta.total) }})
+          </h2>
           <RouterLink class="quiet-link" to="/manage/contests">
-            Back to contests
+            {{ $tr('Back to contests') }}
           </RouterLink>
         </div>
         <form class="log-search" role="search" @submit.prevent="applySearch">
-          <label for="log-search-input">Filter by callsign or entry key</label>
+          <label for="log-search-input">{{
+            $tr('Filter by callsign or entry key')
+          }}</label>
           <div class="log-search-controls">
             <input
               id="log-search-input"
@@ -194,73 +210,110 @@ watch(
               maxlength="120"
               autocomplete="off"
             />
-            <button class="secondary-button" type="submit">Search</button>
+            <button class="secondary-button" type="submit">
+              {{ $tr('Search') }}
+            </button>
           </div>
         </form>
         <p v-if="logList.items.length === 0" class="notice">
-          {{ appliedSearch ? 'No submitted logs match this filter.' : 'No logs have been submitted for this contest yet.' }}
+          {{
+            appliedSearch
+              ? 'No submitted logs match this filter.'
+              : 'No logs have been submitted for this contest yet.'
+          }}
         </p>
-        <div v-else class="table-scroll" tabindex="0" aria-label="Scrollable submitted logs list">
+        <div
+          v-else
+          class="table-scroll"
+          tabindex="0"
+          :aria-label="$tr('Scrollable submitted logs list')"
+        >
           <table>
             <thead>
               <tr>
-                <th scope="col">Callsign</th>
-                <th scope="col">Status</th>
-                <th scope="col">Submitted</th>
-                <th scope="col">Format</th>
-                <th scope="col">Revision</th>
-                <th scope="col">QSOs</th>
-                <th scope="col"><span class="visually-hidden">Details</span></th>
+                <th scope="col">{{ $tr('Callsign') }}</th>
+                <th scope="col">{{ $tr('Status') }}</th>
+                <th scope="col">{{ $tr('Submitted') }}</th>
+                <th scope="col">{{ $tr('Format') }}</th>
+                <th scope="col">{{ $tr('Revision') }}</th>
+                <th scope="col">{{ $tr('QSOs') }}</th>
+                <th scope="col">
+                  <span class="visually-hidden">{{ $tr('Details') }}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in logList.items" :key="item.entry_id">
                 <th scope="row">{{ item.callsign }}</th>
                 <td>{{ item.status }}{{ item.is_late ? ' · late' : '' }}</td>
-                <td>{{ new Date(item.submitted_at).toLocaleString() }}</td>
+                <td>{{ formatUtcDateTime(item.submitted_at) }}</td>
                 <td>{{ item.input_format ?? '—' }}</td>
-                <td>{{ item.revision_number ?? '—' }}</td>
-                <td>{{ item.qso_count }}</td>
+                <td>
+                  {{
+                    item.revision_number == null
+                      ? '—'
+                      : formatInteger(item.revision_number)
+                  }}
+                </td>
+                <td>{{ formatInteger(item.qso_count) }}</td>
                 <td>
                   <RouterLink
                     :to="`/manage/contests/${contestId}/entries/${item.entry_id}`"
                     :aria-label="`View log details for ${item.callsign}`"
                   >
-View log
-</RouterLink>
+                    {{ $tr('View log') }}
+                  </RouterLink>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <nav v-if="logList.meta.pages > 1" class="page-controls" aria-label="Submitted logs pages">
+        <nav
+          v-if="logList.meta.pages > 1"
+          class="page-controls"
+          :aria-label="$tr('Submitted logs pages')"
+        >
           <button
             class="secondary-button"
             type="button"
             :disabled="listPage <= 1 || loading"
             @click="changeListPage(listPage - 1)"
           >
-Previous
-</button>
-          <span>Page {{ logList.meta.page }} of {{ logList.meta.pages }}</span>
+            {{ $tr('Previous') }}
+          </button>
+          <span
+            >{{ $tr('Page') }} {{ logList.meta.page }} {{ $tr('of') }}
+            {{ logList.meta.pages }}</span
+          >
           <button
             class="secondary-button"
             type="button"
             :disabled="listPage >= logList.meta.pages || loading"
             @click="changeListPage(listPage + 1)"
           >
-Next
-</button>
+            {{ $tr('Next') }}
+          </button>
         </nav>
       </section>
 
-      <section v-if="entryId !== null" class="panel log-detail" aria-labelledby="log-detail-title">
-        <p v-if="detailLoading" role="status" class="notice">Loading log details…</p>
-        <p v-if="detailError" class="error-panel" role="alert">{{ detailError }}</p>
+      <section
+        v-if="entryId !== null"
+        class="panel log-detail"
+        aria-labelledby="log-detail-title"
+      >
+        <p v-if="detailLoading" role="status" class="notice">
+          {{ $tr('Loading log details…') }}
+        </p>
+        <p v-if="detailError" class="error-panel" role="alert">
+          {{ detailError }}
+        </p>
         <template v-if="detail && !detailLoading">
           <div class="section-title">
             <div>
-              <p class="eyebrow">{{ detail.entry.status }}{{ detail.entry.is_late ? ' · late' : '' }}</p>
+              <p class="eyebrow">
+                {{ detail.entry.status
+                }}{{ detail.entry.is_late ? ' · late' : '' }}
+              </p>
               <h2 id="log-detail-title" tabindex="-1">
                 {{ detail.entry.callsign }}
               </h2>
@@ -271,38 +324,81 @@ Next
               :disabled="downloading"
               @click="downloadSelectedRevision"
             >
-{{ downloading ? 'Preparing…' : 'Download original log' }}
-</button>
+              {{ downloading ? 'Preparing…' : 'Download original log' }}
+            </button>
           </div>
           <dl class="log-detail-meta">
-            <div><dt>Entry key</dt><dd>{{ detail.entry.entry_key }}</dd></div>
-            <div><dt>Submitted</dt><dd>{{ new Date(detail.entry.submitted_at).toLocaleString() }}</dd></div>
-            <div><dt>Filename</dt><dd>{{ detail.entry.original_filename ?? 'Unknown filename' }}</dd></div>
-            <div><dt>Category</dt><dd>{{ exchangeText(detail.entry.category_values) }}</dd></div>
+            <div>
+              <dt>{{ $tr('Entry key') }}</dt>
+              <dd>{{ detail.entry.entry_key }}</dd>
+            </div>
+            <div>
+              <dt>{{ $tr('Submitted') }}</dt>
+              <dd>{{ formatUtcDateTime(detail.entry.submitted_at) }}</dd>
+            </div>
+            <div>
+              <dt>{{ $tr('Filename') }}</dt>
+              <dd>
+                {{ detail.entry.original_filename ?? 'Unknown filename' }}
+              </dd>
+            </div>
+            <div>
+              <dt>{{ $tr('Category') }}</dt>
+              <dd>{{ exchangeText(detail.entry.category_values) }}</dd>
+            </div>
           </dl>
-          <label for="log-revision">Log revision</label>
-          <select id="log-revision" :value="detail.entry.revision_id" @change="selectRevision">
-            <option v-for="revision in detail.revisions" :key="revision.id" :value="revision.id">
-              Revision {{ revision.revision_number }} · {{ revision.input_format }} · {{ revision.qso_count }} QSOs
+          <label for="log-revision">{{ $tr('Log revision') }}</label>
+          <select
+            id="log-revision"
+            :value="detail.entry.revision_id"
+            @change="selectRevision"
+          >
+            <option
+              v-for="revision in detail.revisions"
+              :key="revision.id"
+              :value="revision.id"
+            >
+              {{ $tr('Revision') }}
+              {{ formatInteger(revision.revision_number) }} ·
+              {{ revision.input_format }} ·
+              {{ formatInteger(revision.qso_count) }}
+              {{ $tr('QSOs') }}
             </option>
           </select>
-          <div v-if="detail.contacts.length" class="table-scroll qso-table-scroll" tabindex="0" aria-label="Scrollable QSO details">
+          <div
+            v-if="detail.contacts.length"
+            class="table-scroll qso-table-scroll"
+            tabindex="0"
+            :aria-label="$tr('Scrollable QSO details')"
+          >
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Line</th>
-                  <th scope="col">UTC time</th>
-                  <th scope="col">Worked callsign</th>
-                  <th scope="col">Band / frequency</th>
-                  <th scope="col">Mode</th>
-                  <th scope="col">Exchange sent</th>
-                  <th scope="col">Exchange received</th>
+                  <th scope="col">{{ $tr('Line') }}</th>
+                  <th scope="col">{{ $tr('UTC time') }}</th>
+                  <th scope="col">{{ $tr('Worked callsign') }}</th>
+                  <th scope="col">{{ $tr('Band / frequency') }}</th>
+                  <th scope="col">{{ $tr('Mode') }}</th>
+                  <th scope="col">{{ $tr('Exchange sent') }}</th>
+                  <th scope="col">{{ $tr('Exchange received') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="contact in detail.contacts" :key="contact.id">
                   <td>{{ contact.source_line_number ?? '—' }}</td>
-                  <td>{{ new Date(contact.occurred_at).toISOString().replace('T', ' ').slice(0, 19) }}</td>
+                  <td>
+                    {{
+                      formatUtcDateTime(contact.occurred_at, {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false,
+                      })
+                    }}
+                  </td>
                   <td>{{ contact.callsign }}</td>
                   <td>{{ contact.band ?? '—' }}</td>
                   <td>{{ contact.mode ?? '—' }}</td>
@@ -312,11 +408,34 @@ Next
               </tbody>
             </table>
           </div>
-          <p v-else class="notice">This revision contains no parsed QSOs.</p>
-          <nav v-if="detail.meta.pages > 1" class="page-controls" aria-label="QSO detail pages">
-            <button class="secondary-button" type="button" :disabled="detailPage <= 1 || detailLoading" @click="changeDetailPage(detailPage - 1)">Previous QSOs</button>
-            <span>QSOs page {{ detail.meta.page }} of {{ detail.meta.pages }}</span>
-            <button class="secondary-button" type="button" :disabled="detailPage >= detail.meta.pages || detailLoading" @click="changeDetailPage(detailPage + 1)">Next QSOs</button>
+          <p v-else class="notice">
+            {{ $tr('This revision contains no parsed QSOs.') }}
+          </p>
+          <nav
+            v-if="detail.meta.pages > 1"
+            class="page-controls"
+            :aria-label="$tr('QSO detail pages')"
+          >
+            <button
+              class="secondary-button"
+              type="button"
+              :disabled="detailPage <= 1 || detailLoading"
+              @click="changeDetailPage(detailPage - 1)"
+            >
+              {{ $tr('Previous QSOs') }}
+            </button>
+            <span
+              >{{ $tr('QSOs page') }} {{ detail.meta.page }} {{ $tr('of') }}
+              {{ detail.meta.pages }}</span
+            >
+            <button
+              class="secondary-button"
+              type="button"
+              :disabled="detailPage >= detail.meta.pages || detailLoading"
+              @click="changeDetailPage(detailPage + 1)"
+            >
+              {{ $tr('Next QSOs') }}
+            </button>
           </nav>
         </template>
       </section>
