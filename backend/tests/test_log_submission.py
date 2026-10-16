@@ -114,6 +114,26 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
     assert client.get(f"/api/v1/public/entries/{entry_id}").status_code == 404
 
 
+@pytest.mark.parametrize("version", ["2.0", "3.0"])
+def test_guest_upload_accepts_versioned_cabrillo_v2_and_v3(log_database, version):
+    versioned_log = LOG.replace("START-OF-LOG", f"START-OF-LOG: {version}").replace(
+        "END-OF-LOG", "END-OF-LOG:"
+    )
+
+    response = submit(
+        TestClient(app),
+        versioned_log,
+        key=f"cabrillo-v{version.replace('.', '')}-upload",
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["summary"]["accepted_qsos"] == 1
+    with log_database() as session:
+        revision = session.scalar(select(EntryRevision))
+        assert revision is not None
+        assert revision.original_content == versioned_log
+
+
 def test_idempotent_retry_reuses_entry_and_conflicting_body_is_rejected(log_database):
     client = TestClient(app)
     first = submit(client)

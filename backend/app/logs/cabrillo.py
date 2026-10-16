@@ -58,6 +58,9 @@ HEADER_PATTERN = re.compile(r"^([A-Z0-9][A-Z0-9-]*):(?:\s*)(.*)$", re.IGNORECASE
 MAX_LOG_LINES = 100_000
 MAX_CABRILLO_LINE_LENGTH = 8192
 MAX_LOG_QSOS = 50_000
+SUPPORTED_CABRILLO_VERSIONS = {"2.0", "3.0"}
+START_OF_LOG_PATTERN = re.compile(r"^START-OF-LOG(?::\s*(.*))?$", re.IGNORECASE)
+END_OF_LOG_PATTERN = re.compile(r"^END-OF-LOG(?::\s*(.*))?$", re.IGNORECASE)
 
 
 def _parse_timestamp(date_value: str, time_value: str) -> datetime:
@@ -119,6 +122,7 @@ def parse_cabrillo(
 
     started = False
     ended = False
+    versioned_start = False
     for line_number, raw_line in enumerate(lines, 1):
         if len(raw_line) > MAX_CABRILLO_LINE_LENGTH:
             errors.append(
@@ -133,19 +137,57 @@ def parse_cabrillo(
         if not line:
             continue
         upper = line.upper()
-        if upper == "START-OF-LOG":
+        start_match = START_OF_LOG_PATTERN.fullmatch(line)
+        if start_match:
             if started or ended:
                 errors.append(
                     ImportMessage(
                         line_number, "unexpected_start", "Unexpected START-OF-LOG record."
                     )
                 )
+            declared_version = start_match.group(1)
+            versioned_start = ":" in line
+            if versioned_start:
+                if not declared_version:
+                    errors.append(
+                        ImportMessage(
+                            line_number,
+                            "missing_cabrillo_version",
+                            "START-OF-LOG must declare Cabrillo version 2.0 or 3.0.",
+                        )
+                    )
+                elif declared_version not in SUPPORTED_CABRILLO_VERSIONS:
+                    errors.append(
+                        ImportMessage(
+                            line_number,
+                            "unsupported_cabrillo_version",
+                            f"Cabrillo version {declared_version!r} is not supported; "
+                            "use 2.0 or 3.0.",
+                        )
+                    )
             started = True
             continue
-        if upper == "END-OF-LOG":
+        end_match = END_OF_LOG_PATTERN.fullmatch(line)
+        if end_match:
             if not started or ended:
                 errors.append(
                     ImportMessage(line_number, "unexpected_end", "Unexpected END-OF-LOG record.")
+                )
+            if end_match.group(1):
+                errors.append(
+                    ImportMessage(
+                        line_number,
+                        "invalid_end_record",
+                        "END-OF-LOG must not contain a value.",
+                    )
+                )
+            elif versioned_start and not line.endswith(":"):
+                errors.append(
+                    ImportMessage(
+                        line_number,
+                        "invalid_end_record",
+                        "Versioned Cabrillo logs must end with END-OF-LOG:.",
+                    )
                 )
             ended = True
             continue
