@@ -52,6 +52,10 @@ def upgrade_database() -> None:
 
 def _config(project_root: Path, *, legacy: bool = False) -> Config:
     config = Config(str(project_root / "alembic.ini"))
+    # API startup already configures structured application logging. Alembic's
+    # ini logging setup replaces root handlers and can hide Uvicorn readiness
+    # messages after the migration finishes.
+    config.attributes["configure_logger"] = False
     migration_root = project_root / "backend" / "migrations"
     if legacy:
         migration_root /= "legacy"

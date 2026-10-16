@@ -2,11 +2,13 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import insert, inspect, text
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
+from backend.app.migrations import _config
 from backend.app.models import (
     BandCatalogItem,
     Contest,
@@ -15,6 +17,12 @@ from backend.app.models import (
     SystemRole,
     SystemUser,
 )
+
+
+def test_api_migration_config_preserves_application_logging() -> None:
+    config = _config(Path(__file__).resolve().parents[2])
+
+    assert config.attributes["configure_logger"] is False
 
 
 def _alembic(database_url: str, *arguments: str) -> None:
