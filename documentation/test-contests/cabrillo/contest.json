@@ -24,7 +24,9 @@
       {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band"], "effect": "not_credited", "penalty_points": 0}},
       {"id": "points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1}},
       {"id": "worked-call-multiplier", "rule": {"kind": "multiplier", "source_fact": "qso.worked_callsign", "scope": "contest", "label": "Unique worked callsigns"}},
-      {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": [{"operator": "multiply", "operand": {"variable": "multiplier_count"}}]}},
+      {"id": "received-serial-multiplier", "rule": {"kind": "multiplier", "source_fact": "exchange.received.serial", "scope": "contest", "label": "Unique received serials"}},
+      {"id": "featured-log-bonus", "rule": {"kind": "bonus", "basis": "per_entry", "points": 1000, "minimum_eligible_qsos": 20}},
+      {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": [{"operator": "add", "operand": {"variable": "bonus_points"}}, {"operator": "multiply", "operand": {"variable": "multiplier_count"}}]}},
       {"id": "format-mapping", "rule": {"kind": "format_mapping", "format": "cabrillo", "preserve_unknown_fields": true}}
     ]
   }

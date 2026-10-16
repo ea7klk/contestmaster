@@ -19,9 +19,7 @@ sys.modules[UPLOAD_SPEC.name] = upload_logs
 UPLOAD_SPEC.loader.exec_module(upload_logs)
 
 
-def test_upload_is_anonymous_and_uses_content_stable_idempotency_key(
-    tmp_path: Path, monkeypatch
-):
+def test_upload_is_anonymous_and_uses_content_stable_idempotency_key(tmp_path: Path, monkeypatch):
     log = tmp_path / "K0AAA.log"
     log.write_bytes(b"START-OF-LOG: 3.0\nEND-OF-LOG:\n")
     requests: list[Request] = []
@@ -54,9 +52,7 @@ def test_upload_is_anonymous_and_uses_content_stable_idempotency_key(
     assert requests[0].full_url.endswith(
         "/api/v1/public/contests/test-cabrillo-results-sprint/logs"
     )
-    assert requests[0].get_header("Idempotency-key") == requests[1].get_header(
-        "Idempotency-key"
-    )
+    assert requests[0].get_header("Idempotency-key") == requests[1].get_header("Idempotency-key")
     assert requests[0].get_header("Authorization") is None
     assert requests[0].get_header("Content-type").startswith("multipart/form-data; boundary=")
     assert b'name="file"; filename="K0AAA.log"' in requests[0].data
@@ -108,6 +104,35 @@ def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypa
     assert "rate=" in messages and "logs/min" in messages
 
 
+def test_advanced_cabrillo_fixture_is_uploadable_as_a_distinct_contest(tmp_path: Path, monkeypatch):
+    log_dir = tmp_path / "advanced-cabrillo" / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "K0AAA.log").write_text("advanced fixture", encoding="utf-8")
+    monkeypatch.setitem(
+        upload_logs.CONTESTS,
+        "advanced-cabrillo",
+        (tmp_path / "advanced-cabrillo", "test-advanced-cabrillo-rules-challenge"),
+    )
+    calls = []
+    monkeypatch.setattr(
+        upload_logs,
+        "upload_one",
+        lambda _base, slug, path: (
+            calls.append((slug, path.name))
+            or upload_logs.UploadResult(path.name, True, entry_id=101)
+        ),
+    )
+
+    results = upload_logs.upload_set(
+        "http://127.0.0.1:8000",
+        "advanced-cabrillo",
+        upload_logs.DEFAULT_DELAY_SECONDS,
+    )
+
+    assert calls == [("test-advanced-cabrillo-rules-challenge", "K0AAA.log")]
+    assert len(results) == 1 and results[0].accepted
+
+
 def test_retry_and_failure_logs_include_safe_details_without_tokens(
     tmp_path: Path, monkeypatch, caplog
 ):
@@ -143,17 +168,13 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
 
     monkeypatch.setattr(upload_logs, "urlopen", rate_limited_then_accepted)
     monkeypatch.setattr(upload_logs.time, "sleep", lambda _delay: None)
-    result = upload_logs.upload_one(
-        "http://127.0.0.1:8000", "test-cabrillo-results-sprint", log
-    )
+    result = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-results-sprint", log)
     assert result.accepted and result.retries == 1
     assert "API rate limit (HTTP 429)" in caplog.text
     assert "retry 1/4" in caplog.text
 
     caplog.clear()
-    error_payload = (
-        b'{"detail":"contest closed","receipt_token":"sensitive-test-token"}'
-    )
+    error_payload = b'{"detail":"contest closed","receipt_token":"sensitive-test-token"}'
     monkeypatch.setattr(
         upload_logs,
         "urlopen",

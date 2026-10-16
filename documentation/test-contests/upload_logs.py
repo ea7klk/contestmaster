@@ -20,6 +20,10 @@ ROOT = Path(__file__).resolve().parent
 CONTESTS = {
     "cabrillo": (ROOT / "cabrillo", "test-cabrillo-results-sprint"),
     "adif": (ROOT / "adif", "test-adif-ft8-results-sprint"),
+    "advanced-cabrillo": (
+        ROOT / "advanced-cabrillo",
+        "test-advanced-cabrillo-rules-challenge",
+    ),
 }
 DEFAULT_DELAY_SECONDS = 1.1
 MAX_ATTEMPTS = 5
@@ -62,10 +66,14 @@ def _multipart(filename: str, content: bytes) -> tuple[bytes, str]:
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     safe_name = Path(filename).name.replace('"', "")
     body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
-        f"Content-Type: {mime}\r\n\r\n"
-    ).encode("ascii") + content + f"\r\n--{boundary}--\r\n".encode("ascii")
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode("ascii")
+        + content
+        + f"\r\n--{boundary}--\r\n".encode("ascii")
+    )
     return body, f"multipart/form-data; boundary={boundary}"
 
 
@@ -243,7 +251,7 @@ def _log_summary(label: str, results: list[UploadResult], elapsed_seconds: float
 
 def upload_set(base_url: str, name: str, delay: float) -> list[UploadResult]:
     directory, contest_slug = CONTESTS[name]
-    extension = ".log" if name == "cabrillo" else ".adi"
+    extension = ".adi" if name == "adif" else ".log"
     files = sorted((directory / "logs").glob(f"*{extension}"))
     if not files:
         raise FileNotFoundError(
@@ -304,7 +312,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--contest",
-        choices=("cabrillo", "adif", "all"),
+        choices=("cabrillo", "adif", "advanced-cabrillo", "all"),
         default="all",
         help="fixture set to upload (default: all)",
     )
@@ -320,7 +328,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.delay < DEFAULT_DELAY_SECONDS:
         parser.error(f"--delay must be at least {DEFAULT_DELAY_SECONDS:g} seconds")
-    selections = ("cabrillo", "adif") if args.contest == "all" else (args.contest,)
+    selections = tuple(CONTESTS) if args.contest == "all" else (args.contest,)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
