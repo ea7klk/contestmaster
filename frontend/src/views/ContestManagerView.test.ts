@@ -271,7 +271,9 @@ describe('ContestManagerView', () => {
   })
 
   it('leaves a contest untouched when deletion confirmation is cancelled', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >(async (input: RequestInfo | URL) => {
       const path = String(input)
       if (path.endsWith('/auth/me')) return ok(managerUser())
       if (path.endsWith('/rulesets/versions')) return ok({ items: [] })

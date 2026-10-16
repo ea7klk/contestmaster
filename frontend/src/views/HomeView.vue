@@ -15,6 +15,7 @@ const upcomingLoading = ref(true)
 const error = ref('')
 const upcomingError = ref('')
 const query = ref('')
+const upcomingRange = ref<'week' | 'month' | 'three-months'>('month')
 const serverAsOfMs = ref<number | null>(null)
 const responseReceivedAtMs = ref<number | null>(null)
 const clockNowMs = ref(Date.now())
@@ -39,17 +40,40 @@ const estimatedServerNowMs = computed(() => {
   return serverAsOfMs.value + (clockNowMs.value - responseReceivedAtMs.value)
 })
 
-const visibleUpcomingContests = computed(() =>
+function addUtcMonths(timestamp: number, months: number) {
+  const date = new Date(timestamp)
+  const dayOfMonth = date.getUTCDate()
+  const targetMonth = date.getUTCMonth() + months
+  const lastTargetDay = new Date(
+    Date.UTC(date.getUTCFullYear(), targetMonth + 1, 0),
+  ).getUTCDate()
+  date.setUTCDate(1)
+  date.setUTCMonth(targetMonth)
+  date.setUTCDate(Math.min(dayOfMonth, lastTargetDay))
+  return date.getTime()
+}
+
+const activeContests = computed(() =>
   upcomingContests.value.filter(
-    (contest) => Date.parse(contest.ends_at) > estimatedServerNowMs.value,
+    (contest) =>
+      Date.parse(contest.starts_at) <= estimatedServerNowMs.value &&
+      Date.parse(contest.ends_at) > estimatedServerNowMs.value,
   ),
 )
 
-function upcomingStatus(contest: PublicContest) {
-  return Date.parse(contest.starts_at) <= estimatedServerNowMs.value
-    ? 'In progress'
-    : 'Upcoming'
-}
+const upcomingRangeEndMs = computed(() => {
+  const now = estimatedServerNowMs.value
+  if (upcomingRange.value === 'week') return now + 7 * 24 * 60 * 60 * 1000
+  return addUtcMonths(now, upcomingRange.value === 'month' ? 1 : 3)
+})
+
+const visibleUpcomingContests = computed(() =>
+  upcomingContests.value.filter(
+    (contest) =>
+      Date.parse(contest.starts_at) > estimatedServerNowMs.value &&
+      Date.parse(contest.starts_at) <= upcomingRangeEndMs.value,
+  ),
+)
 
 const utcDateTime = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -137,6 +161,58 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
+    <section class="active-contests" aria-labelledby="active-contests-title">
+      <div class="feed-heading">
+        <div>
+          <p class="eyebrow">On the air now</p>
+          <h2 id="active-contests-title">Active contests</h2>
+          <p class="feed-description">
+            Open contests currently in progress, shown in UTC.
+          </p>
+        </div>
+      </div>
+      <p v-if="upcomingLoading" role="status" class="notice feed-state">
+        Loading active contests…
+      </p>
+      <p v-else-if="upcomingError" role="alert" class="error-panel feed-state">
+        {{ upcomingError }}
+      </p>
+      <p v-else-if="activeContests.length === 0" class="notice feed-state">
+        No contests are in progress right now.
+      </p>
+      <ul v-else class="contest-feed">
+        <li v-for="contest in activeContests" :key="contest.id">
+          <article class="contest-feed-card">
+            <div class="contest-card-main">
+              <div class="contest-card-title-row">
+                <h3>{{ contest.name }}</h3>
+                <span class="published-badge">In progress</span>
+              </div>
+              <p v-if="contest.description" class="contest-description">
+                {{ contest.description }}
+              </p>
+              <dl class="contest-dates">
+                <div>
+                  <dt>Contest start</dt>
+                  <dd>{{ formatUtc(contest.starts_at) }}</dd>
+                </div>
+                <div>
+                  <dt>Contest end</dt>
+                  <dd>{{ formatUtc(contest.ends_at) }}</dd>
+                </div>
+              </dl>
+            </div>
+            <RouterLink
+              class="results-link"
+              :to="`/contests/${encodeURIComponent(contest.slug)}`"
+            >
+              Contest details <span aria-hidden="true">→</span>
+            </RouterLink>
+          </article>
+        </li>
+      </ul>
+    </section>
+
     <section
       class="upcoming-contests"
       aria-labelledby="upcoming-contests-title"
@@ -146,8 +222,17 @@ onBeforeUnmount(() => {
           <p class="eyebrow">Plan your next contest</p>
           <h2 id="upcoming-contests-title">Upcoming contests</h2>
           <p class="feed-description">
-            Public contests that are open and have not yet ended, shown in UTC.
+            Open contests starting within your selected date range, shown in
+            UTC.
           </p>
+        </div>
+        <div class="upcoming-range-control">
+          <label for="upcoming-range">Show contests for</label>
+          <select id="upcoming-range" v-model="upcomingRange">
+            <option value="week">Next week</option>
+            <option value="month">Next month</option>
+            <option value="three-months">Next 3 months</option>
+          </select>
         </div>
       </div>
       <p v-if="upcomingLoading" role="status" class="notice feed-state">
@@ -160,8 +245,14 @@ onBeforeUnmount(() => {
         v-else-if="visibleUpcomingContests.length === 0"
         class="notice feed-state"
       >
-        No contests are open or in progress right now. Contest managers can open
-        a draft after assigning a valid ruleset.
+        No contests are scheduled for the next
+        {{
+          upcomingRange === 'week'
+            ? 'week'
+            : upcomingRange === 'month'
+              ? 'month'
+              : '3 months'
+        }}.
       </p>
       <ul v-else class="contest-feed">
         <li v-for="contest in visibleUpcomingContests" :key="contest.id">
@@ -169,16 +260,7 @@ onBeforeUnmount(() => {
             <div class="contest-card-main">
               <div class="contest-card-title-row">
                 <h3>{{ contest.name }}</h3>
-                <span
-                  class="contest-state-badge"
-                  :class="
-                    upcomingStatus(contest) === 'In progress'
-                      ? 'contest-in-progress'
-                      : 'contest-upcoming'
-                  "
-                >
-                  {{ upcomingStatus(contest) }}
-                </span>
+                <span class="published-badge">Upcoming</span>
               </div>
               <p v-if="contest.description" class="contest-description">
                 {{ contest.description }}
@@ -431,6 +513,25 @@ onBeforeUnmount(() => {
   color: var(--color-ink);
   background: var(--color-surface);
 }
+.upcoming-range-control {
+  width: min(100%, 16rem);
+}
+.upcoming-range-control label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.upcoming-range-control select {
+  width: 100%;
+  min-height: 2.8rem;
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.45rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
 .quiet-button {
   min-height: 2.6rem;
   padding: 0.5rem 0.7rem;
@@ -568,6 +669,9 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
   .contest-search {
+    width: 100%;
+  }
+  .upcoming-range-control {
     width: 100%;
   }
 }

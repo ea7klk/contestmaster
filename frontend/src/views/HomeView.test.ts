@@ -4,7 +4,10 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import HomeView from './HomeView.vue'
 import { expectAccessible } from '../test/a11y'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 const contest = {
   id: 3,
@@ -23,10 +26,22 @@ const upcomingContest = {
   id: 8,
   name: 'Autumn Test',
   slug: 'autumn-test',
-  starts_at: '2027-10-16T00:00:00Z',
-  ends_at: '2027-10-16T06:00:00Z',
+  starts_at: '2026-10-20T00:00:00Z',
+  ends_at: '2026-10-20T06:00:00Z',
   periodicity: null,
-  log_submission_cutoff_at: '2027-10-17T00:00:00Z',
+  log_submission_cutoff_at: '2026-10-21T00:00:00Z',
+  status: 'open',
+}
+
+const activeContest = {
+  ...contest,
+  id: 7,
+  name: 'Current Sprint',
+  slug: 'current-sprint',
+  starts_at: '2026-10-15T20:00:00Z',
+  ends_at: '2026-10-16T06:00:00Z',
+  periodicity: null,
+  log_submission_cutoff_at: '2026-10-17T00:00:00Z',
   status: 'open',
 }
 
@@ -47,11 +62,17 @@ function mountHome() {
 }
 
 describe('HomeView public contest activity', () => {
-  it('shows public upcoming contests with UTC times and a contest details link', async () => {
+  it('shows active contests before selectable upcoming contests with UTC times', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-16T00:00:00Z'))
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) =>
-        response(String(input).includes('/upcoming') ? [upcomingContest] : []),
+        response(
+          String(input).includes('/upcoming')
+            ? [activeContest, upcomingContest]
+            : [],
+        ),
       ),
     )
     const wrapper = mountHome()
@@ -60,13 +81,104 @@ describe('HomeView public contest activity', () => {
     expect(wrapper.get('#upcoming-contests-title').text()).toBe(
       'Upcoming contests',
     )
-    expect(wrapper.text()).toContain('Autumn Test')
-    expect(wrapper.text()).toContain('Upcoming')
-    expect(wrapper.text()).toContain('16 Oct 2027, 00:00 UTC')
+    expect(wrapper.get('#active-contests-title').text()).toBe('Active contests')
     expect(
-      wrapper.get('.contest-feed-card .results-link').attributes('href'),
+      wrapper.element
+        .querySelector('#active-contests-title')!
+        .compareDocumentPosition(
+          wrapper.element.querySelector('#upcoming-contests-title')!,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(wrapper.get('.active-contests').text()).toContain('Current Sprint')
+    expect(wrapper.text()).toContain('Autumn Test')
+    expect(wrapper.text()).not.toContain('Spring Sprint')
+    expect(wrapper.text()).toContain('In progress')
+    expect(wrapper.text()).toContain('Upcoming')
+    expect(wrapper.text()).toContain('20 Oct 2026, 00:00 UTC')
+    expect(
+      wrapper.get('.upcoming-contests .results-link').attributes('href'),
     ).toBe('/contests/autumn-test')
+    expect(
+      (wrapper.get('#upcoming-range').element as HTMLSelectElement).value,
+    ).toBe('month')
     await expectAccessible(wrapper.element)
+  })
+
+  it('filters upcoming contests to the selected week, month, and three-month window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-16T00:00:00Z'))
+    const nextMonthContest = {
+      ...upcomingContest,
+      id: 9,
+      name: 'November Test',
+      slug: 'november-test',
+      starts_at: '2026-11-12T00:00:00Z',
+    }
+    const weekBoundaryContest = {
+      ...upcomingContest,
+      id: 11,
+      name: 'Week Boundary Test',
+      slug: 'week-boundary-test',
+      starts_at: '2026-10-23T00:00:00Z',
+    }
+    const monthBoundaryContest = {
+      ...upcomingContest,
+      id: 12,
+      name: 'Month Boundary Test',
+      slug: 'month-boundary-test',
+      starts_at: '2026-11-16T00:00:00Z',
+    }
+    const nextQuarterContest = {
+      ...upcomingContest,
+      id: 10,
+      name: 'January Test',
+      slug: 'january-test',
+      starts_at: '2027-01-10T00:00:00Z',
+    }
+    const quarterBoundaryContest = {
+      ...upcomingContest,
+      id: 13,
+      name: 'Quarter Boundary Test',
+      slug: 'quarter-boundary-test',
+      starts_at: '2027-01-16T00:00:00Z',
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        response(
+          String(input).includes('/upcoming')
+            ? [
+                activeContest,
+                upcomingContest,
+                weekBoundaryContest,
+                nextMonthContest,
+                monthBoundaryContest,
+                nextQuarterContest,
+                quarterBoundaryContest,
+              ]
+            : [],
+        ),
+      ),
+    )
+    const wrapper = mountHome()
+    await flushPromises()
+
+    const upcomingSection = wrapper.get('.upcoming-contests')
+    expect(upcomingSection.text()).toContain('Autumn Test')
+    expect(upcomingSection.text()).toContain('November Test')
+    expect(upcomingSection.text()).toContain('Month Boundary Test')
+    expect(upcomingSection.text()).not.toContain('January Test')
+    await wrapper.get('#upcoming-range').setValue('week')
+    expect(upcomingSection.text()).toContain('Autumn Test')
+    expect(upcomingSection.text()).toContain('Week Boundary Test')
+    expect(upcomingSection.text()).not.toContain('November Test')
+    await wrapper.get('#upcoming-range').setValue('month')
+    expect(upcomingSection.text()).toContain('Month Boundary Test')
+    expect(upcomingSection.text()).not.toContain('Quarter Boundary Test')
+    await wrapper.get('#upcoming-range').setValue('three-months')
+    expect(upcomingSection.text()).toContain('January Test')
+    expect(upcomingSection.text()).toContain('Quarter Boundary Test')
+    expect(upcomingSection.text()).not.toContain('Current Sprint')
   })
 
   it('keeps upcoming loading, empty, and error states separate from published results', async () => {
@@ -92,7 +204,10 @@ describe('HomeView public contest activity', () => {
     finishUpcoming?.(response([]))
     await flushPromises()
     expect(loadingWrapper.text()).toContain(
-      'No contests are open or in progress right now. Contest managers can open a draft after assigning a valid ruleset.',
+      'No contests are in progress right now.',
+    )
+    expect(loadingWrapper.text()).toContain(
+      'No contests are scheduled for the next month.',
     )
     loadingWrapper.unmount()
 
@@ -112,7 +227,7 @@ describe('HomeView public contest activity', () => {
     )
     const errorWrapper = mountHome()
     await flushPromises()
-    expect(errorWrapper.get('.upcoming-contests [role="alert"]').text()).toBe(
+    expect(errorWrapper.get('.active-contests [role="alert"]').text()).toBe(
       'Upcoming service is unavailable.',
     )
     expect(errorWrapper.text()).toContain('Spring Sprint')

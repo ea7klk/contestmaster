@@ -65,7 +65,7 @@ Frontend verification on 2026-10-16: `npm test -- --run` passed (20 files, 56 te
 
 No human screen-reader session or manual checks in Firefox, Safari, or physical mobile browsers have been performed. The automated Chromium and axe results do not replace those checks.
 
-Layout A is the approved starting point. The activity-first home page presents published contest results and a separate upcoming-contests list from the public API. Upcoming and currently running contests are shown with UTC start/end times and link to public contest details; ended contests leave the list at their exact end instant. Keep the main log-submission action prominent. Use B and C only as reference for their participant action hierarchy and results-table treatment; they are not alternate implementation targets.
+Layout A is the approved starting point. The activity-first home page presents a first section for active contests, a second upcoming-contests section with selectable next-week, next-month, or next-three-month windows, and then published contest results. Active and upcoming events use UTC start/end times and link to public contest details; contests leave the active list at their exact end instant. Keep the main log-submission action prominent. Use B and C only as reference for their participant action hierarchy and results-table treatment; they are not alternate implementation targets.
 
 The hamburger menu remains visible at every viewport width and sits before the brand at the left side of the header. Navigation links open in a collapsed panel at both narrow and wide widths; keep the log-submission action visible in the header. The menu panel must remain keyboard-operable and avoid viewport clipping.
 
