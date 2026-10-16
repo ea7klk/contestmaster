@@ -42,6 +42,7 @@ from backend.app.master_data.scheduler import (
 )
 from backend.app.metrics import record_http_request, record_upload
 from backend.app.metrics import registry as metrics_registry
+from backend.app.migrations import upgrade_database
 from backend.app.models import MasterDataVersionStatus
 from backend.app.request_context import request_id_var
 from backend.app.results.api import public_router as public_results_router
@@ -60,6 +61,7 @@ MAX_JSON_REQUEST_BYTES = 1024 * 1024
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     timer: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
+    await asyncio.to_thread(upgrade_database)
     if settings.master_data_scheduler_enabled:
         if not has_all_required_versions(SessionFactory):
             await run_master_data_sync(SessionFactory, sync_lock)

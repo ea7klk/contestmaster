@@ -45,8 +45,7 @@ def upgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS completed_score_runs_update")
     for row in connection.execute(
         sa.text(
-            "SELECT id, master_data_snapshot FROM score_runs "
-            "WHERE master_data_snapshot IS NOT NULL"
+            "SELECT id, master_data_snapshot FROM score_runs WHERE master_data_snapshot IS NOT NULL"
         )
     ):
         snapshot = row.master_data_snapshot

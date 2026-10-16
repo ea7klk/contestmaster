@@ -82,6 +82,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Escape and safely render imported or user-submitted content. Treat uploaded logs and filenames as untrusted input; enforce size and format limits.
 - Use structured logs with request or correlation IDs, while excluding credentials, tokens, and unnecessary personal data.
 - Provide migrations for schema changes and keep configuration explicit across development, test, and production environments.
+- Keep the initial database schema in one consolidated Alembic baseline migration. Apply pending migrations automatically before the API serves requests. Every later data-model change must be a separate Alembic revision above the baseline; do not fold later changes back into the baseline.
 - Make background imports, recalculations, and standings publication observable and safe to retry. Surface failures instead of silently publishing partial results.
 - For the initial single-host SQLite deployment, expose backup, restore, and integrity-check operations through the ORM-backed `contestmaster-db` CLI. Perform these offline with the API stopped, validate a staged restore before replacement, and document the restore test evidence.
 

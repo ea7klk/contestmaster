@@ -5,7 +5,7 @@ import io
 import zipfile
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import func, select
@@ -43,6 +43,7 @@ def test_api_startup_runs_immediate_sync_when_no_active_version(monkeypatch) -> 
     import backend.app.main as main
 
     startup_sync = AsyncMock()
+    startup_migration = Mock()
 
     async def wait_forever(*_args):
         await asyncio.Future()
@@ -55,16 +56,17 @@ def test_api_startup_runs_immediate_sync_when_no_active_version(monkeypatch) -> 
     monkeypatch.setattr(main, "has_all_required_versions", lambda _factory: False)
     monkeypatch.setattr(main, "run_master_data_sync", startup_sync)
     monkeypatch.setattr(main, "nightly_master_data_timer", wait_forever)
+    monkeypatch.setattr(main, "upgrade_database", startup_migration)
     monkeypatch.setattr(main.engine, "dispose", lambda: None)
 
     async def exercise_lifespan() -> None:
         async with main.lifespan(main.app):
+            startup_migration.assert_called_once_with()
             startup_sync.assert_awaited_once()
             assert startup_sync.await_args.args[0] is main.SessionFactory
             assert isinstance(startup_sync.await_args.args[1], asyncio.Lock)
 
     asyncio.run(exercise_lifespan())
-
 
 
 def test_master_data_sync_attempts_only_cty(monkeypatch) -> None:
@@ -125,7 +127,6 @@ def fetcher(data: str):
     )
 
 
-
 def test_cty_parser_handles_prefix_overrides_exact_calls_and_continuations() -> None:
     parsed = parse_cty_dat("Example: 5: 8: EU: 40: -3: -1: EA:\n EA,EA2(6)[9],=EA7ABC;\n")
     assert parsed[0].name == "Example"
@@ -164,7 +165,6 @@ def test_archive_requires_copyright_notice_and_known_minimum_completeness() -> N
             "https://example.test/file.zip",
             datetime(2026, 9, 15, tzinfo=UTC),
         )
-
 
 
 def test_cty_is_the_only_required_master_data_dataset(session_factory) -> None:

@@ -31,9 +31,9 @@ Generate secrets with an operating-system cryptographic generator, for example `
 
 ## Start, readiness, and provisioning
 
-Install the pinned tools and dependencies with `make setup`, apply migrations with `make db-upgrade`, then start exactly one API process with `make start-api`. Serve the built Vue application from an HTTPS-capable reverse proxy or static host and proxy `/api/` to the API. Keep proxy request limits at least as restrictive as the application's 1 MiB JSON and 5 MiB + 64 KiB multipart limits.
+Install the pinned tools and dependencies with `make setup`, then start exactly one API process with `make start-api`. API startup applies pending Alembic migrations before serving requests and aborts startup if migration fails. New databases use one consolidated baseline; each later data-model change is a separate Alembic migration above it. A compatibility-only archive upgrades databases stamped at a pre-squash revision. `make db-upgrade` remains available for explicit preflight or maintenance runs. Serve the built Vue application from an HTTPS-capable reverse proxy or static host and proxy `/api/` to the API. Keep proxy request limits at least as restrictive as the application's 1 MiB JSON and 5 MiB + 64 KiB multipart limits.
 
-Before the first start, create the initial administrator interactively so the password is not passed as a command argument: `uv run contestmaster-admin create-first-admin --username admin --email admin@example.org --display-name "Contestmaster Administrator"`. Run it after migrations and before exposing the service. The command refuses to create another initial account once any system user exists. A global administrator creates later contest-manager accounts through the administration API/UI.
+After the first startup has completed its database migration, create the initial administrator interactively so the password is not passed as a command argument: `uv run contestmaster-admin create-first-admin --username admin --email admin@example.org --display-name "Contestmaster Administrator"`. Run it before exposing the service. The command refuses to create another initial account once any system user exists. A global administrator creates later contest-manager accounts through the administration API/UI.
 
 Use `GET /api/v1/health/live` for process liveness and `GET /api/v1/health/ready` for database readiness. `GET /api/v1/master-data/status` reports active versions and the latest provisioning attempt. The global-admin interface provides detailed version operations. The initial CTY import can delay readiness while its release is fetched and validated. The standalone importer remains available through `uv run contestmaster-master-data sync`; `status` prints recent runs and active versions. The same command can later be called by a K3s CronJob as a one-shot Job.
 
@@ -56,11 +56,11 @@ Set a backup cadence appropriate to the contest calendar. The RPO is the interva
 
 ## Schema upgrades and rollback
 
-1. Read the migration diff and release notes; schedule downtime and notify users if uploads or contest administration will be unavailable.
+1. Read the separate migration diff and release notes; schedule downtime and notify users if uploads or contest administration will be unavailable.
 2. Stop the API and create a verified pre-upgrade backup.
-3. Install locked dependencies, then run `uv run alembic upgrade head`.
-4. Run `uv run contestmaster-db verify`, start one API process, check liveness/readiness and master-data status, and run smoke checks.
-5. If an upgrade fails, keep the API stopped and preserve the failed database for diagnosis. Prefer a forward-fix migration. Do not assume `alembic downgrade` is data-safe; use it only when the specific migration explicitly supports downgrade and it has been exercised against a copy. Otherwise restore the pre-upgrade backup, apply a corrected release, and verify it before reopening service.
+3. Install locked dependencies. Optionally run `make db-upgrade` as a preflight; normal startup applies all pending migrations.
+4. Start one API process, then run `uv run contestmaster-db verify`, check liveness/readiness and master-data status, and run smoke checks.
+5. If an upgrade fails, startup aborts. Keep the API stopped and preserve the failed database for diagnosis. Prefer a forward-fix migration. Do not assume `alembic downgrade` is data-safe; use it only when the specific migration explicitly supports downgrade and it has been exercised against a copy. Otherwise restore the pre-upgrade backup, apply a corrected release, and verify it before reopening service.
 
 Schema rollback does not roll back external emails, published snapshots already downloaded by users, or actions recorded in external systems. Record the chosen recovery path and the resulting database revision.
 

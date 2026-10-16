@@ -35,17 +35,11 @@ def upgrade() -> None:
         sa.column("is_active", sa.Boolean()),
         sa.column("contest_free", sa.Boolean()),
     )
-    op.execute(
-        bands.update()
-        .where(bands.c.key.in_(_CONTEST_FREE_BANDS))
-        .values(contest_free=True)
-    )
+    op.execute(bands.update().where(bands.c.key.in_(_CONTEST_FREE_BANDS)).values(contest_free=True))
     # Keep existing stable keys for saved rulesets and history, but prevent these
     # formerly seeded defaults from appearing as choices in newly composed rulesets.
     op.execute(
-        bands.update()
-        .where(bands.c.key.in_(_ABOVE_10_GHZ_DEFAULT_BANDS))
-        .values(is_active=False)
+        bands.update().where(bands.c.key.in_(_ABOVE_10_GHZ_DEFAULT_BANDS)).values(is_active=False)
     )
 
 

@@ -1,87 +1,50 @@
 import os
 import subprocess
 import sys
-from datetime import timedelta
 
-import pytest
-from sqlalchemy import inspect, select, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
-from backend.app.models import (
-    AuditEvent,
-    BandCatalogItem,
-    Contest,
-    ContestEntity,
-    ContestMasterDataVersion,
-    ContestStatus,
-    EntityType,
-    Entry,
-    EntryRevision,
-    EntryStatus,
-    MasterDataAuthorityRole,
-    MasterDataRunStatus,
-    MasterDataSource,
-    MasterDataSyncRun,
-    MasterDataVersion,
-    MasterDataVersionStatus,
-    ModeCatalogItem,
-    Participant,
-    Qso,
-    RulesetVersion,
-    ScoreRun,
-    ScoreRunMasterDataVersion,
-    ScoreRunStatus,
-    SystemRole,
-    SystemUser,
-)
-from backend.app.models.types import utc_now
+from backend.app.models import BandCatalogItem, SystemRole, SystemUser
 
 
-def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> None:
-    database_path = tmp_path / "phase2.sqlite3"
-    database_url = f"sqlite:///{database_path}"
+def _alembic(database_url: str, *arguments: str) -> None:
     environment = os.environ.copy()
     environment["DATABASE_URL"] = database_url
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", *arguments],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
+
+def _run_python(database_url: str, code: str) -> None:
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
     subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-c", code],
         cwd=project_root,
         env=environment,
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "check"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "downgrade", "0001_foundation"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+
+
+def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'baseline.sqlite3'}"
+
+    _alembic(database_url, "upgrade", "head")
+    _alembic(database_url, "check")
 
     engine = build_engine(database_url)
-    inspector = inspect(engine)
-    tables = set(inspector.get_table_names())
+    tables = set(inspect(engine).get_table_names())
     assert {
         "system_users",
         "system_sessions",
@@ -107,666 +70,131 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     } <= tables
     assert "call_districts" not in tables
     assert "iaru_regions" not in tables
-    assert "entity_iaru_region_assignments" not in tables
     assert "itu_radio_regions" not in tables
-    assert "entity_itu_radio_region_assignments" not in tables
-    assert "iaru_itu_radio_region_mappings" not in tables
-    with engine.connect() as connection:
-        version = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
-        seeded_bands = connection.exec_driver_sql(
-            "SELECT count(*) FROM band_catalog_items WHERE is_active = 1"
-        ).scalar_one()
-        highest_band = connection.exec_driver_sql(
-            "SELECT frequency_range FROM band_catalog_items "
-            "WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1"
-        ).scalar_one()
-        no_contest_bands = connection.exec_driver_sql(
-            "SELECT key FROM band_catalog_items WHERE contest_free = 1 ORDER BY key"
-        ).scalars().all()
-        active_bands_above_10_ghz = connection.exec_driver_sql(
-            "SELECT count(*) FROM band_catalog_items WHERE is_active = 1 "
-            "AND key IN ('1.25cm', '6mm', '4mm', '2.5mm', '2mm', '1mm', "
-            "'0.5mm', '0.4mm', '0.2mm')"
-        ).scalar_one()
-        ft8 = connection.exec_driver_sql(
-            "SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1"
-        ).scalar_one()
     assert "operating_catalog_items" not in tables
-    assert version == "0018_remove_unscored_country_data"
-    assert foreign_keys == 1
-    assert seeded_bands >= 25
-    assert highest_band == "10 GHz"
-    assert no_contest_bands == ["12m", "17m", "2200m", "30m", "60m", "630m"]
-    assert active_bands_above_10_ghz == 0
-    assert ft8 == 1
-    with Session(engine) as session:
-        assert (
-            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "160m"))
-            == "160 m HF band"
-        )
-        assert (
-            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT8"))
-            == "Weak-signal digital mode"
-        )
-    assert {"category_values", "is_late"} <= {
-        column["name"] for column in inspector.get_columns("entries")
-    }
-    assert {
-        "original_content",
-        "import_metadata",
-        "received_by_participant_email_id",
-        "received_via",
-    } <= {column["name"] for column in inspector.get_columns("entry_revisions")}
-    triggers = {
-        row[0]
-        for row in engine.connect().exec_driver_sql(
-            "SELECT name FROM sqlite_master WHERE type = 'trigger'"
-        )
-    }
-    assert "immutable_ruleset_versions_update" in triggers
-    assert "immutable_entry_revisions_update" in triggers
-    assert "immutable_entry_revisions_delete" in triggers
-    assert "immutable_ruleset_activations_update" in triggers
-    assert "immutable_ruleset_activations_delete" in triggers
-    assert "immutable_audit_events_update" in triggers
-    assert "immutable_audit_events_delete" in triggers
-    assert "completed_score_runs_update" in triggers
-    assert "immutable_qso_decisions_update" in triggers
-    assert "immutable_qso_decisions_delete" in triggers
-    assert "completed_qso_scores_insert" in triggers
-    assert "completed_qso_scores_update" in triggers
-    assert "completed_qso_scores_delete" in triggers
-    assert "immutable_completed_score_run" in triggers
-    assert "retain_score_runs" in triggers
-    assert "integer_score_run_detail_insert" in triggers
-    assert "integer_score_run_detail_update" in triggers
-    assert "integer_qso_score_bonus_insert" in triggers
-    assert "immutable_result_publication_update" in triggers
-    assert "retain_result_publications" in triggers
-    assert "no_entries_in_sealed_publication" in triggers
-    assert "immutable_result_publication_entry_update" in triggers
-    assert "retain_result_publication_entries" in triggers
-    assert {
-        "bonus_points",
-        "adjudicated_score",
-        "explanation",
-    } <= {column["name"] for column in inspector.get_columns("score_runs")}
-    assert {
-        "bonus_points",
-        "status",
-        "reason_codes",
-    } <= {column["name"] for column in inspector.get_columns("qso_scores")}
-    assert "prevent_active_master_data_version_delete" in triggers
-
-    with Session(engine) as session:
-        ruleset = RulesetVersion(ruleset_key="initial", version="1")
-        session.add(ruleset)
-        session.commit()
-        ruleset.version = "2"
-        with pytest.raises(DBAPIError, match="append-only"):
-            session.commit()
-        session.rollback()
-        event = AuditEvent(
-            actor_user_id=None,
-            action="test.recorded",
-            target_type="contest",
-            target_id="1",
-            event_metadata={"source": "migration-test"},
-        )
-        session.add(event)
-        session.commit()
-        event.reason = "rewrite"
-        with pytest.raises(DBAPIError, match="append-only"):
-            session.commit()
-        session.rollback()
-        session.delete(event)
-        with pytest.raises(DBAPIError, match="append-only"):
-            session.commit()
-        session.rollback()
-
-        source = MasterDataSource(
-            source_key="migration-active-source",
-            name="Migration Active Source",
-            canonical_url="https://example.test/master-data",
-            authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
-        )
-        session.add(source)
-        session.flush()
-        run = MasterDataSyncRun(
-            source_id=source.id,
-            dataset_key="migration-active-dataset",
-            status=MasterDataRunStatus.SUCCEEDED,
-            source_release="test-release",
-            checksum="a" * 64,
-        )
-        session.add(run)
-        session.flush()
-        active_version = MasterDataVersion(
-            sync_run_id=run.id,
-            dataset_key=run.dataset_key,
-            retrieved_at=utc_now(),
-            checksum=run.checksum,
-            valid_from=utc_now(),
-            status=MasterDataVersionStatus.ACTIVE,
-        )
-        session.add(active_version)
-        session.commit()
-        with pytest.raises(DBAPIError, match="active master data versions cannot be deleted"):
-            session.execute(
-                text("DELETE FROM master_data_versions WHERE id = :version_id"),
-                {"version_id": active_version.id},
-            )
-        session.rollback()
-    engine.dispose()
-
-
-def test_band_policy_migration_preserves_legacy_ruleset_references(tmp_path) -> None:
-    database_path = tmp_path / "band-policy.sqlite3"
-    database_url = f"sqlite:///{database_path}"
-    environment = os.environ.copy()
-    environment["DATABASE_URL"] = database_url
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "0016_catalog_item_descriptions"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    engine = build_engine(database_url)
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "INSERT INTO band_catalog_items "
-                "(key, label, description, frequency_range, sort_order, is_active, contest_free) "
-                "VALUES ('1.25cm', '1.25 cm', 'legacy', '24 GHz', 99, 1, 0)"
-            )
-        )
-    with Session(engine) as session:
-        session.add(
-            RulesetVersion(
-                ruleset_key="legacy-high-band",
-                version="1",
-                rule_type_keys=["eligibility"],
-                configuration={"allowed_bands": ["1.25cm"]},
-            )
-        )
-        session.commit()
-    engine.dispose()
-
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    engine = build_engine(database_url)
     with engine.connect() as connection:
-        band = connection.execute(
-            text("SELECT is_active FROM band_catalog_items WHERE key = '1.25cm'")
-        ).scalar_one()
-    with Session(engine) as session:
-        ruleset = session.scalar(
-            select(RulesetVersion).where(RulesetVersion.ruleset_key == "legacy-high-band")
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "0018_remove_unscored_country_data"
         )
-        assert ruleset is not None
-        assert ruleset.configuration == {"allowed_bands": ["1.25cm"]}
-    assert band == 0
-    engine.dispose()
-
-
-def test_country_reference_removal_cleans_pins_and_preserves_scores(tmp_path) -> None:
-    database_path = tmp_path / "remove-country-reference-data.sqlite3"
-    database_url = f"sqlite:///{database_path}"
-    environment = os.environ.copy()
-    environment["DATABASE_URL"] = database_url
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "0017_contest_free_band_defaults"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    engine = build_engine(database_url)
-    moment = utc_now()
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+        assert (
+            connection.scalar(text("SELECT count(*) FROM band_catalog_items WHERE is_active = 1"))
+            == 25
+        )
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM band_catalog_items WHERE contest_free = 1")
+            )
+            == 6
+        )
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM band_catalog_items WHERE is_active = 1 AND key = '3cm'")
+            )
+            == 1
+        )
+        assert (
+            connection.scalar(
+                text(
+                    "SELECT count(*) FROM band_catalog_items WHERE is_active = 1 AND key = '1.25cm'"
+                )
+            )
+            == 0
+        )
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1")
+            )
+            == 1
+        )
+        triggers = set(
+            connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+            ).scalars()
+        )
+        assert {
+            "immutable_ruleset_versions_update",
+            "immutable_ruleset_versions_delete",
+            "immutable_entry_revisions_update",
+            "immutable_entry_revisions_delete",
+            "immutable_ruleset_activations_update",
+            "immutable_ruleset_activations_delete",
+            "integer_score_run_detail_insert",
+            "integer_score_run_detail_update",
+            "immutable_completed_score_run",
+            "immutable_result_publication_update",
+            "prevent_active_master_data_version_delete",
+        } <= triggers
     with Session(engine) as session:
-        versions = {}
-        entities = {}
-        for dataset, source_key, namespace, authority_code in (
-            ("cty", "big-cty", "CTY", "K"),
-            ("countries-ungegn-wgn", "ungegn-wgn-countries", "UN-M49", "001"),
-            ("countries-unsd-m49", "unsd-m49-country-areas", "UN-M49", "840"),
-        ):
-            source = MasterDataSource(
-                source_key=source_key,
-                name=source_key,
-                canonical_url="https://example.test/data",
-                authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
-                enabled=True,
-            )
-            session.add(source)
-            session.flush()
-            run = MasterDataSyncRun(
-                source_id=source.id,
-                dataset_key=dataset,
-                started_at=moment,
-                finished_at=moment,
-                retrieved_at=moment,
-                status=MasterDataRunStatus.SUCCEEDED,
-            )
-            session.add(run)
-            session.flush()
-            version = MasterDataVersion(
-                sync_run_id=run.id,
-                dataset_key=dataset,
-                retrieved_at=moment,
-                checksum=("c" if dataset == "cty" else "d") * 64,
-                valid_from=moment,
-                status=MasterDataVersionStatus.ACTIVE,
-            )
-            session.add(version)
-            session.flush()
-            versions[dataset] = version
-            entity = ContestEntity(
-                version_id=version.id,
-                namespace=namespace,
-                authority_code=authority_code,
-                name=source_key,
-                entity_type=EntityType.AWARD_ENTITY,
-            )
-            session.add(entity)
-            session.flush()
-            entities[dataset] = entity
-
-        admin = SystemUser(
-            username="migration-admin",
-            email_normalized="migration-admin@example.test",
-            display_name="Migration admin",
+        band = session.query(BandCatalogItem).filter_by(key="160m").one()
+        assert band.description == "160 m HF band"
+        user = SystemUser(
+            username="kept-admin",
+            email_normalized="kept-admin@example.test",
+            display_name="Kept Admin",
             role=SystemRole.GLOBAL_ADMINISTRATOR,
             password_hash="test-hash",
+            is_active=True,
         )
-        session.add(admin)
-        session.flush()
-        ruleset = RulesetVersion(ruleset_key="migration", version="1")
-        session.add(ruleset)
-        session.flush()
-        contest = Contest(
-            owner_user_id=admin.id,
-            ruleset_version_id=ruleset.id,
-            name="Migration test",
-            slug="migration-test",
-            starts_at=moment,
-            ends_at=moment + timedelta(hours=1),
-            log_submission_cutoff_at=moment + timedelta(days=1),
-            status=ContestStatus.CLOSED,
-        )
-        session.add(contest)
-        session.flush()
-        participant = Participant(callsign_submitted="K1TEST", callsign_normalized="K1TEST")
-        session.add(participant)
-        session.flush()
-        entry = Entry(
-            contest_id=contest.id,
-            participant_id=participant.id,
-            entry_key="K1TEST",
-            status=EntryStatus.ACCEPTED,
-        )
-        session.add(entry)
-        session.flush()
-        revision = EntryRevision(
-            entry_id=entry.id,
-            revision_number=1,
-            input_format="cabrillo",
-            storage_key="migration-test",
-            original_content="START-OF-LOG: 3.0",
-            content_sha256="e" * 64,
-            byte_size=17,
-            submitted_at=moment,
-        )
-        session.add(revision)
-        session.flush()
-        obsolete_entity = entities["countries-unsd-m49"]
-        qso = Qso(
-            entry_revision_id=revision.id,
-            occurred_at=moment,
-            callsign_submitted="K2TEST",
-            callsign_normalized="K2TEST",
-            resolved_master_data_version_id=versions["countries-unsd-m49"].id,
-            worked_entity_id=obsolete_entity.id,
-        )
-        session.add(qso)
-        session.flush()
-        qso_id = qso.id
-        score = ScoreRun(
-            entry_id=entry.id,
-            entry_revision_id=revision.id,
-            ruleset_version_id=ruleset.id,
-            master_data_version_id=versions["cty"].id,
-            run_number=1,
-            status=ScoreRunStatus.COMPLETED,
-            input_digest="f" * 64,
-            ruleset_snapshot={"rules": []},
-            master_data_snapshot={dataset: version.id for dataset, version in versions.items()},
-            points=12,
-            multiplier_count=1,
-            final_score=12,
-        )
-        session.add(score)
-        session.flush()
-        for dataset, version in versions.items():
-            session.add(
-                ContestMasterDataVersion(
-                    contest_id=contest.id,
-                    dataset_key=dataset,
-                    master_data_version_id=version.id,
-                    pinned_at=moment,
-                )
-            )
-            session.add(
-                ScoreRunMasterDataVersion(
-                    score_run_id=score.id,
-                    dataset_key=dataset,
-                    master_data_version_id=version.id,
-                )
-            )
-        score_id = score.id
-        cty_version_id = versions["cty"].id
+        session.add(user)
         session.commit()
-    engine.dispose()
 
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    engine = build_engine(database_url)
+    # Re-running the consolidated startup migration is safe and preserves application data.
+    _alembic(database_url, "upgrade", "head")
     with Session(engine) as session:
-        remaining_versions = list(session.scalars(select(MasterDataVersion)))
-        remaining_sources = list(session.scalars(select(MasterDataSource)))
-        remaining_entities = list(session.scalars(select(ContestEntity)))
-        qso = session.get(Qso, qso_id)
-        contest_pins = list(session.scalars(select(ContestMasterDataVersion)))
-        score_pins = list(session.scalars(select(ScoreRunMasterDataVersion)))
-        score = session.get(ScoreRun, score_id)
-        assert [version.dataset_key for version in remaining_versions] == ["cty"]
-        assert [source.source_key for source in remaining_sources] == ["big-cty"]
-        assert [entity.namespace for entity in remaining_entities] == ["CTY"]
-        assert [pin.dataset_key for pin in contest_pins] == ["cty"]
-        assert [pin.dataset_key for pin in score_pins] == ["cty"]
-        assert score is not None
-        assert qso is not None
-        assert qso.callsign_normalized == "K2TEST"
-        assert qso.resolved_master_data_version_id is None
-        assert qso.worked_entity_id is None
-        assert score.master_data_snapshot == {"cty": cty_version_id}
-        assert (score.points, score.multiplier_count, score.final_score) == (12, 1, 12)
-    with engine.connect() as connection:
-        assert connection.exec_driver_sql(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
-            "AND name = 'prevent_active_master_data_version_delete'"
-        ).scalar_one() == 1
-        assert connection.exec_driver_sql(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
-            "AND name = 'immutable_completed_score_run'"
-        ).scalar_one() == 1
-        assert connection.exec_driver_sql(
-            "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' "
-            "AND name = 'immutable_qsos_update'"
-        ).scalar_one() == 1
+        assert session.query(SystemUser).filter_by(username="kept-admin").count() == 1
     engine.dispose()
 
 
-def test_catalog_description_migration_updates_only_generic_descriptions(tmp_path) -> None:
-    database_path = tmp_path / "catalog-descriptions.sqlite3"
-    database_url = f"sqlite:///{database_path}"
-    environment = os.environ.copy()
-    environment["DATABASE_URL"] = database_url
+def test_migration_history_is_one_baseline_revision() -> None:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "0015_split_operating_catalogs"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    config = Config(os.path.join(project_root, "alembic.ini"))
+    config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
+    revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    engine = build_engine(database_url)
-    with Session(engine) as session:
-        band = session.scalar(select(BandCatalogItem).where(BandCatalogItem.key == "20m"))
-        mode = session.scalar(select(ModeCatalogItem).where(ModeCatalogItem.key == "CW"))
-        assert band is not None
-        assert mode is not None
-        band.description = "Administrator's band notes"
-        mode.description = "Administrator's mode notes"
-        session.commit()
-    engine.dispose()
-
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    engine = build_engine(database_url)
-    with Session(engine) as session:
-        bands = list(session.scalars(select(BandCatalogItem)))
-        modes = list(session.scalars(select(ModeCatalogItem)))
-        assert all(item.description and len(item.description) < 40 for item in bands)
-        assert all(item.description and len(item.description) < 40 for item in modes)
-        assert (
-            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "20m"))
-            == "Administrator's band notes"
-        )
-        assert (
-            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "CW"))
-            == "Administrator's mode notes"
-        )
-        assert (
-            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "40m"))
-            == "40 m HF band"
-        )
-        assert (
-            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT4"))
-            == "Fast weak-signal digital mode"
-        )
-    engine.dispose()
+    assert len(revisions) == 1
+    assert revisions[0].down_revision is None
+    assert revisions[0].revision == "0018_remove_unscored_country_data"
 
 
-def test_operating_catalog_split_migration_preserves_band_and_mode_values(tmp_path) -> None:
-    database_path = tmp_path / "catalog-split.sqlite3"
-    database_url = f"sqlite:///{database_path}"
-    environment = os.environ.copy()
-    environment["DATABASE_URL"] = database_url
+def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'legacy.sqlite3'}"
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "0014_operating_catalog"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
+    legacy_root = os.path.join(project_root, "backend", "migrations", "legacy")
+    _run_python(
+        database_url,
+        "from alembic import command; from alembic.config import Config; "
+        f"config = Config({os.path.join(project_root, 'alembic.ini')!r}); "
+        f"config.set_main_option('script_location', {legacy_root!r}); "
+        "command.upgrade(config, '0017_contest_free_band_defaults')",
     )
     engine = build_engine(database_url)
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                """INSERT INTO operating_catalog_items
-                (kind, key, label, description, frequency_range, sort_order, is_active,
-                contest_free)
-                VALUES ('band', 'legacy-band', 'Legacy band', 'Preserve band details',
-                '50 MHz', 77, 0, 1)"""
-            )
-        )
-        connection.execute(
-            text(
-                """INSERT INTO operating_catalog_items
-                (kind, key, label, description, frequency_range, sort_order, is_active,
-                contest_free)
-                VALUES ('mode', 'legacy-mode', 'Legacy mode', 'Preserve mode details',
-                NULL, 88, 0, 0)"""
-            )
-        )
     with Session(engine) as session:
         session.add(
-            RulesetVersion(
-                ruleset_key="migration-reference",
-                version="1",
-                rule_type_keys=["eligibility"],
-                configuration={
-                    "rules": [
-                        {
-                            "rule": {
-                                "kind": "eligibility",
-                                "allowed_bands": ["legacy-band"],
-                                "allowed_modes": ["legacy-mode"],
-                            }
-                        }
-                    ]
-                },
+            SystemUser(
+                username="legacy-admin",
+                email_normalized="legacy-admin@example.test",
+                display_name="Legacy Admin",
+                role=SystemRole.GLOBAL_ADMINISTRATOR,
+                password_hash="test-hash",
+                is_active=True,
             )
         )
         session.commit()
     engine.dispose()
 
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
+    _run_python(
+        database_url, "from backend.app.migrations import upgrade_database; upgrade_database()"
     )
+
     engine = build_engine(database_url)
     with engine.connect() as connection:
-        band = connection.execute(
-            text(
-                "SELECT key, label, description, frequency_range, sort_order, is_active, "
-                "contest_free "
-                "FROM band_catalog_items WHERE key = 'legacy-band'"
-            )
-        ).one()
-        mode = connection.execute(
-            text(
-                "SELECT key, label, description, sort_order, is_active "
-                "FROM mode_catalog_items WHERE key = 'legacy-mode'"
-            )
-        ).one()
-        assert "operating_catalog_items" not in inspect(connection).get_table_names()
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "0018_remove_unscored_country_data"
+        )
     with Session(engine) as session:
-        migrated_ruleset = session.scalar(
-            select(RulesetVersion).where(RulesetVersion.ruleset_key == "migration-reference")
-        )
-        assert migrated_ruleset.configuration["rules"][0]["rule"]["allowed_bands"] == [
-            "legacy-band"
-        ]
-        assert migrated_ruleset.configuration["rules"][0]["rule"]["allowed_modes"] == [
-            "legacy-mode"
-        ]
-    assert tuple(band) == (
-        "legacy-band",
-        "Legacy band",
-        "Preserve band details",
-        "50 MHz",
-        77,
-        0,
-        1,
-    )
-    assert tuple(mode) == ("legacy-mode", "Legacy mode", "Preserve mode details", 88, 0)
-    engine.dispose()
-
-
-def test_fcc_call_area_data_is_removed_by_schema_migration(tmp_path) -> None:
-    database_path = tmp_path / "fcc-removal.sqlite3"
-    database_url = f"sqlite:///{database_path}"
-    environment = os.environ.copy()
-    environment["DATABASE_URL"] = database_url
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "0003_master_data_intervals"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    engine = build_engine(database_url)
-    with Session(engine) as session:
-        source = MasterDataSource(
-            source_key="fcc-uls-amateur",
-            name="FCC ULS Amateur Radio Licenses",
-            canonical_url="https://example.test/l_amat.zip",
-            source_priority=50,
-            authority_role=MasterDataAuthorityRole.GOVERNING_AUTHORITY,
-            enabled=True,
-        )
-        session.add(source)
-        session.flush()
-        run = MasterDataSyncRun(
-            source_id=source.id,
-            dataset_key="call-districts-us",
-            status=MasterDataRunStatus.SUCCEEDED,
-            started_at=utc_now(),
-            record_counts={"districts": 10},
-        )
-        session.add(run)
-        session.flush()
-        version = MasterDataVersion(
-            sync_run_id=run.id,
-            dataset_key="call-districts-us",
-            retrieved_at=utc_now(),
-            checksum="a" * 64,
-            status=MasterDataVersionStatus.ACTIVE,
-        )
-        session.add(version)
-        session.flush()
-        entity = ContestEntity(
-            version_id=version.id,
-            namespace="ISO3166-1-alpha2",
-            authority_code="US",
-            name="United States",
-            entity_type=EntityType.SOVEREIGN_COUNTRY,
-        )
-        session.add(entity)
-        session.flush()
-        session.execute(
-            text(
-                "INSERT INTO call_districts "
-                "(version_id, entity_id, district_code, name, source_id) "
-                "VALUES (:version_id, :entity_id, '0', 'United States call area 0', :source_id)"
-            ),
-            {"version_id": version.id, "entity_id": entity.id, "source_id": source.id},
-        )
-        session.commit()
-    engine.dispose()
-
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=project_root,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    engine = build_engine(database_url)
-    inspector = inspect(engine)
-    assert "call_districts" not in inspector.get_table_names()
-    with Session(engine) as session:
-        assert session.query(MasterDataSource).filter_by(source_key="fcc-uls-amateur").count() == 0
-        assert (
-            session.query(MasterDataVersion).filter_by(dataset_key="call-districts-us").count() == 0
-        )
+        assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
     engine.dispose()

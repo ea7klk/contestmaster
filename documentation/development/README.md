@@ -24,13 +24,12 @@ nvm use
 
 cp .env.example .env
 make setup
-make db-upgrade
 make dev
 ```
 
 The Vue development server is at `http://localhost:5173`; it proxies `/api` to the FastAPI service at `http://127.0.0.1:8000`. API documentation is available at `http://127.0.0.1:8000/api/v1/docs`, with OpenAPI JSON at `http://127.0.0.1:8000/api/v1/openapi.json`.
 
-The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes.
+The API process is the only process that accesses the database. All database access uses SQLAlchemy ORM sessions/connections. The development database defaults to `var/contestmaster.db`; Alembic owns schema changes. Before serving requests, API startup applies pending migrations. New databases use one consolidated current-schema baseline; every later data-model change is a separate Alembic revision above it. Historical revisions are retained in a compatibility-only archive so databases from before the squash can be upgraded without losing records.
 
 ### Guest log submission
 
@@ -42,10 +41,10 @@ Malformed logs are rejected as a whole with source-line diagnostics. Unknown hea
 
 ## Privileged accounts and sessions
 
-Apply migrations before bootstrapping the first global administrator. The one-time command prompts for a password without echoing it, requires confirmation and a 12-character minimum, and refuses to run after any system account exists:
+Start the API once so it can initialize or upgrade the database before bootstrapping the first global administrator. The one-time command prompts for a password without echoing it, requires confirmation and a 12-character minimum, and refuses to run after any system account exists:
 
 ```sh
-uv run alembic upgrade head
+make start-api
 uv run python -m backend.app.identity_cli create-first-admin \
   --username admin \
   --email admin@example.org \
