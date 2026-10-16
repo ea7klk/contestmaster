@@ -60,4 +60,4 @@ Opens on published standings, with contest selection, category filters, sorting,
 
 ## Approval requested
 
-Please review [the design approval issue](https://github.com/ea7klk/contestmaster/issues) and select A, B, or C, or describe a blend and any changes. The issue is the approval gate for choosing the landing-page hierarchy and menu treatment. These mockups are proposals; implementation should follow the selected direction and preserve Contestmaster's accessibility and footer requirements.
+Please review [design approval issue #86](https://github.com/ea7klk/contestmaster/issues/86) and select A, B, or C, or describe a blend and any changes. The issue is the approval gate for choosing the landing-page hierarchy and menu treatment. These mockups are proposals; implementation should follow the selected direction and preserve Contestmaster's accessibility and footer requirements.
