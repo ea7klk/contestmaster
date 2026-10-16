@@ -15,7 +15,7 @@ from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
-from backend.app.models import OperatingCatalogItem, RulesetVersion
+from backend.app.models import BandCatalogItem, ModeCatalogItem, RulesetVersion
 from backend.app.rulesets.persistence import RulesetConflictError, save_ruleset_version
 from backend.app.rulesets.registry import rule_catalog
 from backend.app.rulesets.schedules import ScheduleResolutionError, resolve_schedule
@@ -50,10 +50,18 @@ def _catalog_reference_errors(
     if not requested:
         return []
     available = {
-        (item.kind, item.key)
-        for item in session.scalars(
-            select(OperatingCatalogItem).where(OperatingCatalogItem.is_active.is_(True))
-        )
+        *(
+            ("band", item.key)
+            for item in session.scalars(
+                select(BandCatalogItem).where(BandCatalogItem.is_active.is_(True))
+            )
+        ),
+        *(
+            ("mode", item.key)
+            for item in session.scalars(
+                select(ModeCatalogItem).where(ModeCatalogItem.is_active.is_(True))
+            )
+        ),
     }
     errors: list[dict[str, object]] = []
     for index, configured in enumerate(definition.rules):

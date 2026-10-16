@@ -39,6 +39,48 @@ function operatingCatalogResponse() {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('RulesetComposerView', () => {
+  it('places each eligibility toggle above its matching catalog choices', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+
+    for (const [toggleText, legendText] of [
+      ['Configure allowed bands', 'Eligible bands'],
+      ['Configure allowed modes', 'Allowed modes'],
+    ]) {
+      const toggle = wrapper
+        .findAll('label')
+        .find((label) => label.text().includes(toggleText))
+      expect(toggle).toBeDefined()
+      await toggle!.get('input').setValue(true)
+      await flushPromises()
+      const legend = wrapper
+        .findAll('legend')
+        .find((item) => item.text() === legendText)
+      expect(legend).toBeDefined()
+      expect(
+        toggle!.element.compareDocumentPosition(legend!.element) & 4,
+      ).toBeTruthy()
+    }
+  })
+
   it('explains UTC scheduling and the configurable rule sections', async () => {
     vi.stubGlobal(
       'fetch',
@@ -47,7 +89,10 @@ describe('RulesetComposerView', () => {
           return new Response(JSON.stringify(catalogResponse()), {
             status: 200,
           })
-        if (String(input).endsWith('/rulesets/operating-catalog'))
+        if (
+          String(input).endsWith('/rulesets/bands') ||
+          String(input).endsWith('/rulesets/modes')
+        )
           return new Response(JSON.stringify(operatingCatalogResponse()), {
             status: 200,
           })
@@ -76,7 +121,10 @@ describe('RulesetComposerView', () => {
             status: 200,
           })
         }
-        if (String(input).endsWith('/rulesets/operating-catalog')) {
+        if (
+          String(input).endsWith('/rulesets/bands') ||
+          String(input).endsWith('/rulesets/modes')
+        ) {
           return new Response(JSON.stringify(operatingCatalogResponse()), {
             status: 200,
           })
@@ -129,7 +177,7 @@ describe('RulesetComposerView', () => {
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(wrapper.get('[role="status"]').text()).toContain('Ruleset is valid')
     expect(wrapper.text()).toContain('Worked integer score example')
   })
@@ -139,7 +187,10 @@ describe('RulesetComposerView', () => {
       if (String(input).endsWith('/rulesets/catalog')) {
         return new Response(JSON.stringify(catalogResponse()), { status: 200 })
       }
-      if (String(input).endsWith('/rulesets/operating-catalog')) {
+      if (
+        String(input).endsWith('/rulesets/bands') ||
+        String(input).endsWith('/rulesets/modes')
+      ) {
         return new Response(JSON.stringify(operatingCatalogResponse()), {
           status: 200,
         })
@@ -182,7 +233,10 @@ describe('RulesetComposerView', () => {
             status: 200,
           })
         }
-        if (String(input).endsWith('/rulesets/operating-catalog')) {
+        if (
+          String(input).endsWith('/rulesets/bands') ||
+          String(input).endsWith('/rulesets/modes')
+        ) {
           return new Response(JSON.stringify(operatingCatalogResponse()), {
             status: 200,
           })
@@ -226,7 +280,7 @@ describe('RulesetComposerView', () => {
     await wrapper.findAll('button.primary-button')[1]?.trigger('click')
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
     expect(wrapper.get('[role="status"]').text()).toContain(
       'Saved my-contest version 1',
     )

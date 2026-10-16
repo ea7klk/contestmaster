@@ -1,12 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { OperatingCatalogItem } from '../api/operatingCatalog'
 
-defineProps<{
+const props = defineProps<{
   kind: 'band' | 'mode'
   items: OperatingCatalogItem[]
   selected: string[]
 }>()
 const emit = defineEmits<{ 'update:selected': [values: string[]] }>()
+
+const displayItems = computed(() =>
+  props.items.map((item) => ({
+    ...item,
+    frequency_range: item.kind === 'band' ? item.frequency_range : null,
+    contest_free: item.kind === 'band' && item.contest_free,
+  })),
+)
 
 function toggle(key: string, checked: boolean, selected: string[]) {
   const values = checked
@@ -33,7 +42,7 @@ function toggle(key: string, checked: boolean, selected: string[]) {
     </p>
     <div class="eligibility-options">
       <label
-        v-for="item in items"
+        v-for="item in displayItems"
         :key="item.key"
         :class="{ 'contest-free-band': kind === 'band' && item.contest_free }"
       >

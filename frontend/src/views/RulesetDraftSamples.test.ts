@@ -62,7 +62,10 @@ describe('documented contest starter drafts', () => {
               status: 200,
             })
           }
-          if (String(input).endsWith('/rulesets/operating-catalog')) {
+          if (
+            String(input).endsWith('/rulesets/bands') ||
+            String(input).endsWith('/rulesets/modes')
+          ) {
             return new Response(JSON.stringify({ items: [] }), { status: 200 })
           }
           sentDrafts.push(

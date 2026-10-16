@@ -17,7 +17,7 @@ describe('OperatingCatalogAdminView', () => {
             display_name: 'Admin',
           }),
         )
-      if (path.endsWith('/admin/operating-catalog'))
+      if (path.endsWith('/admin/bands'))
         return new Response(
           JSON.stringify({
             items: [
@@ -35,6 +35,22 @@ describe('OperatingCatalogAdminView', () => {
             ],
           }),
         )
+      if (path.endsWith('/admin/modes'))
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 2,
+                kind: 'mode',
+                key: 'FT8',
+                label: 'FT8',
+                description: 'Digital mode',
+                sort_order: 1,
+                is_active: true,
+              },
+            ],
+          }),
+        )
       throw new Error(`Unexpected request ${path}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -42,9 +58,13 @@ describe('OperatingCatalogAdminView', () => {
     await flushPromises()
     await expectAccessible(wrapper.element)
     expect(wrapper.text()).toContain('60 m')
+    expect(wrapper.text()).toContain('FT8')
     expect(wrapper.text()).toContain('Contest-free designation')
     expect(wrapper.text()).toContain('Active in ruleset composer')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('form.catalog-editor-form')).toHaveLength(2)
+    expect(wrapper.get('#bands-heading').text()).toBe('Bands')
+    expect(wrapper.get('#modes-heading').text()).toBe('Modes')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('does not load configuration for a contest manager', async () => {

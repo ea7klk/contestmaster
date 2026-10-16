@@ -47,7 +47,7 @@ from backend.app.models.master_data import (
     PrefixITUZoneAssignment,
     ScoreRunMasterDataVersion,
 )
-from backend.app.models.operating_catalog import OperatingCatalogItem
+from backend.app.models.operating_catalog import BandCatalogItem, ModeCatalogItem
 from backend.app.models.results import ResultPublication, ResultPublicationEntry
 from backend.app.models.types import UTCDateTime, utc_now
 
@@ -75,7 +75,8 @@ __all__ = [
     "MasterDataSyncRun",
     "MasterDataVersion",
     "MasterDataVersionStatus",
-    "OperatingCatalogItem",
+    "BandCatalogItem",
+    "ModeCatalogItem",
     "Participant",
     "ParticipantEmail",
     "ParticipantMagicLink",

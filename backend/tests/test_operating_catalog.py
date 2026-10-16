@@ -9,7 +9,13 @@ from sqlalchemy.pool import StaticPool
 from backend.app.api.auth import hash_password
 from backend.app.db import Base, get_session
 from backend.app.main import app
-from backend.app.models import AuditEvent, OperatingCatalogItem, SystemRole, SystemUser
+from backend.app.models import (
+    AuditEvent,
+    BandCatalogItem,
+    ModeCatalogItem,
+    SystemRole,
+    SystemUser,
+)
 
 
 @pytest.fixture
@@ -62,8 +68,7 @@ def test_public_catalog_lists_active_values_and_admin_routes_require_global_role
     add_user(catalog_database, SystemRole.CONTEST_MANAGER, "manager")
     with catalog_database.begin() as session:
         session.add(
-            OperatingCatalogItem(
-                kind="band",
+            BandCatalogItem(
                 key="60m",
                 label="60 m",
                 description="",
@@ -75,16 +80,16 @@ def test_public_catalog_lists_active_values_and_admin_routes_require_global_role
         )
 
     public = TestClient(app)
-    result = public.get("/api/v1/rulesets/operating-catalog")
+    result = public.get("/api/v1/rulesets/bands")
     assert result.status_code == 200
     assert result.json()["items"][0]["contest_free"] is True
-    assert public.get("/api/v1/rulesets/admin/operating-catalog").status_code == 401
+    assert public.get("/api/v1/rulesets/admin/bands").status_code == 401
 
     manager, _csrf = signed_in("manager@example.test")
-    assert manager.get("/api/v1/rulesets/admin/operating-catalog").status_code == 403
+    assert manager.get("/api/v1/rulesets/admin/bands").status_code == 403
     assert (
         manager.post(
-            "/api/v1/rulesets/admin/operating-catalog",
+            "/api/v1/rulesets/admin/modes",
             json={"kind": "mode", "key": "FT8", "label": "FT8"},
         ).status_code
         == 403
@@ -96,49 +101,43 @@ def test_global_admin_can_manage_catalog_and_every_change_is_audited(catalog_dat
     client, csrf = signed_in("admin@example.test")
     headers = {"X-CSRF-Token": csrf}
     created = client.post(
-        "/api/v1/rulesets/admin/operating-catalog",
+        "/api/v1/rulesets/admin/modes",
         headers=headers,
         json={
-            "kind": "mode",
             "key": "FT8",
             "label": "FT8",
             "description": "Weak-signal digital mode",
             "sort_order": 15,
             "is_active": True,
-            "contest_free": False,
         },
     )
     assert created.status_code == 201
     item = created.json()
-    assert client.get("/api/v1/rulesets/operating-catalog").json()["items"][0]["key"] == "FT8"
+    assert client.get("/api/v1/rulesets/modes").json()["items"][0]["key"] == "FT8"
 
     updated = client.put(
-        f"/api/v1/rulesets/admin/operating-catalog/{item['id']}",
+        f"/api/v1/rulesets/admin/modes/{item['id']}",
         headers=headers,
         json={
-            "kind": "mode",
             "key": "FT8",
             "label": "FT8 digital",
             "description": "Updated label",
             "sort_order": 15,
             "is_active": False,
-            "contest_free": False,
         },
     )
     assert updated.status_code == 200
-    assert client.get("/api/v1/rulesets/operating-catalog").json()["items"] == []
+    assert client.get("/api/v1/rulesets/modes").json()["items"] == []
     assert (
-        client.delete(
-            f"/api/v1/rulesets/admin/operating-catalog/{item['id']}", headers=headers
-        ).status_code
+        client.delete(f"/api/v1/rulesets/admin/modes/{item['id']}", headers=headers).status_code
         == 204
     )
     with catalog_database() as session:
         actions = session.scalars(select(AuditEvent.action).order_by(AuditEvent.id)).all()
     assert actions == [
-        "operating_catalog.item_created",
-        "operating_catalog.item_updated",
-        "operating_catalog.item_deleted",
+        "operating_catalog.mode_created",
+        "operating_catalog.mode_updated",
+        "operating_catalog.mode_deleted",
     ]
 
 
@@ -257,8 +256,7 @@ def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_d
     with catalog_database.begin() as session:
         session.add_all(
             [
-                OperatingCatalogItem(
-                    kind="band",
+                BandCatalogItem(
                     key="60m",
                     label="60 m",
                     description="",
@@ -266,14 +264,12 @@ def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_d
                     is_active=True,
                     contest_free=False,
                 ),
-                OperatingCatalogItem(
-                    kind="mode",
+                ModeCatalogItem(
                     key="FT8",
                     label="FT8",
                     description="",
                     sort_order=1,
                     is_active=True,
-                    contest_free=False,
                 ),
             ]
         )
@@ -281,7 +277,7 @@ def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_d
 
     with catalog_database.begin() as session:
         session.scalar(
-            select(OperatingCatalogItem).where(OperatingCatalogItem.kind == "mode")
+            select(ModeCatalogItem).where(ModeCatalogItem.key == "FT8")
         ).is_active = False
     response = TestClient(app).post("/api/v1/rulesets/validate", json=payload)
     assert response.status_code == 422

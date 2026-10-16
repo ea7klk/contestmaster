@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -86,7 +86,8 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         "ruleset_activations",
         "result_publications",
         "result_publication_entries",
-        "operating_catalog_items",
+        "band_catalog_items",
+        "mode_catalog_items",
     } <= tables
     assert "call_districts" not in tables
     assert "iaru_regions" not in tables
@@ -98,17 +99,16 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
         version = connection.scalar(text("SELECT version_num FROM alembic_version"))
         foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
         seeded_bands = connection.exec_driver_sql(
-            "SELECT count(*) FROM operating_catalog_items WHERE kind = 'band' AND is_active = 1"
+            "SELECT count(*) FROM band_catalog_items WHERE is_active = 1"
         ).scalar_one()
         highest_band = connection.exec_driver_sql(
-            "SELECT frequency_range FROM operating_catalog_items WHERE kind = 'band' "
-            "ORDER BY sort_order DESC LIMIT 1"
+            "SELECT frequency_range FROM band_catalog_items ORDER BY sort_order DESC LIMIT 1"
         ).scalar_one()
         ft8 = connection.exec_driver_sql(
-            "SELECT count(*) FROM operating_catalog_items "
-            "WHERE kind = 'mode' AND key = 'FT8' AND is_active = 1"
+            "SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1"
         ).scalar_one()
-    assert version == "0014_operating_catalog"
+    assert "operating_catalog_items" not in tables
+    assert version == "0015_split_operating_catalogs"
     assert foreign_keys == 1
     assert seeded_bands >= 30
     assert highest_band == "1.4 THz"
@@ -222,6 +222,109 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
                 {"version_id": active_version.id},
             )
         session.rollback()
+    engine.dispose()
+
+
+def test_operating_catalog_split_migration_preserves_band_and_mode_values(tmp_path) -> None:
+    database_path = tmp_path / "catalog-split.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0014_operating_catalog"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """INSERT INTO operating_catalog_items
+                (kind, key, label, description, frequency_range, sort_order, is_active,
+                contest_free)
+                VALUES ('band', 'legacy-band', 'Legacy band', 'Preserve band details',
+                '50 MHz', 77, 0, 1)"""
+            )
+        )
+        connection.execute(
+            text(
+                """INSERT INTO operating_catalog_items
+                (kind, key, label, description, frequency_range, sort_order, is_active,
+                contest_free)
+                VALUES ('mode', 'legacy-mode', 'Legacy mode', 'Preserve mode details',
+                NULL, 88, 0, 0)"""
+            )
+        )
+    with Session(engine) as session:
+        session.add(
+            RulesetVersion(
+                ruleset_key="migration-reference",
+                version="1",
+                rule_type_keys=["eligibility"],
+                configuration={
+                    "rules": [
+                        {
+                            "rule": {
+                                "kind": "eligibility",
+                                "allowed_bands": ["legacy-band"],
+                                "allowed_modes": ["legacy-mode"],
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    with engine.connect() as connection:
+        band = connection.execute(
+            text(
+                "SELECT key, label, description, frequency_range, sort_order, is_active, "
+                "contest_free "
+                "FROM band_catalog_items WHERE key = 'legacy-band'"
+            )
+        ).one()
+        mode = connection.execute(
+            text(
+                "SELECT key, label, description, sort_order, is_active "
+                "FROM mode_catalog_items WHERE key = 'legacy-mode'"
+            )
+        ).one()
+        assert "operating_catalog_items" not in inspect(connection).get_table_names()
+    with Session(engine) as session:
+        migrated_ruleset = session.scalar(
+            select(RulesetVersion).where(RulesetVersion.ruleset_key == "migration-reference")
+        )
+        assert migrated_ruleset.configuration["rules"][0]["rule"]["allowed_bands"] == [
+            "legacy-band"
+        ]
+        assert migrated_ruleset.configuration["rules"][0]["rule"]["allowed_modes"] == [
+            "legacy-mode"
+        ]
+    assert tuple(band) == (
+        "legacy-band",
+        "Legacy band",
+        "Preserve band details",
+        "50 MHz",
+        77,
+        0,
+        1,
+    )
+    assert tuple(mode) == ("legacy-mode", "Legacy mode", "Preserve mode details", 88, 0)
     engine.dispose()
 
 

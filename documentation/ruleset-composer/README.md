@@ -24,7 +24,7 @@ An exchange schema is the ordered set of values sent, received, exchanged in bot
 
 ## Eligibility catalogs
 
-Band and mode catalogs are shared reference values, managed at `/admin/operating-catalog` by a global administrator. Contest managers select allowed values with checkboxes. An empty selection means that dimension is unrestricted. Inactive catalog entries cannot be selected in new drafts. Existing ruleset snapshots remain unchanged; an entry referenced by a saved ruleset may be deactivated but cannot be deleted or renamed.
+Band and mode catalogs are separate shared reference values, managed by global administrators in distinct Bands and Modes sections, each with its own “Add catalog item” form. Contest managers select allowed values with checkboxes. Each Configure checkbox appears directly above its matching eligible-band or allowed-mode choices. An empty selection means that dimension is unrestricted. Inactive catalog entries cannot be selected in new drafts. Existing ruleset snapshots remain unchanged; an entry referenced by a saved ruleset may be deactivated but cannot be deleted or renamed.
 
 The initial catalog includes named amateur bands from 2200 m through the 0.2 mm / 1.4 THz region and common modes (including CW, SSB, RTTY, FT8, and FT4). Frequency text is a reference label, not a universal allocation: national authorizations, license privileges, and the published contest rules determine permitted use. Administrators may edit the catalog accordingly.
 
@@ -39,8 +39,8 @@ An administrator may mark a band **contest-free**. The composer displays that ma
 
 ## API and administration
 
-- `GET /api/v1/rulesets/operating-catalog` returns active public band/mode choices for the composer.
-- `/api/v1/rulesets/admin/operating-catalog` supports catalog listing, creation, update, and deletion for global administrators only. Create/update/delete actions are audited. Server-side checks reject referenced-key changes and deletion; deactivate referenced entries instead.
+- `GET /api/v1/rulesets/bands` and `GET /api/v1/rulesets/modes` return active choices for the composer.
+- `/api/v1/rulesets/admin/bands` and `/api/v1/rulesets/admin/modes` support independent catalog listing, creation, update, and deletion for global administrators only. Create/update/delete actions are audited. Server-side checks reject referenced-key changes and deletion; deactivate referenced entries instead. The combined operating-catalog routes remain compatibility adapters for existing API clients.
 - Ruleset validation and save reject eligibility keys absent from or inactive in the managed catalog.
 
 Run focused checks with `uv run pytest backend/tests/test_rulesets.py backend/tests/test_operating_catalog.py` and `cd frontend && npm test -- --run src/components/CategoryExchangeEditor.test.ts src/components/EligibilityCatalogEditor.test.ts src/views/RulesetComposerView.test.ts src/views/RulesetDraftSamples.test.ts src/views/OperatingCatalogAdminView.test.ts`.

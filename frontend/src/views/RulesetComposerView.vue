@@ -5,7 +5,8 @@ import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
 import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
 import EligibilityCatalogEditor from '../components/EligibilityCatalogEditor.vue'
 import {
-  getOperatingCatalog,
+  getBands,
+  getModes,
   type OperatingCatalogItem,
 } from '../api/operatingCatalog'
 import {
@@ -352,12 +353,13 @@ function displayIssue(issue: RulesetIssue) {
 onMounted(async () => {
   const controller = new AbortController()
   try {
-    const [response, operating] = await Promise.all([
+    const [response, bands, modes] = await Promise.all([
       getRuleCatalog(controller.signal),
-      getOperatingCatalog(controller.signal),
+      getBands(controller.signal),
+      getModes(controller.signal),
     ])
     catalog.value = response.rule_types
-    operatingCatalog.value = operating.items
+    operatingCatalog.value = [...bands.items, ...modes.items]
     seedRequiredRules()
   } catch (error) {
     generalError.value =
@@ -825,15 +827,6 @@ onMounted(async () => {
               contest-free markings are advisory labels from the shared catalog;
               they never silently change scoring.
             </p>
-            <EligibilityCatalogEditor
-              v-if="Array.isArray(configured.rule.allowed_bands)"
-              kind="band"
-              :items="operatingCatalog.filter((item) => item.kind === 'band')"
-              :selected="selectedValues(configured, 'allowed_bands')"
-              @update:selected="
-                setSelectedValues(configured, 'allowed_bands', $event)
-              "
-            />
             <label
               ><input
                 type="checkbox"
@@ -851,12 +844,12 @@ onMounted(async () => {
               Configure allowed bands</label
             >
             <EligibilityCatalogEditor
-              v-if="Array.isArray(configured.rule.allowed_modes)"
-              kind="mode"
-              :items="operatingCatalog.filter((item) => item.kind === 'mode')"
-              :selected="selectedValues(configured, 'allowed_modes')"
+              v-if="Array.isArray(configured.rule.allowed_bands)"
+              kind="band"
+              :items="operatingCatalog.filter((item) => item.kind === 'band')"
+              :selected="selectedValues(configured, 'allowed_bands')"
               @update:selected="
-                setSelectedValues(configured, 'allowed_modes', $event)
+                setSelectedValues(configured, 'allowed_bands', $event)
               "
             />
             <label
@@ -875,6 +868,15 @@ onMounted(async () => {
               />
               Configure allowed modes</label
             >
+            <EligibilityCatalogEditor
+              v-if="Array.isArray(configured.rule.allowed_modes)"
+              kind="mode"
+              :items="operatingCatalog.filter((item) => item.kind === 'mode')"
+              :selected="selectedValues(configured, 'allowed_modes')"
+              @update:selected="
+                setSelectedValues(configured, 'allowed_modes', $event)
+              "
+            />
           </template>
           <div
             v-if="configured.rule.kind === 'eligibility'"

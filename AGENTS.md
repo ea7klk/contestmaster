@@ -10,7 +10,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Keep domain rules independent of HTTP handlers, database models, and Vue components. Use explicit services or modules for log validation, scoring, multipliers, and standings.
 - Model common concepts such as contests, participants, stations, contacts (QSOs), exchanges, bands, modes, logs, and results without assuming every contest uses every field or the same rules.
 - Implement contest-specific behavior behind a documented ruleset interface or configuration. Avoid scattered contest-name conditionals and hidden defaults.
-- Keep the shared amateur band and common-mode catalog in ORM-managed data that only global administrators can change. Eligibility rules store stable catalog keys; inactive entries cannot be selected for new rulesets. A contest-free mark is an advisory notice and must not silently alter eligibility or scoring.
+- Keep amateur bands and operating modes in separate ORM entities and tables that only global administrators can change. Give each a distinct management section and API resource; each admin section has its own “Add catalog item” workflow. Eligibility rules store stable catalog keys; inactive entries cannot be selected for new rulesets. A contest-free mark is an advisory notice and must not silently alter eligibility or scoring.
 - Keep ruleset schedule instants and recurrence calculations in UTC. Do not add local-time or daylight-saving fold settings to contest schedules.
 - Let contest managers create and edit ruleset configuration with a simple graphical rule composer in the Vue frontend. Validate the composed configuration on the backend, version it, and keep executable contest logic behind the ruleset interface.
 - Treat the checked “Initial reusable rule catalog of the system” in `documentation/preliminary-ruleset/README.md` as the initial baseline of rule types supported by Contestmaster. Distinguish this built-in capability catalog from each contest's configured and versioned ruleset values.
@@ -73,6 +73,8 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Keep automated axe checks for core routes in the frontend test suite; document real-browser keyboard, contrast, and screen-reader checks and clearly distinguish combinations that were not manually tested.
 - Build accessible forms and tables: labels, keyboard operation, semantic markup, visible focus, and status announcements for asynchronous updates.
 - Keep contest, log, and standings views responsive and usable with large result sets. Prefer server-side filtering, sorting, and pagination when data grows.
+- Show public upcoming and currently running contests in a distinct home-page section using the public API. Display UTC start/end times, keep unpublished contests private, and remove a contest when its end instant is reached. Each item should link to public details; the main account-free log-submission action stays prominent.
+- Keep the labelled hamburger menu visible and left-aligned at every screen width. It controls a collapsed navigation panel and must preserve keyboard access, focus behavior, and role-based links.
 - Avoid duplicating backend rules in the browser. Frontend checks may improve feedback, but the server remains authoritative.
 
 ## Security, privacy, and operations
