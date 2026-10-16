@@ -123,7 +123,7 @@ class ContestImportPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     contest: ContestWrite
-    ruleset: RulesetDefinition
+    ruleset: RulesetDefinition | None = None
 
 
 class ContestSchedulePreviewPayload(BaseModel):
@@ -326,28 +326,30 @@ def import_contest(
     session: Annotated[Session, Depends(get_session)],
     request: Request,
 ) -> dict[str, object] | JSONResponse:
-    """Import contest metadata and its validated immutable ruleset atomically."""
-    try:
-        definition = validate_ruleset(payload.ruleset.model_dump(mode="json"))
-        catalog_errors = catalog_reference_errors(session, definition)
-        if catalog_errors:
-            raise RulesetValidationError(catalog_errors)
-    except RulesetValidationError as exc:
-        details = [
-            {
-                "location": [part for part in str(issue["path"]).split(".") if part],
-                "message": str(issue["message"]),
-                "type": "ruleset_configuration_error",
-            }
-            for issue in exc.errors
-        ]
-        return error_response(
-            request,
-            422,
-            "invalid_ruleset",
-            "Imported ruleset configuration is invalid.",
-            details,
-        )
+    """Import contest metadata and an optional immutable ruleset atomically."""
+    definition = None
+    if payload.ruleset is not None:
+        try:
+            definition = validate_ruleset(payload.ruleset.model_dump(mode="json"))
+            catalog_errors = catalog_reference_errors(session, definition)
+            if catalog_errors:
+                raise RulesetValidationError(catalog_errors)
+        except RulesetValidationError as exc:
+            details = [
+                {
+                    "location": [part for part in str(issue["path"]).split(".") if part],
+                    "message": str(issue["message"]),
+                    "type": "ruleset_configuration_error",
+                }
+                for issue in exc.errors
+            ]
+            return error_response(
+                request,
+                422,
+                "invalid_ruleset",
+                "Imported ruleset configuration is invalid.",
+                details,
+            )
 
     contest_payload = payload.contest
     contest = Contest(
@@ -367,16 +369,22 @@ def import_contest(
         auto_recalculate_on_upload=contest_payload.auto_recalculate_on_upload,
     )
     try:
-        saved_ruleset = save_ruleset_version(
-            session, definition, created_by_user_id=principal.user_id
+        saved_ruleset = (
+            save_ruleset_version(session, definition, created_by_user_id=principal.user_id)
+            if definition is not None
+            else None
         )
         session.add(contest)
         session.flush()
-        activation = activate_ruleset(
-            session,
-            contest_id=contest.id,
-            ruleset_version_id=saved_ruleset.version.id,
-            activated_by_user_id=principal.user_id,
+        activation = (
+            activate_ruleset(
+                session,
+                contest_id=contest.id,
+                ruleset_version_id=saved_ruleset.version.id,
+                activated_by_user_id=principal.user_id,
+            )
+            if saved_ruleset is not None
+            else None
         )
         record_audit_event(
             session,
@@ -385,10 +393,15 @@ def import_contest(
             target_type="contest",
             target_id=contest.id,
             reason=contest_payload.audit_reason,
-            metadata={"slug": contest.slug, "ruleset_version_id": saved_ruleset.version.id},
+            metadata={
+                "slug": contest.slug,
+                "ruleset_version_id": (
+                    saved_ruleset.version.id if saved_ruleset is not None else None
+                ),
+            },
             request_id=getattr(request.state, "request_id", None),
         )
-        if saved_ruleset.created:
+        if saved_ruleset is not None and saved_ruleset.created:
             record_audit_event(
                 session,
                 actor_user_id=principal.user_id,
@@ -425,7 +438,7 @@ def import_contest(
     session.refresh(contest)
     return {
         "contest": contest_output(contest),
-        "ruleset_version_id": saved_ruleset.version.id,
+        "ruleset_version_id": (saved_ruleset.version.id if saved_ruleset is not None else None),
     }
 
 

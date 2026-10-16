@@ -788,6 +788,52 @@ def test_contest_import_requires_authentication(identity_database):
     assert response.status_code == 401
 
 
+def test_contest_import_without_ruleset_creates_unassigned_draft(identity_database):
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="package-manager",
+        email="package-manager@example.test",
+    )
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "package-manager@example.test",
+                "password": "Correct horse battery staple",
+            },
+        ).status_code
+        == 200
+    )
+    package = {
+        "contest": {
+            "name": "Contest Only Import",
+            "slug": "contest-only-import",
+            "description": "A package that intentionally omits its ruleset.",
+            "starts_at": "2026-05-01T00:00:00Z",
+            "ends_at": "2026-05-01T06:00:00Z",
+            "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
+            "auto_recalculate_on_upload": False,
+        }
+    }
+    response = client.post(
+        "/api/v1/contests/import",
+        headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
+        json=package,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["contest"]["status"] == "draft"
+    assert body["contest"]["ruleset_version_id"] is None
+    assert body["ruleset_version_id"] is None
+    with identity_database() as session:
+        assert session.query(Contest).count() == 1
+        assert session.query(RulesetVersion).count() == 0
+        assert session.query(RulesetActivation).count() == 0
+
+
 def test_manager_list_endpoints_filter_and_paginate_contests_and_rulesets(identity_database):
     from backend.tests.test_rulesets import valid_payload
 

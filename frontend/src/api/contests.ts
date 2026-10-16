@@ -41,7 +41,7 @@ export interface ContestDraft {
 
 export interface ContestImportPackage {
   contest: ContestDraft
-  ruleset: RulesetDraft
+  ruleset?: RulesetDraft
 }
 
 export interface ContestList {
@@ -77,7 +77,7 @@ export function createContest(draft: ContestDraft) {
 }
 
 export function importContest(contestPackage: ContestImportPackage) {
-  return apiRequest<{ contest: Contest; ruleset_version_id: number }>(
+  return apiRequest<{ contest: Contest; ruleset_version_id: number | null }>(
     '/contests/import',
     {
       method: 'POST',

@@ -4,7 +4,9 @@ The Vue composer exposes the same typed ruleset definition that the API validate
 
 ## Import contests and edit saved rulesets
 
-From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and a `ruleset` object. The contest object uses UTC start, end, and submission-cutoff timestamps plus optional periodicity; the ruleset object uses schema version 2 described in [ruleset drafts](../ruleset-drafts/README.md). The API validates both together, creates a manager-owned draft, saves and assigns its immutable ruleset version, and commits the operation atomically. If the file is malformed, the contest is invalid, an operating-catalog key is unavailable, or either record conflicts, no partial import is retained.
+From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and, optionally, a `ruleset` object. The contest object uses UTC start, end, and submission-cutoff timestamps plus optional periodicity; an included ruleset uses schema version 2 described in [ruleset drafts](../ruleset-drafts/README.md). A package without a ruleset creates a manager-owned draft with no ruleset assigned. A package with a ruleset creates a manager-owned draft and saves and assigns its immutable ruleset version. Both paths are transactional: malformed input, invalid contest data, unavailable operating-catalog keys, or conflicting records leave no partial import.
+
+Contest cards offer **Export contest** actions for a contest-only package and, when a ruleset is assigned, a package with that ruleset. Both exports use the same JSON shape accepted by **Import contest**. Contest data includes its name, slug, description, UTC event and cutoff timestamps, periodicity, and automatic-recalculation setting. The optional `ruleset` value contains the selected immutable ruleset configuration; contest-only export intentionally omits it.
 
 For example, the package shape is:
 

@@ -101,6 +101,8 @@ describe('ContestManagerView listing', () => {
     await expectAccessible(wrapper.element)
 
     expect(wrapper.findAll('.contest-card')).toHaveLength(2)
+    expect(wrapper.find('.contest-list-scroll').exists()).toBe(false)
+    expect(wrapper.find('.contest-card-list').exists()).toBe(true)
     expect(wrapper.find('.contest-form').exists()).toBe(false)
     expect(wrapper.get('a[href="/manage/contests/new"]').text()).toContain(
       'Create a contest',
@@ -262,6 +264,131 @@ describe('ContestManagerView listing', () => {
     await selectContestPackage(wrapper.element, JSON.stringify(packageDraft))
     expect(wrapper.text()).toContain('Imported Rally')
     expect(wrapper.text()).toContain('Imported Imported Rally as a draft')
+  })
+
+  it('imports a contest-only package without assigning a ruleset', async () => {
+    const packageDraft = {
+      contest: {
+        name: 'Contest Without Rules',
+        slug: 'contest-without-rules',
+        description: null,
+        starts_at: '2026-06-20T00:00:00Z',
+        ends_at: '2026-06-20T06:00:00Z',
+        periodicity: null,
+        log_submission_cutoff_at: '2026-06-27T00:00:00Z',
+        auto_recalculate_on_upload: false,
+      },
+    }
+    let imported = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
+        if (path.endsWith('/contests/import') && init?.method === 'POST') {
+          expect(JSON.parse(String(init.body))).toEqual(packageDraft)
+          imported = true
+          return ok({
+            contest: contest(82, 'Contest Without Rules'),
+            ruleset_version_id: null,
+          })
+        }
+        if (path.includes('/contests?')) {
+          const items = imported ? [contest(82, 'Contest Without Rules')] : []
+          return ok({
+            items,
+            meta: { ...meta, total: items.length, pages: items.length ? 1 : 0 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountManager()
+    await flushPromises()
+    await selectContestPackage(wrapper.element, JSON.stringify(packageDraft))
+    expect(wrapper.text()).toContain('Imported Contest Without Rules as a draft without a ruleset.')
+  })
+
+  it('exports contest-only and contest-with-ruleset JSON packages', async () => {
+    const savedRuleset = {
+      id: 21,
+      configuration: {
+        schema_version: 2,
+        ruleset_key: 'field-day',
+        version: '2026',
+        rules: [],
+      },
+    }
+    const contestData = {
+      ...contest(12, 'Field Day Sprint', 'open'),
+      ruleset_version_id: 21,
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path.endsWith('/auth/me')) return ok(manager)
+      if (path.endsWith('/rulesets/versions/21')) return ok(savedRuleset)
+      if (path.includes('/rulesets/versions')) return ok(rulesets())
+      if (path.endsWith('/contests/12')) return ok(contestData)
+      if (path.includes('/contests?'))
+        return ok({ items: [contestData], meta: { ...meta, total: 1, pages: 1 } })
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const exportedBlobs: Blob[] = []
+    const revokeObjectURL = vi.fn()
+    class DownloadURL extends URL {
+      static createObjectURL(blob: Blob) {
+        exportedBlobs.push(blob)
+        return 'blob:test'
+      }
+      static revokeObjectURL(url: string) {
+        revokeObjectURL(url)
+      }
+    }
+    vi.stubGlobal('URL', DownloadURL)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mountManager()
+    await flushPromises()
+
+    const actions = wrapper.findAll('.export-action-options button')
+    await actions[0].trigger('click')
+    await flushPromises()
+    await actions[1].trigger('click')
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.map(([path]) => String(path))).toContain(
+      '/api/v1/contests/12',
+    )
+    expect(fetchMock.mock.calls.map(([path]) => String(path))).toContain(
+      '/api/v1/rulesets/versions/21',
+    )
+    expect(click).toHaveBeenCalledTimes(2)
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2)
+    const readBlob = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsText(blob)
+      })
+    expect(JSON.parse(await readBlob(exportedBlobs[0]!))).toEqual({
+      contest: {
+        name: 'Field Day Sprint',
+        slug: 'field-day-sprint',
+        description: null,
+        starts_at: '2026-07-04T12:00:00Z',
+        ends_at: '2026-07-04T18:00:00Z',
+        periodicity: null,
+        log_submission_cutoff_at: '2026-07-11T12:00:00Z',
+        auto_recalculate_on_upload: false,
+      },
+    })
+    expect(JSON.parse(await readBlob(exportedBlobs[1]!))).toMatchObject({
+      contest: { slug: 'field-day-sprint' },
+      ruleset: savedRuleset.configuration,
+    })
+    expect(wrapper.text()).toContain('Exported Field Day Sprint with its ruleset.')
   })
 
   it('keeps delete confirmation and cascade deletion on the listing page', async () => {

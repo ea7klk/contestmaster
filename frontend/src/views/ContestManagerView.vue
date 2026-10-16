@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import {
   changeContestStatus,
   deleteContest,
+  getContest,
   importContest,
   listContests,
   selectRuleset,
@@ -14,6 +15,7 @@ import {
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import {
+  getSavedRulesetVersion,
   listAllRulesetVersions,
   type SavedRulesetVersion,
 } from '../api/rulesets'
@@ -34,6 +36,7 @@ const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
 const statusSavingId = ref<number | null>(null)
 const importing = ref(false)
+const exportingContestId = ref<number | null>(null)
 const deletingContestId = ref<number | null>(null)
 const filteredContests = computed(() => contests.value)
 
@@ -163,22 +166,20 @@ async function importContestFile(event: Event) {
   importing.value = true
   try {
     const parsed: unknown = JSON.parse(await file.text())
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed.contest) ||
-      !isRecord(parsed.ruleset)
-    ) {
+    if (!isRecord(parsed) || !isRecord(parsed.contest)) {
       throw new Error(
-        'Expected a contest package with contest and ruleset objects.',
+        'Expected a contest package with a contest object.',
       )
     }
     if (
-      parsed.ruleset.schema_version !== 2 ||
-      typeof parsed.ruleset.ruleset_key !== 'string' ||
-      !Array.isArray(parsed.ruleset.rules)
+      parsed.ruleset !== undefined &&
+      (!isRecord(parsed.ruleset) ||
+        parsed.ruleset.schema_version !== 2 ||
+        typeof parsed.ruleset.ruleset_key !== 'string' ||
+        !Array.isArray(parsed.ruleset.rules))
     ) {
       throw new Error(
-        'The package ruleset must be a schema-version-2 ruleset draft.',
+        'An included ruleset must be a schema-version-2 ruleset draft.',
       )
     }
     const result = await importContest(
@@ -187,7 +188,9 @@ async function importContestFile(event: Event) {
     page.value = 1
     contestFilter.value = ''
     await refreshData()
-    statusMessage.value = `Imported ${result.contest.name} as a draft with its ruleset assigned.`
+    statusMessage.value = result.ruleset_version_id
+      ? `Imported ${result.contest.name} as a draft with its ruleset assigned.`
+      : `Imported ${result.contest.name} as a draft without a ruleset.`
   } catch (error) {
     errorMessage.value =
       error instanceof ApiError
@@ -200,6 +203,55 @@ async function importContestFile(event: Event) {
   } finally {
     importing.value = false
     input.value = ''
+  }
+}
+
+async function exportContest(contest: Contest, includeRuleset: boolean) {
+  exportingContestId.value = contest.id
+  errorMessage.value = ''
+  statusMessage.value = ''
+  try {
+    const current = await getContest(contest.id)
+    const packageData: ContestImportPackage = {
+      contest: {
+        name: current.name,
+        slug: current.slug,
+        description: current.description,
+        starts_at: current.starts_at,
+        ends_at: current.ends_at,
+        periodicity: current.periodicity,
+        log_submission_cutoff_at: current.log_submission_cutoff_at,
+        auto_recalculate_on_upload: current.auto_recalculate_on_upload,
+      },
+    }
+    if (includeRuleset) {
+      if (current.ruleset_version_id === null) {
+        throw new Error('This contest does not have an attached ruleset.')
+      }
+      const savedRuleset = await getSavedRulesetVersion(
+        current.ruleset_version_id,
+      )
+      packageData.ruleset = savedRuleset.configuration
+    }
+    const blob = new Blob([`${JSON.stringify(packageData, null, 2)}\n`], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${current.slug}${includeRuleset ? '' : '-contest-only'}.json`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    statusMessage.value = includeRuleset
+      ? `Exported ${current.name} with its ruleset.`
+      : `Exported ${current.name} without its ruleset.`
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : 'The contest could not be exported.'
+  } finally {
+    exportingContestId.value = null
   }
 }
 
@@ -261,8 +313,8 @@ onMounted(refreshData)
         {{ statusMessage }}
       </p>
       <p class="field-help">
-        Import a JSON package with contest metadata and a schema-version-2
-        ruleset draft. The imported contest starts as a draft.
+        Import a JSON package with contest metadata and an optional
+        schema-version-2 ruleset draft. The imported contest starts as a draft.
       </p>
       <section class="contest-list" aria-labelledby="contest-list-title">
         <div class="contest-list-heading">
@@ -294,12 +346,7 @@ onMounted(refreshData)
         >
           No contests match “{{ contestFilter }}”.
         </p>
-        <div
-          v-else
-          class="contest-list-scroll"
-          tabindex="0"
-          aria-label="Scrollable contest list"
-        >
+        <div v-else class="contest-card-list">
           <article
             v-for="contest in filteredContests"
             :key="contest.id"
@@ -312,6 +359,30 @@ onMounted(refreshData)
                 <p class="field-help">/{{ contest.slug }}</p>
               </div>
               <div class="contest-card-actions">
+                <details class="export-actions">
+                  <summary>Export contest</summary>
+                  <div class="export-action-options">
+                    <button
+                      class="secondary-button"
+                      type="button"
+                      :disabled="exportingContestId === contest.id"
+                      @click="exportContest(contest, false)"
+                    >
+                      Contest only
+                    </button>
+                    <button
+                      class="secondary-button"
+                      type="button"
+                      :disabled="
+                        contest.ruleset_version_id === null ||
+                        exportingContestId === contest.id
+                      "
+                      @click="exportContest(contest, true)"
+                    >
+                      Contest with ruleset
+                    </button>
+                  </div>
+                </details>
                 <button
                   v-if="
                     contest.status === 'draft' &&
@@ -544,17 +615,24 @@ onMounted(refreshData)
   border-radius: 0.45rem;
   font: inherit;
 }
-.contest-list-scroll {
-  max-height: 34rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+.contest-card-list {
   display: grid;
   gap: 0.5rem;
-  padding: 0.25rem;
 }
-.contest-list-scroll:focus-visible {
-  outline: 3px solid var(--color-focus);
-  outline-offset: 2px;
+.export-actions { position: relative; }
+.export-actions summary { cursor: pointer; font-weight: 650; }
+.export-action-options {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 12rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-surface);
+  box-shadow: 0 4px 12px var(--color-card-shadow);
 }
 .panel {
   padding: 0.8rem 1rem;
