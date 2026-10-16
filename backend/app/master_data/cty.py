@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import re
+import time
 import urllib.request
 import zipfile
 from dataclasses import asdict, dataclass
@@ -20,6 +22,7 @@ RSS_URL = "https://www.country-files.com/category/big-cty/feed/"
 TERMS_URL = "https://www.country-files.com/copyright/"
 MAX_FEED_BYTES = 1_000_000
 MAX_ARCHIVE_BYTES = 4_000_000
+logger = logging.getLogger("contestmaster.master_data.cty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,8 +88,28 @@ def _read_url(url: str, limit: int = MAX_FEED_BYTES) -> bytes:
         url,
         headers={"User-Agent": "Contestmaster/0.1 (master-data importer)"},
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = response.read(limit + 1)
+    started = time.perf_counter()
+    logger.info("master_data_source_request_started", extra={"source_url": url})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = response.read(limit + 1)
+    except Exception:
+        logger.exception(
+            "master_data_source_request_failed",
+            extra={
+                "source_url": url,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            },
+        )
+        raise
+    logger.info(
+        "master_data_source_request_finished",
+        extra={
+            "source_url": url,
+            "response_bytes": len(payload),
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        },
+    )
     if len(payload) > limit:
         raise ValueError(f"Source response exceeded {limit} bytes")
     return payload

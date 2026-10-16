@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.db import Base, build_engine
-from backend.app.master_data.cty import parse_archive, parse_cty_dat
+from backend.app.master_data.cty import _read_url, parse_archive, parse_cty_dat
 from backend.app.master_data.jobs import (
     MissingContestMasterData,
     activate_candidate,
@@ -39,10 +39,17 @@ from backend.app.models import (
 )
 
 
-def test_api_startup_runs_immediate_sync_when_no_active_version(monkeypatch) -> None:
+def test_api_startup_schedules_immediate_sync_without_waiting(monkeypatch) -> None:
     import backend.app.main as main
 
-    startup_sync = AsyncMock()
+    sync_started = asyncio.Event()
+    finish_sync = asyncio.Event()
+
+    async def blocked_sync(*_args, **_kwargs) -> None:
+        sync_started.set()
+        await finish_sync.wait()
+
+    startup_sync = AsyncMock(side_effect=blocked_sync)
     startup_migration = Mock()
 
     async def wait_forever(*_args):
@@ -61,12 +68,75 @@ def test_api_startup_runs_immediate_sync_when_no_active_version(monkeypatch) -> 
 
     async def exercise_lifespan() -> None:
         async with main.lifespan(main.app):
+            try:
+                startup_migration.assert_called_once_with()
+                await asyncio.wait_for(sync_started.wait(), timeout=2)
+                startup_sync.assert_awaited_once()
+                assert startup_sync.await_args.args[0] is main.SessionFactory
+                assert isinstance(startup_sync.await_args.args[1], asyncio.Lock)
+                assert startup_sync.await_args.kwargs == {"trigger": "startup"}
+                assert not finish_sync.is_set()
+            finally:
+                finish_sync.set()
+
+    asyncio.run(asyncio.wait_for(exercise_lifespan(), timeout=4))
+
+
+def test_api_startup_skips_master_data_scheduler_when_disabled(monkeypatch) -> None:
+    import backend.app.main as main
+
+    startup_sync = AsyncMock()
+    startup_migration = Mock()
+
+    monkeypatch.setattr(
+        main,
+        "settings",
+        SimpleNamespace(master_data_scheduler_enabled=False, master_data_nightly_hour_utc=2),
+    )
+    monkeypatch.setattr(main, "run_master_data_sync", startup_sync)
+    monkeypatch.setattr(main, "upgrade_database", startup_migration)
+    monkeypatch.setattr(main.engine, "dispose", lambda: None)
+
+    async def exercise_lifespan() -> None:
+        async with main.lifespan(main.app):
             startup_migration.assert_called_once_with()
-            startup_sync.assert_awaited_once()
-            assert startup_sync.await_args.args[0] is main.SessionFactory
-            assert isinstance(startup_sync.await_args.args[1], asyncio.Lock)
+            startup_sync.assert_not_awaited()
 
     asyncio.run(exercise_lifespan())
+
+
+def test_cty_source_download_logs_start_completion_and_failure(monkeypatch, caplog) -> None:
+    import backend.app.master_data.cty as cty
+
+    response = Mock()
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=False)
+    response.read.return_value = b"feed"
+    monkeypatch.setattr(cty.urllib.request, "urlopen", Mock(return_value=response))
+
+    with caplog.at_level("INFO", logger="contestmaster.master_data.cty"):
+        assert _read_url("https://example.test/feed") == b"feed"
+
+    records = [
+        record for record in caplog.records if record.name == "contestmaster.master_data.cty"
+    ]
+    assert [record.getMessage() for record in records] == [
+        "master_data_source_request_started",
+        "master_data_source_request_finished",
+    ]
+    assert records[0].source_url == "https://example.test/feed"
+    assert records[1].response_bytes == 4
+    assert records[1].duration_ms >= 0
+
+    caplog.clear()
+    monkeypatch.setattr(cty.urllib.request, "urlopen", Mock(side_effect=TimeoutError))
+    with caplog.at_level("INFO", logger="contestmaster.master_data.cty"):
+        with pytest.raises(TimeoutError):
+            _read_url("https://example.test/feed")
+    assert [record.getMessage() for record in caplog.records] == [
+        "master_data_source_request_started",
+        "master_data_source_request_failed",
+    ]
 
 
 def test_master_data_sync_attempts_only_cty(monkeypatch) -> None:

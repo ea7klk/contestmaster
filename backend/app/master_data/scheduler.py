@@ -44,12 +44,21 @@ def has_all_required_versions(session_factory: sessionmaker) -> bool:
         return active_keys == set(REQUIRED_DATASET_KEYS)
 
 
-async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock) -> None:
+async def run_master_data_sync(
+    session_factory: sessionmaker, lock: asyncio.Lock, *, trigger: str = "nightly"
+) -> None:
     if lock.locked():
-        logger.warning("master_data_sync_skipped", extra={"reason": "already_running"})
+        logger.warning(
+            "master_data_sync_skipped",
+            extra={"dataset_key": "cty", "trigger": trigger, "reason": "already_running"},
+        )
         return
     async with lock:
         for dataset_key, importer in (("cty", sync_cty),):
+            logger.info(
+                "master_data_sync_attempt_started",
+                extra={"dataset_key": dataset_key, "trigger": trigger},
+            )
             try:
                 result = await asyncio.to_thread(importer, session_factory)
                 record_master_data_sync(
@@ -58,11 +67,14 @@ async def run_master_data_sync(session_factory: sessionmaker, lock: asyncio.Lock
                 )
                 logger.info(
                     "master_data_sync_observed",
-                    extra={"dataset_key": dataset_key, **result},
+                    extra={"dataset_key": dataset_key, "trigger": trigger, **result},
                 )
             except Exception:
                 record_master_data_sync(dataset_key, "failed")
-                logger.exception("master_data_sync_error", extra={"dataset_key": dataset_key})
+                logger.exception(
+                    "master_data_sync_error",
+                    extra={"dataset_key": dataset_key, "trigger": trigger},
+                )
 
 
 async def nightly_master_data_timer(

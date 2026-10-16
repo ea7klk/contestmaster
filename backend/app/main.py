@@ -60,11 +60,16 @@ MAX_JSON_REQUEST_BYTES = 1024 * 1024
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     timer: asyncio.Task[None] | None = None
+    initial_sync: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
     await asyncio.to_thread(upgrade_database)
     if settings.master_data_scheduler_enabled:
         if not has_all_required_versions(SessionFactory):
-            await run_master_data_sync(SessionFactory, sync_lock)
+            logger.info("initial_master_data_sync_scheduled")
+            initial_sync = asyncio.create_task(
+                run_master_data_sync(SessionFactory, sync_lock, trigger="startup"),
+                name="master-data-initial-sync",
+            )
         timer = asyncio.create_task(
             nightly_master_data_timer(
                 SessionFactory, sync_lock, settings.master_data_nightly_hour_utc
@@ -80,7 +85,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 await timer
             except asyncio.CancelledError:
                 pass
-        engine.dispose()
+        try:
+            if initial_sync is not None:
+                # Let an in-flight importer finish before disposing the shared ORM engine.
+                await initial_sync
+        finally:
+            engine.dispose()
 
 
 app = FastAPI(

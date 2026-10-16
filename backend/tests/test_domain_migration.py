@@ -3,11 +3,18 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 
-from sqlalchemy import inspect, text
+from sqlalchemy import insert, inspect, text
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
-from backend.app.models import BandCatalogItem, Contest, RulesetVersion, SystemRole, SystemUser
+from backend.app.models import (
+    BandCatalogItem,
+    Contest,
+    ContestStatus,
+    RulesetVersion,
+    SystemRole,
+    SystemUser,
+)
 
 
 def _alembic(database_url: str, *arguments: str) -> None:
@@ -257,10 +264,10 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
         )
         session.commit()
     engine.dispose()
-
     _run_python(
         database_url, "from backend.app.migrations import upgrade_database; upgrade_database()"
     )
+    _alembic(database_url, "check")
 
     engine = build_engine(database_url)
     with engine.connect() as connection:
@@ -269,4 +276,101 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
+    engine.dispose()
+
+
+def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'shared-baseline.sqlite3'}"
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    legacy_root = os.path.join(project_root, "backend", "migrations", "legacy")
+    _run_python(
+        database_url,
+        "from alembic import command; from alembic.config import Config; "
+        f"config = Config({os.path.join(project_root, 'alembic.ini')!r}); "
+        f"config.set_main_option('script_location', {legacy_root!r}); "
+        "command.upgrade(config, '0018_remove_unscored_country_data')",
+    )
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        actor = SystemUser(
+            username="shared-baseline-admin",
+            email_normalized="shared-baseline@example.test",
+            display_name="Shared Baseline Admin",
+            role=SystemRole.GLOBAL_ADMINISTRATOR,
+            password_hash="test-hash",
+            is_active=True,
+        )
+        session.add(actor)
+        session.flush()
+        ruleset = RulesetVersion(
+            ruleset_key="shared-baseline-schedule",
+            version="2025",
+            rule_type_keys=["schedule"],
+            configuration={
+                "schema_version": 1,
+                "rules": [
+                    {
+                        "id": "schedule",
+                        "rule": {
+                            "kind": "schedule",
+                            "recurrence": {
+                                "frequency": "nth_weekday",
+                                "month": 6,
+                                "weekday": 5,
+                                "occurrence": 3,
+                            },
+                        },
+                    }
+                ],
+            },
+            created_by_user_id=actor.id,
+        )
+        session.add(ruleset)
+        session.flush()
+        actor_id = actor.id
+        ruleset_id = ruleset.id
+        session.commit()
+
+    # The pre-squash Contest table has no `periodicity` column yet, so use a
+    # Core insert that writes only columns present in both schema versions.
+    with engine.begin() as connection:
+        result = connection.execute(
+            insert(Contest.__table__).values(
+                owner_user_id=actor_id,
+                ruleset_version_id=ruleset_id,
+                name="Shared Baseline Contest",
+                slug="shared-baseline-contest",
+                starts_at=datetime(2025, 6, 21, tzinfo=UTC),
+                ends_at=datetime(2025, 6, 21, 2, tzinfo=UTC),
+                log_submission_cutoff_at=datetime(2025, 6, 28, tzinfo=UTC),
+                status=ContestStatus.DRAFT,
+            )
+        )
+        contest_id = result.inserted_primary_key[0]
+    engine.dispose()
+
+    _run_python(
+        database_url, "from backend.app.migrations import upgrade_database; upgrade_database()"
+    )
+
+    _alembic(database_url, "check")
+    engine = build_engine(database_url)
+    columns = {column["name"] for column in inspect(engine).get_columns("contests")}
+    assert "periodicity" in columns
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "0019_contest_periodicity"
+        )
+    with Session(engine) as session:
+        assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1
+        migrated = session.get(Contest, contest_id)
+        assert migrated is not None
+        assert migrated.name == "Shared Baseline Contest"
+        assert migrated.periodicity == {
+            "frequency": "nth_weekday",
+            "month": 6,
+            "weekday": 5,
+            "occurrence": 3,
+        }
+        assert session.get(RulesetVersion, ruleset_id) is not None
     engine.dispose()

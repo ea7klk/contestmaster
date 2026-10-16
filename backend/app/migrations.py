@@ -1,5 +1,6 @@
 """Run Alembic revisions before the API serves requests."""
 
+import logging
 from pathlib import Path
 
 from alembic import command
@@ -9,10 +10,12 @@ from sqlalchemy import inspect, text
 from backend.app.db import build_engine
 
 _BASELINE_REVISION = "0018_remove_unscored_country_data"
+logger = logging.getLogger("contestmaster.migrations")
 
 
 def upgrade_database() -> None:
     """Apply the baseline and pending revisions before serving API requests."""
+    logger.info("database_upgrade_started")
     project_root = Path(__file__).resolve().parents[2]
     database_engine = build_engine()
     try:
@@ -26,11 +29,25 @@ def upgrade_database() -> None:
                 # One-time compatibility path for installations created before the
                 # migration squash. These revisions are archived and are not part of
                 # the active migration graph for new databases.
+                logger.info(
+                    "legacy_database_upgrade_started",
+                    extra={"current_revision": current_revision},
+                )
                 legacy_config = _config(project_root, legacy=True)
                 command.upgrade(legacy_config, "head")
+                logger.info("legacy_database_upgrade_finished")
+            elif current_revision == _BASELINE_REVISION:
+                # This identifier was also the final revision in the archived graph.
+                # The schemas match; applying active forward revisions upgrades such
+                # databases without replaying the consolidated create-all baseline.
+                logger.info(
+                    "shared_legacy_baseline_detected",
+                    extra={"current_revision": current_revision},
+                )
     finally:
         database_engine.dispose()
     command.upgrade(_config(project_root), "head")
+    logger.info("database_upgrade_finished")
 
 
 def _config(project_root: Path, *, legacy: bool = False) -> Config:
