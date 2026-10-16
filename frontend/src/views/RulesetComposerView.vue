@@ -560,7 +560,7 @@ function catalogErrorMessage(reason: unknown) {
         </p>
         <div class="metadata-grid">
           <label>
-            Ruleset key
+            <span class="metadata-field-label">Ruleset key</span>
             <input
               v-model="rulesetKey"
               maxlength="120"
@@ -574,7 +574,7 @@ function catalogErrorMessage(reason: unknown) {
             </span>
           </label>
           <label>
-            Version
+            <span class="metadata-field-label">Version</span>
             <input
               v-model="version"
               maxlength="80"
@@ -592,7 +592,10 @@ function catalogErrorMessage(reason: unknown) {
             </span>
           </label>
           <label>
-            Published rules URL <span class="optional-label">Optional</span>
+            <span class="metadata-field-label">
+              Published rules URL
+              <span class="optional-label">Optional</span>
+            </span>
             <input
               v-model="sourceUrl"
               type="url"
@@ -606,7 +609,10 @@ function catalogErrorMessage(reason: unknown) {
             </span>
           </label>
           <label>
-            Source edition or year <span class="optional-label">Optional</span>
+            <span class="metadata-field-label">
+              Source edition or year
+              <span class="optional-label">Optional</span>
+            </span>
             <input
               v-model="sourceEdition"
               maxlength="120"
@@ -1024,6 +1030,11 @@ function catalogErrorMessage(reason: unknown) {
   color: var(--color-muted);
   font-size: 0.8rem;
   font-weight: 400;
+}
+.metadata-field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
 }
 .section-help,
 .field-help {

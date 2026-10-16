@@ -126,6 +126,14 @@ const enumOptions = computed(() => primitiveSchema.value.enum ?? [])
 const inputValue = computed(() =>
   props.modelValue == null ? '' : String(props.modelValue),
 )
+const showsLegend = computed(
+  () =>
+    props.depth === 0 ||
+    isObject.value ||
+    isArray.value ||
+    isMap.value ||
+    primitiveSchema.value.const !== undefined,
+)
 
 function initialValue(schema: JsonSchema): unknown {
   if (schema.default !== undefined) return schema.default
@@ -260,7 +268,9 @@ function onEnumInput(event: Event) {
     class="schema-editor"
     :class="{ 'schema-editor-nested': depth > 0 }"
   >
-    <legend v-if="label || effectiveSchema.title">{{ fieldLabel }}</legend>
+    <legend v-if="showsLegend && (label || effectiveSchema.title)">
+      {{ fieldLabel }}
+    </legend>
 
     <template v-if="isObject && !isMap">
       <template

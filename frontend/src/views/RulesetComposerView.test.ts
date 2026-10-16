@@ -41,6 +41,42 @@ afterEach(() => {
 })
 
 describe('RulesetComposerView', () => {
+  it('keeps the Published rules URL optional marker within its aligned label row', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+
+    const urlLabel = wrapper
+      .findAll('.metadata-grid label')
+      .find((label) => label.text().includes('Published rules URL'))
+    expect(urlLabel).toBeDefined()
+    expect(urlLabel!.get('.metadata-field-label').text()).toContain(
+      'Published rules URL',
+    )
+    expect(urlLabel!.get('.metadata-field-label .optional-label').text()).toBe(
+      'Optional',
+    )
+    expect(urlLabel!.get('input[type="url"]')).toBeDefined()
+    expect(urlLabel!.get('.field-help').text()).toContain('official rules page')
+  })
+
   it.each([
     ['/rulesets/bands', 'band'],
     ['/rulesets/modes', 'mode'],

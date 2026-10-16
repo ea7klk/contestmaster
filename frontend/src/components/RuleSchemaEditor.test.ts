@@ -123,4 +123,122 @@ describe('RuleSchemaEditor', () => {
     expect(wrapper.text()).toContain('Do not credit contacts')
     expect(wrapper.text()).toContain('Choose how to handle a contact')
   })
+
+  it('shows each nested scalar and enum field label only once', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        late_policy: {
+          type: 'string',
+          title: 'Late policy',
+          enum: ['reject', 'accept_late'],
+        },
+        duplicate_scopes: {
+          type: 'array',
+          title: 'Scope',
+          items: { type: 'string', enum: ['contest', 'band'], title: 'Scope' },
+        },
+        duplicate_rule: {
+          type: 'object',
+          title: 'Duplicate rule settings',
+          properties: {
+            effect: {
+              type: 'string',
+              title: 'Effect',
+              enum: ['ignore', 'penalty'],
+            },
+            penalty_points: { type: 'integer', title: 'Penalty points' },
+          },
+        },
+        points_rule: {
+          type: 'object',
+          title: 'Points rule settings',
+          properties: {
+            fact: { type: 'string', title: 'Fact', enum: ['fixed', 'lookup'] },
+            fixed_points: { type: 'integer', title: 'Fixed points' },
+            exchange_field: {
+              type: 'string',
+              title: 'Exchange field',
+              enum: ['class', 'section'],
+            },
+            default_points: { type: 'integer', title: 'Default points' },
+          },
+        },
+        score_formula: {
+          type: 'object',
+          title: 'Score formula settings',
+          properties: {
+            variable: { type: 'string', title: 'Variable' },
+            constant: { type: 'integer', title: 'Constant' },
+          },
+        },
+      },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: {
+          late_policy: 'reject',
+          duplicate_scopes: ['contest', 'band'],
+          duplicate_rule: { effect: 'ignore', penalty_points: 0 },
+          points_rule: {
+            fact: 'fixed',
+            fixed_points: 1,
+            exchange_field: 'class',
+            default_points: 0,
+          },
+          score_formula: { variable: 'contacts', constant: 1 },
+        },
+      },
+    })
+
+    for (const fieldName of [
+      'Late policy',
+      'Scope 1',
+      'Scope 2',
+      'Effect',
+      'Penalty points',
+      'Fact',
+      'Fixed points',
+      'Exchange field',
+      'Default points',
+      'Variable',
+      'Constant',
+    ]) {
+      const controlLabels = wrapper
+        .findAll('.schema-control, .schema-boolean')
+        .filter((label) => label.text().trim().startsWith(fieldName))
+      expect(controlLabels, fieldName).toHaveLength(1)
+      expect(
+        wrapper
+          .findAll('.schema-editor-nested > legend')
+          .some((legend) => legend.text().trim() === fieldName),
+      ).toBe(false)
+    }
+  })
+
+  it('keeps a label for fixed-value fields without duplicating it', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', title: 'Rule type', const: 'fixed' },
+      },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { kind: 'fixed' },
+      },
+    })
+
+    expect(
+      wrapper
+        .findAll('.schema-editor-nested > legend')
+        .filter((legend) => legend.text().trim() === 'Rule type'),
+    ).toHaveLength(1)
+    expect(wrapper.findAll('.schema-control')).toHaveLength(0)
+    expect(wrapper.text()).toContain('fixed')
+  })
 })
