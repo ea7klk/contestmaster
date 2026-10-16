@@ -175,154 +175,163 @@ function updateNegated(condition: Record<string, unknown>) {
       condition narrows when a rule applies; it does not define a new exchange
       field or create a scoring rule.
     </p>
-    <label>
-      Condition structure
-      <select
-        :value="kind"
-        @change="
-          setKind(($event.target as HTMLSelectElement).value as ConditionKind)
-        "
-      >
-        <option value="compare">Compare a value</option>
-        <option value="all">All conditions</option>
-        <option value="any">Any condition</option>
-        <option value="not">Not a condition</option>
-      </select>
-    </label>
-
-    <template v-if="kind === 'compare'">
-      <label>
-        Fact path
-        <input
-          :value="modelValue.fact"
-          :list="factsListId"
-          maxlength="160"
-          placeholder="qso.band"
-          @input="update({ fact: ($event.target as HTMLInputElement).value })"
-        />
-        <small>Examples: <code>qso.band</code>, <code>qso.entity</code>.</small>
-      </label>
-      <datalist :id="factsListId">
-        <option value="qso.band" />
-        <option value="qso.mode" />
-        <option value="qso.continent" />
-        <option value="qso.entity" />
-        <option value="qso.cq_zone" />
-        <option value="qso.itu_zone" />
-        <option value="entry.categories.operator" />
-        <option value="entry.declarations.license_class" />
-        <option value="entry.declarations.membership" />
-        <option value="station.callsign" />
-      </datalist>
-      <label>
-        Comparison
+    <div class="condition-controls-grid">
+      <label class="condition-structure-control">
+        Condition structure
         <select
-          :value="modelValue.operator"
-          @change="updateOperator(($event.target as HTMLSelectElement).value)"
+          :value="kind"
+          @change="
+            setKind(($event.target as HTMLSelectElement).value as ConditionKind)
+          "
         >
-          <option
-            v-for="operator in compareOperators"
-            :key="operator"
-            :value="operator"
-          >
-            {{ operatorLabels[operator] }} ({{ operator }})
-          </option>
+          <option value="compare">Compare a value</option>
+          <option value="all">All conditions</option>
+          <option value="any">Any condition</option>
+          <option value="not">Not a condition</option>
         </select>
       </label>
-      <template v-if="modelValue.operator !== 'exists'">
-        <label>
-          Value type
-          <select
-            :value="valueKind"
-            @change="
-              updateValueKind(($event.target as HTMLSelectElement).value)
-            "
+
+      <template v-if="kind === 'compare'">
+        <label class="condition-fact-control">
+          Fact path
+          <input
+            :value="modelValue.fact"
+            :list="factsListId"
+            maxlength="160"
+            placeholder="qso.band"
+            @input="update({ fact: ($event.target as HTMLInputElement).value })"
+          />
+          <small
+            >Examples: <code>qso.band</code>, <code>qso.entity</code>.</small
           >
-            <option value="text">Text</option>
-            <option value="integer">Integer</option>
-            <option value="boolean">Boolean</option>
-            <option value="list">Text list</option>
+        </label>
+        <datalist :id="factsListId">
+          <option value="qso.band" />
+          <option value="qso.mode" />
+          <option value="qso.continent" />
+          <option value="qso.entity" />
+          <option value="qso.cq_zone" />
+          <option value="qso.itu_zone" />
+          <option value="entry.categories.operator" />
+          <option value="entry.declarations.license_class" />
+          <option value="entry.declarations.membership" />
+          <option value="station.callsign" />
+        </datalist>
+        <label class="condition-comparison-control">
+          Comparison
+          <select
+            :value="modelValue.operator"
+            @change="updateOperator(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="operator in compareOperators"
+              :key="operator"
+              :value="operator"
+            >
+              {{ operatorLabels[operator] }} ({{ operator }})
+            </option>
           </select>
         </label>
-        <label v-if="valueKind === 'boolean'" class="check-control">
-          <input
-            type="checkbox"
-            :checked="Boolean(modelValue.value)"
-            @change="
-              update({ value: ($event.target as HTMLInputElement).checked })
-            "
-          />
-          Value is true
-        </label>
-        <label v-else>
-          {{
-            valueKind === 'list' ? 'Comma-separated values' : 'Compare value'
-          }}
-          <input
-            :type="valueKind === 'integer' ? 'number' : 'text'"
-            :step="valueKind === 'integer' ? 1 : undefined"
-            :value="valueKind === 'list' ? listValue : modelValue.value"
-            @input="
-              valueKind === 'list' ? onListInput($event) : onValueInput($event)
-            "
-          />
-          <small v-if="valueKind === 'list'">
-            Separate values with commas. The “Is one of” and “Is not one of”
-            comparisons use this list.
-          </small>
-          <small v-if="modelValue.operator === 'matches'">
-            Enter the pattern the fact must match. Validation checks that the
-            pattern is supported before the ruleset can be saved.
-          </small>
-        </label>
+        <template v-if="modelValue.operator !== 'exists'">
+          <label class="condition-value-type-control">
+            Value type
+            <select
+              :value="valueKind"
+              @change="
+                updateValueKind(($event.target as HTMLSelectElement).value)
+              "
+            >
+              <option value="text">Text</option>
+              <option value="integer">Integer</option>
+              <option value="boolean">Boolean</option>
+              <option value="list">Text list</option>
+            </select>
+          </label>
+          <label
+            v-if="valueKind === 'boolean'"
+            class="check-control condition-boolean-control"
+          >
+            <input
+              type="checkbox"
+              :checked="Boolean(modelValue.value)"
+              @change="
+                update({ value: ($event.target as HTMLInputElement).checked })
+              "
+            />
+            Value is true
+          </label>
+          <label v-else class="condition-value-control">
+            {{
+              valueKind === 'list' ? 'Comma-separated values' : 'Compare value'
+            }}
+            <input
+              :type="valueKind === 'integer' ? 'number' : 'text'"
+              :step="valueKind === 'integer' ? 1 : undefined"
+              :value="valueKind === 'list' ? listValue : modelValue.value"
+              @input="
+                valueKind === 'list'
+                  ? onListInput($event)
+                  : onValueInput($event)
+              "
+            />
+            <small v-if="valueKind === 'list'">
+              Separate values with commas. The “Is one of” and “Is not one of”
+              comparisons use this list.
+            </small>
+            <small v-if="modelValue.operator === 'matches'">
+              Enter the pattern the fact must match. Validation checks that the
+              pattern is supported before the ruleset can be saved.
+            </small>
+          </label>
+        </template>
+        <p v-if="modelValue.operator === 'exists'" class="condition-help">
+          “Is present” checks whether the fact has a value; it does not compare
+          against another value.
+        </p>
       </template>
-      <p v-if="modelValue.operator === 'exists'" class="condition-help">
-        “Is present” checks whether the fact has a value; it does not compare
-        against another value.
-      </p>
-    </template>
 
-    <div v-else-if="kind === 'not'" class="condition-child">
-      <p class="condition-help">
-        This condition is true only when its nested condition is false.
-      </p>
-      <ConditionEditor
-        :model-value="negatedCondition"
-        :depth="depth + 1"
-        @update:model-value="updateNegated"
-      />
-    </div>
-
-    <div v-else class="condition-group">
-      <p>
-        {{
-          kind === 'all'
-            ? 'Every condition below must match for this group to be true. Use this to combine limits.'
-            : 'At least one condition below must match for this group to be true. Use this when any listed alternative is allowed.'
-        }}
-      </p>
-      <div
-        v-for="(condition, index) in childConditions"
-        :key="index"
-        class="condition-child"
-      >
+      <div v-else-if="kind === 'not'" class="condition-child">
+        <p class="condition-help">
+          This condition is true only when its nested condition is false.
+        </p>
         <ConditionEditor
-          :model-value="condition"
+          :model-value="negatedCondition"
           :depth="depth + 1"
-          @update:model-value="updateCondition(index, $event)"
+          @update:model-value="updateNegated"
         />
-        <button
-          v-if="childConditions.length > 1"
-          type="button"
-          class="quiet-button"
-          @click="removeCondition(index)"
+      </div>
+
+      <div v-else class="condition-group">
+        <p>
+          {{
+            kind === 'all'
+              ? 'Every condition below must match for this group to be true. Use this to combine limits.'
+              : 'At least one condition below must match for this group to be true. Use this when any listed alternative is allowed.'
+          }}
+        </p>
+        <div
+          v-for="(condition, index) in childConditions"
+          :key="index"
+          class="condition-child"
         >
-          Remove condition
+          <ConditionEditor
+            :model-value="condition"
+            :depth="depth + 1"
+            @update:model-value="updateCondition(index, $event)"
+          />
+          <button
+            v-if="childConditions.length > 1"
+            type="button"
+            class="quiet-button"
+            @click="removeCondition(index)"
+          >
+            Remove condition
+          </button>
+        </div>
+        <button type="button" class="secondary-button" @click="addCondition">
+          Add condition
         </button>
       </div>
-      <button type="button" class="secondary-button" @click="addCondition">
-        Add condition
-      </button>
     </div>
   </fieldset>
 </template>
@@ -330,7 +339,6 @@ function updateNegated(condition: Record<string, unknown>) {
 <style scoped>
 .condition-editor {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 0.7rem;
   min-width: 0;
   margin: 0;
@@ -338,6 +346,13 @@ function updateNegated(condition: Record<string, unknown>) {
   border: 1px solid var(--color-border);
   border-radius: 0.6rem;
   background: var(--color-surface-muted);
+}
+.condition-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.7rem;
+  min-width: 0;
 }
 legend {
   grid-column: 1 / -1;
@@ -357,7 +372,7 @@ label {
   display: grid;
   min-width: 0;
   gap: 0.35rem;
-  max-width: 40rem;
+  max-width: none;
   color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
@@ -389,6 +404,10 @@ input[type='checkbox'] {
 .check-control {
   display: flex;
   align-items: center;
+}
+.condition-value-control,
+.condition-boolean-control {
+  grid-column: span 2;
 }
 .condition-group > p {
   grid-column: 1 / -1;
@@ -423,5 +442,25 @@ input[type='checkbox'] {
   margin-top: 0.5rem;
   color: var(--color-muted);
   font-size: 0.85rem;
+}
+@media (max-width: 52rem) {
+  .condition-controls-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .condition-value-control,
+  .condition-boolean-control {
+    grid-column: span 2;
+  }
+}
+@media (max-width: 36rem) {
+  .condition-controls-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .condition-value-control,
+  .condition-boolean-control,
+  .condition-group,
+  .condition-child {
+    grid-column: 1;
+  }
 }
 </style>

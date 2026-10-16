@@ -40,6 +40,26 @@ describe('ConditionEditor', () => {
     })
   })
 
+  it('groups condition selectors and comparison fields in one responsive layout', () => {
+    const wrapper = mount(ConditionEditor, {
+      props: {
+        modelValue: {
+          kind: 'compare',
+          fact: 'qso.band',
+          operator: 'eq',
+          value: '20m',
+        },
+      },
+    })
+
+    const controls = wrapper.get('.condition-controls-grid')
+    expect(controls.find('.condition-structure-control').exists()).toBe(true)
+    expect(controls.find('.condition-fact-control').exists()).toBe(true)
+    expect(controls.find('.condition-comparison-control').exists()).toBe(true)
+    expect(controls.find('.condition-value-type-control').exists()).toBe(true)
+    expect(controls.find('.condition-value-control').exists()).toBe(true)
+  })
+
   it('explains combined and negated conditions', async () => {
     const wrapper = mount(ConditionEditor, {
       props: {

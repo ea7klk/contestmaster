@@ -89,6 +89,33 @@ describe('RuleSchemaEditor', () => {
     expect(updates.at(-1)?.[0]).toEqual({ value: 42 })
   })
 
+  it('keeps each parameter key control grouped with its value editor', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      patternProperties: {
+        '^[a-z][a-z0-9_.-]*$': { type: 'string' },
+      },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { mode: 'automatic' },
+        path: 'workflow-parameters',
+      },
+    })
+
+    const row = wrapper.get('.schema-map-row')
+    expect(row.find('.schema-map-key label').text()).toBe('Key')
+    expect(
+      (row.find('.schema-map-key input').element as HTMLInputElement).value,
+    ).toBe('mode')
+    expect(row.find('.schema-map-value .schema-control').text()).toContain(
+      'Value for mode',
+    )
+    expect(row.findAll('input')).toHaveLength(2)
+  })
+
   it('keeps generated fields within consistent nested field groups', () => {
     const schema: JsonSchema = {
       type: 'object',

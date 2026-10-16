@@ -381,22 +381,28 @@ function onEnumInput(event: Event) {
         :key="key"
         class="schema-map-row"
       >
-        <label :for="`${path}-${index}-key`">Key</label>
-        <input
-          :id="`${path}-${index}-key`"
-          :value="key"
-          autocomplete="off"
-          @change="renameMapKey(key, ($event.target as HTMLInputElement).value)"
-        />
-        <RuleSchemaEditor
-          :schema="mapValueSchema"
-          :root-schema="rootSchema"
-          :model-value="value"
-          :label="`Value for ${key}`"
-          :path="`${path}-${key}`"
-          :depth="depth + 1"
-          @update:model-value="updateMapValue(key, $event)"
-        />
+        <div class="schema-map-key">
+          <label :for="`${path}-${index}-key`">Key</label>
+          <input
+            :id="`${path}-${index}-key`"
+            :value="key"
+            autocomplete="off"
+            @change="
+              renameMapKey(key, ($event.target as HTMLInputElement).value)
+            "
+          />
+        </div>
+        <div class="schema-map-value">
+          <RuleSchemaEditor
+            :schema="mapValueSchema"
+            :root-schema="rootSchema"
+            :model-value="value"
+            :label="`Value for ${key}`"
+            :path="`${path}-${key}`"
+            :depth="depth + 1"
+            @update:model-value="updateMapValue(key, $event)"
+          />
+        </div>
         <button type="button" class="quiet-button" @click="removeProperty(key)">
           Remove {{ key }}
         </button>
@@ -560,12 +566,22 @@ textarea {
   margin: 0.6rem 0;
 }
 .schema-map-row {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) max-content;
+  align-items: end;
 }
-.schema-map-row > label {
+.schema-map-key {
   display: grid;
-  gap: 0.3rem;
+  min-width: 0;
+  gap: 0.35rem;
+}
+.schema-map-key label {
   color: var(--color-brand-900);
+}
+.schema-map-value {
+  min-width: 0;
+}
+.schema-map-row > .quiet-button {
+  justify-self: start;
 }
 .fixed-value {
   margin: 0.3rem 0;
@@ -603,6 +619,9 @@ textarea {
   }
   .schema-map-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .schema-map-row > .quiet-button {
+    justify-self: start;
   }
 }
 </style>

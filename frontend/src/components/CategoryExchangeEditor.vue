@@ -649,7 +649,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 }
 .controlled-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: end;
   min-width: 0;
   gap: 0.65rem;
   padding: 0.8rem;
@@ -662,6 +663,16 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   display: grid;
   min-width: 0;
   gap: 0.3rem;
+}
+.controlled-row > label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.45rem;
+}
+.controlled-row > .quiet-button {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 .controlled-row input:not([type='checkbox']),
 .controlled-row select {
@@ -687,13 +698,13 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 }
 .controlled-choice {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
   gap: 0.5rem;
   margin: 0.5rem 0;
 }
 .controlled-choice > button {
-  align-self: end;
+  justify-self: end;
 }
 .controlled-choice label:has(input[type='checkbox']) {
   align-self: center;
@@ -715,6 +726,9 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   .controlled-row,
   .controlled-choice {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .controlled-choice > button {
+    justify-self: start;
   }
 }
 </style>
