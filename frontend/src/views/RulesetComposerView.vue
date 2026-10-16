@@ -230,7 +230,7 @@ const helpText: Record<string, string> = {
   score_formula:
     'Start with an integer variable or constant, then apply steps from top to bottom. Addition, subtraction, and multiplication keep integer values. Division requires an explicit integer operation and rounding rule. Example: 120 points × 8 multipliers + 10 bonus − 5 penalty = 965.',
   format_mapping:
-    'This adapter maps a supported import/export format into canonical QSO fields and category values. Unknown input fields can be preserved for later review. The mapping describes configuration; parser support is limited to formats implemented by the application.',
+    'Each format mapping enables one supported log-file format for this contest. Add separate mappings when the sponsor accepts more than one format. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native are descriptive options only. Unknown input fields can be preserved for review.',
 }
 
 function buildDraft(): RulesetDraft {

@@ -36,6 +36,7 @@ describe('LogSubmissionView', () => {
                 name: 'Winter Sprint',
                 slug: 'winter-sprint',
                 cutoff_at: '2026-12-01T00:00:00Z',
+                accepted_formats: ['adif', 'cabrillo'],
               },
             ],
           }),
@@ -71,6 +72,10 @@ describe('LogSubmissionView', () => {
     const wrapper = mount(LogSubmissionView)
     await flushPromises()
     await wrapper.get('#upload-contest').setValue('winter-sprint')
+    expect(wrapper.get('label[for="log-file"]').text()).toBe(
+      'Cabrillo or ADI/ADIF file',
+    )
+    expect(wrapper.get('#log-file').attributes('accept')).toContain('.adi')
     const input = wrapper.get<HTMLInputElement>('#log-file')
     const file = new File(['START-OF-LOG'], 'entry.log', { type: 'text/plain' })
     Object.defineProperty(input.element, 'files', {

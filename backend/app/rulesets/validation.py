@@ -113,10 +113,20 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
                 "message": "A ruleset may define only one submission rule.",
             }
         )
-    for singleton in ("categories", "format_mapping"):
+    for singleton in ("categories",):
         if kinds.count(singleton) != 1:
             errors.append(
                 {"path": "rules", "message": f"A ruleset must define exactly one {singleton} rule."}
+            )
+    if kinds.count("format_mapping") == 0:
+        errors.append(
+            {"path": "rules", "message": "A ruleset must define at least one format_mapping rule."}
+        )
+    else:
+        formats = [rule.format for rule in rules if rule.kind == "format_mapping"]
+        if len(formats) != len(set(formats)):
+            errors.append(
+                {"path": "rules", "message": "A ruleset may define each import format only once."}
             )
     for index, configured in enumerate(definition.rules):
         if (

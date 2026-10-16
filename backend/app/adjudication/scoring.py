@@ -225,7 +225,7 @@ def _entry_declarations(definition: RulesetDefinition, revision: EntryRevision) 
             configured.rule
             for configured in definition.rules
             if isinstance(configured.rule, FormatMappingRule)
-            and configured.rule.format == "cabrillo"
+            and configured.rule.format == revision.input_format
         ),
         None,
     )
@@ -249,6 +249,9 @@ def _exchange_values(
 ) -> dict[str, Any]:
     """Map Cabrillo's raw exchange tokens onto configured semantic field names."""
     result: dict[str, Any] = {}
+    direct_values = stored.get("values")
+    if isinstance(direct_values, dict):
+        result.update(direct_values)
     raw = stored.get("raw")
     if exchange_rule is not None and isinstance(raw, str):
         fields = [field for field in exchange_rule.fields if field.direction in {direction, "both"}]
@@ -258,9 +261,9 @@ def _exchange_values(
         if len(tokens) == len(fields):
             for field, token in zip(fields, tokens, strict=True):
                 if field.value_type in {"integer", "serial"} and token.isdecimal():
-                    result[field.key] = int(token)
+                    result.setdefault(field.key, int(token))
                 else:
-                    result[field.key] = token.strip().upper()
+                    result.setdefault(field.key, token.strip().upper())
         else:
             # Preserve unmapped data so validation can report/review it; never guess
             # which token belongs to which configured field.
@@ -270,7 +273,7 @@ def _exchange_values(
     if stored.get("rst") is not None:
         result["rst"] = stored["rst"]
     for key, value in stored.items():
-        if key not in {"raw", "rst"}:
+        if key not in {"raw", "rst", "values"}:
             result.setdefault(key, value)
     return result
 

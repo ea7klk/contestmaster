@@ -23,6 +23,8 @@ The examples use a simple integer score formula as a valid baseline. They contai
 | SSB | CQ WW DX Contest (SSB) | [cq-ww-ssb.json](cq-ww-ssb.json) |
 | SSB | ARRL November Sweepstakes (Phone) | [arrl-november-sweepstakes-phone.json](arrl-november-sweepstakes-phone.json) |
 
+The ARI FT8 Activity and VHF-UHF FT8 Activity drafts enable ADI/ADIF because their published rules require ADIF submissions. The RSGB FT4 International Activity Day draft enables both ADI/ADIF and Cabrillo, matching its published alternatives. Other draft format choices are starters and must be checked against the linked contest edition before use.
+
 ## Validate all drafts against the current backend schema
 
 Run this from the repository root:

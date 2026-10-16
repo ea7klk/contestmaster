@@ -111,6 +111,8 @@ None. All current Phase 0 decisions have been recorded.
 6. Build Vue upload UI with progress, success/error summaries, retry behavior, and accessible status announcements.
 7. Support guest correction/resubmission and add/edit/remove contact workflows using a receipt token scoped to one entry. Registered participants may use verified email magic links to manage their associated entries. Managers control guest token expiry and can close, revoke, or rotate access. Keep each accepted change as a new input revision; preserve prior submissions and score-run inputs for audit and reproducibility.
 
+**Follow-up to the completed phase:** implement text ADI/ADIF upload for digital contests that require it, and allow multiple distinct format mappings when contest sponsors accept alternatives. Track this extension in [issue #135](https://github.com/ea7klk/contestmaster/issues/135) and its child issues. Do not treat ADIF support as implied by a ruleset format enum; each contest must explicitly enable the parser it accepts.
+
 **Exit criteria:** an unregistered entrant can submit a valid supported log and use only the associated entry's receipt token; a registered participant can use an expiring email magic link limited to their entries; managers can end guest access; malformed logs return useful line-level feedback and are not partially accepted; repeated idempotent submissions do not create duplicate entries; uploaded content cannot inject executable UI content.
 
 ### Phase 7 — Adjudication, cross-log checking, and scoring
@@ -135,7 +137,7 @@ None. All current Phase 0 decisions have been recorded.
 2. Implement public unauthenticated contest discovery and result/standings pages with category, band, mode, status, and other configured grouping filters.
 3. Apply publication rules to late logs, checklogs, withdrawn, reclassified, and disqualified entries; avoid exposing private contact data or internal review notes.
 4. Add paginated/filterable API endpoints and matching responsive Vue tables. Include score explanations and clear status labels for data that is public.
-5. Implement reproducible `results-v1` JSON/CSV exports and authenticated/receipt-scoped downloads of exact original Cabrillo revisions. The initial release does not assume contest-sponsor-specific result formats; add those only when selected contests define a concrete need.
+5. Implement reproducible `results-v1` JSON/CSV exports and authenticated/receipt-scoped downloads of exact original supported-format revisions. The initial release does not assume contest-sponsor-specific result formats; add those only when selected contests define a concrete need.
 6. Implement a shared Vue application footer on every route. List each external licensed dataset used by the application and link directly to its license or use terms; keep this inventory synchronized with enabled master-data sources.
 
 **Exit criteria:** a published contest result is readable without login; private/unpublished contest data is not exposed; manager-only result operations are protected; displayed totals match the persisted score run and exports; every frontend page includes the dataset attribution footer and working license/terms links.
@@ -162,7 +164,7 @@ None. All current Phase 0 decisions have been recorded.
 1. A global administrator provisions a contest manager account.
 2. The contest manager creates a contest with UTC start/end/cutoff times, categories, a versioned ruleset, and the automatic recalculation setting.
 3. The rules composer validates the configuration, displays a readable summary, and activates the contest/ruleset version.
-4. An unauthenticated entrant uploads a Cabrillo log. The system creates participant/entry records without a user account and returns import feedback.
+4. An unauthenticated entrant uploads a Cabrillo or contest-enabled ADI/ADIF log. The system creates participant/entry records without a user account and returns import feedback.
 5. The backend validates and adjudicates the QSOs, applies duplicate and cross-log rules, and creates an integer-only explainable score run tied to the exact input/rules/master-data versions.
 6. The per-contest recalculation setting is honored. The manager can review decisions, generate a result list, and publish it.
 7. An unauthenticated visitor can view the published standings and allowed score breakdowns; private log content and internal notes remain hidden.

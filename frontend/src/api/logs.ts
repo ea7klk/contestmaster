@@ -6,6 +6,7 @@ export interface SubmitContest {
   name: string
   slug: string
   cutoff_at: string
+  accepted_formats: Array<'cabrillo' | 'adif'>
 }
 
 export interface ImportMessage {

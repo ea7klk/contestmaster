@@ -267,7 +267,7 @@ onMounted(() => {
         {{
           downloading
             ? 'Preparing download…'
-            : 'Download original Cabrillo log (source v1)'
+            : 'Download original submitted log (source v1)'
         }}
       </button>
       <KeyboardScrollRegion
@@ -379,13 +379,16 @@ onMounted(() => {
 
       <form class="stacked-form" @submit.prevent="resubmit">
         <h2>Replace log file</h2>
-        <label for="revision-file">Corrected Cabrillo file</label>
+        <label for="revision-file">Corrected log file (Cabrillo or ADI/ADIF)</label>
         <input
           id="revision-file"
           type="file"
-          accept=".log,.cbr,.cabrillo,.txt"
+          accept=".log,.cbr,.cabrillo,.txt,.adi,.adif"
           @change="chooseFile"
         />
+        <p class="field-hint">
+          Use a format enabled by this contest's ruleset. UTF-8 text, up to 5 MiB.
+        </p>
         <div
           v-if="saving && file"
           class="upload-progress"

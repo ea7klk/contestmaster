@@ -20,7 +20,7 @@ Operational and user guides: [operators](operations/README.md), [participants](p
 ### Log handling
 
 - Add, edit, and remove contacts through the application.
-- Upload logs through the participant interface and import or export them through format adapters, starting with Cabrillo where appropriate.
+- Upload logs through the participant interface and import or export them through contest-enabled Cabrillo and ADI/ADIF format adapters.
 - Report malformed rows and rule violations with source-line feedback and without partially accepting an invalid log. Preserve the exact submitted source, unknown headers, and unmapped fields.
 - Make upload retries idempotent per contest and content. Bound request and file sizes, sanitize filenames, and apply rate limits. Return an entry-scoped receipt token and store only its digest.
 - Detect likely duplicate contacts and show how each contact was credited during scoring.
@@ -99,7 +99,7 @@ flowchart LR
     Store -->|catalog and rule versions| OperatingCatalog[band_catalog_items, mode_catalog_items, ruleset_versions]
     API -->|account-free log upload| Adapters[Import and export adapters]
     Adapters -->|accepted new log| Domain
-    Adapters --> Formats[Cabrillo and other log formats]
+    Adapters --> Formats[Cabrillo, ADI/ADIF and other log formats]
     Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[CTY cty.dat import job]
     StackCLI[Stack CLI] -->|starts| API
     MasterCLI[Master-data CLI] -->|one-shot sync| MasterImport
@@ -133,7 +133,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo or ADI/ADIF input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
 
 The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots.
 

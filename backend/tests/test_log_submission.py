@@ -1,4 +1,6 @@
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +19,7 @@ from backend.app.models import (
     LogSubmissionRequest,
     ParticipantEmail,
     Qso,
+    RulesetVersion,
     Station,
     SystemRole,
     SystemUser,
@@ -31,6 +34,13 @@ X-EXTRA: kept for audit
 QSO: 14025 CW 2026-10-15 1234 EA7KLK 599 001 F4ABC 599 002
 END-OF-LOG
 """
+
+ADIF_LOG = (
+    "<ADIF_VER:5>3.1.8<PROGRAMID:6>WSJT-X<STATION_CALLSIGN:6>EA7KLK<EOH>\n"
+    "<QSO_DATE:8>20261015<TIME_ON:4>1234<BAND:2>2m<FREQ:7>144.174"
+    "<MODE:4>MFSK<SUBMODE:3>FT8<CALL:5>F4ABC<GRIDSQUARE:4>JN18"
+    "<MY_GRIDSQUARE:4>IM87<RST_SENT:3>-10<RST_RCVD:3>-12<EOR>\n"
+)
 
 
 @pytest.fixture
@@ -92,6 +102,44 @@ def submit(
     )
 
 
+def enable_digital_ruleset(factory, *, formats=("adif",)):
+    configuration = json.loads(
+        (
+            Path(__file__).parents[2] / "documentation/ruleset-drafts/vhf-uhf-ft8-activity.json"
+        ).read_text()
+    )
+    mappings = [
+        {
+            "id": f"format-mapping-{format_name}",
+            "rule": {
+                "kind": "format_mapping",
+                "format": format_name,
+                "preserve_unknown_fields": True,
+            },
+        }
+        for format_name in formats
+    ]
+    configuration["rules"] = [
+        item for item in configuration["rules"] if item["rule"]["kind"] != "format_mapping"
+    ] + mappings
+    with factory.begin() as session:
+        contest = session.scalar(select(Contest).where(Contest.slug == "guest-sprint"))
+        ruleset = RulesetVersion(
+            ruleset_key=configuration["ruleset_key"],
+            version=configuration["version"],
+            source_url=configuration.get("source_url"),
+            source_edition=configuration.get("source_edition"),
+            rule_type_keys=sorted({item["rule"]["kind"] for item in configuration["rules"]}),
+            configuration=configuration,
+        )
+        session.add(ruleset)
+        session.flush()
+        contest.ruleset_version_id = ruleset.id
+        from backend.app.logs.api import _contest_upload_formats
+
+        assert _contest_upload_formats(session, contest) == sorted(formats)
+
+
 def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
     client = TestClient(app)
     response = submit(client)
@@ -132,6 +180,59 @@ def test_guest_upload_accepts_versioned_cabrillo_v2_and_v3(log_database, version
         revision = session.scalar(select(EntryRevision))
         assert revision is not None
         assert revision.original_content == versioned_log
+
+
+def test_guest_upload_accepts_ruleset_enabled_adif_and_preserves_format(log_database):
+    enable_digital_ruleset(log_database, formats=("adif", "cabrillo"))
+    client = TestClient(app)
+
+    listed = client.get("/api/v1/public/submittable-contests").json()["items"][0]
+    assert listed["accepted_formats"] == ["adif", "cabrillo"]
+    response = submit(client, ADIF_LOG, key="adif-entry-key-1", filename="ea7klk.adi")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["summary"]["accepted_qsos"] == 1
+    with log_database() as session:
+        revision = session.scalar(select(EntryRevision))
+        qso = session.scalar(select(Qso))
+        assert revision is not None and revision.input_format == "adif"
+        assert revision.original_content == ADIF_LOG
+        assert qso is not None and qso.mode == "FT8" and qso.band == "2m"
+        assert qso.exchange_received_submitted["values"]["grid"] == "JN18"
+
+
+def test_guest_upload_rejects_format_not_enabled_by_contest_ruleset(log_database):
+    enable_digital_ruleset(log_database, formats=("adif",))
+
+    response = submit(TestClient(app), LOG, key="disabled-format-test", filename="entry.log")
+
+    assert response.status_code == 415
+    with log_database() as session:
+        assert session.query(Entry).count() == 0
+
+
+def test_entry_log_resubmission_accepts_adif_for_enabled_format(log_database):
+    enable_digital_ruleset(log_database, formats=("adif",))
+    client = TestClient(app)
+    created = submit(client, ADIF_LOG, key="adif-entry-key-2", filename="ea7klk.adif")
+    assert created.status_code == 201, created.text
+    corrected = ADIF_LOG.replace("F4ABC", "F5ABC")
+
+    response = client.put(
+        f"/api/v1/public/entries/{created.json()['entry_id']}/log",
+        headers={
+            "Idempotency-Key": "adif-resubmit-key-1",
+            "X-Entry-Receipt": created.json()["receipt_token"],
+        },
+        files={"file": ("corrected.adif", corrected.encode(), "text/plain")},
+    )
+
+    assert response.status_code == 200, response.text
+    with log_database() as session:
+        revisions = list(
+            session.scalars(select(EntryRevision).order_by(EntryRevision.revision_number))
+        )
+        assert [revision.input_format for revision in revisions] == ["adif", "adif"]
 
 
 def test_idempotent_retry_reuses_entry_and_conflicting_body_is_rejected(log_database):

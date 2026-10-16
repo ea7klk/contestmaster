@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
@@ -13,6 +13,13 @@ import {
 
 const contests = ref<SubmitContest[]>([])
 const contestSlug = ref('')
+const selectedContest = computed(() => contests.value.find((item) => item.slug === contestSlug.value))
+const acceptedFormats = computed(() => selectedContest.value?.accepted_formats ?? ['cabrillo'])
+const fileLabel = computed(() => {
+  const formats = acceptedFormats.value
+  if (formats.includes('adif') && formats.includes('cabrillo')) return 'Cabrillo or ADI/ADIF file'
+  return formats.includes('adif') ? 'ADI/ADIF file' : 'Cabrillo file'
+})
 const file = ref<File | null>(null)
 const loading = ref(true)
 const uploading = ref(false)
@@ -105,7 +112,7 @@ onMounted(loadContests)
     <p class="eyebrow">Contest entry</p>
     <h1 id="upload-title">Submit a log</h1>
     <p>
-      Choose an open contest and upload a Cabrillo log. You do not need a system
+      Choose an open contest and upload a log in one of its accepted formats. You do not need a system
       account.
     </p>
 
@@ -135,18 +142,20 @@ onMounted(loadContests)
         </option>
       </select>
 
-      <label for="log-file">Cabrillo file</label>
+      <label for="log-file">{{ fileLabel }}</label>
       <input
         id="log-file"
         type="file"
-        accept=".log,.cbr,.cabrillo,.txt,text/plain"
+        accept=".log,.cbr,.cabrillo,.txt,.adi,.adif,text/plain"
         required
         :disabled="uploading"
         @change="chooseFile"
       />
       <p class="field-hint">
-        UTF-8 text, up to 5 MiB. Include CALLSIGN, CONTEST, EMAIL (optional),
-        and QSO records.
+        UTF-8 text, up to 5 MiB. Accepted formats for this contest:
+        {{ acceptedFormats.map((format) => format.toUpperCase()).join(' and ') }}.
+        ADIF records need UTC date/time, callsign, mode, band or frequency, and
+        the exchange required by the contest.
       </p>
 
       <div

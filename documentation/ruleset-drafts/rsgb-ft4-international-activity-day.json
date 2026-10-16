@@ -146,6 +146,14 @@
       }
     },
     {
+      "id": "format-mapping-adif",
+      "rule": {
+        "kind": "format_mapping",
+        "format": "adif",
+        "preserve_unknown_fields": true
+      }
+    },
+    {
       "id": "multiplier-1",
       "rule": {
         "kind": "multiplier",

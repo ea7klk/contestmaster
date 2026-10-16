@@ -21,6 +21,7 @@ from backend.app.api.auth import normalize_email
 from backend.app.api.participant_identity import ParticipantPrincipal, require_participant
 from backend.app.config import get_settings
 from backend.app.db import get_session
+from backend.app.logs.adif import parse_adif
 from backend.app.logs.cabrillo import ImportMessage, ParsedLog, map_categories, parse_cabrillo
 from backend.app.logs.service import (
     IdempotencyConflict,
@@ -48,7 +49,14 @@ from backend.app.rulesets.schema import SubmissionRule
 router = APIRouter(tags=["log submissions"])
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 64 * 1024
-ALLOWED_SUFFIXES = {".log", ".cbr", ".cabrillo", ".txt"}
+FORMAT_SUFFIXES = {
+    ".log": "cabrillo",
+    ".cbr": "cabrillo",
+    ".cabrillo": "cabrillo",
+    ".txt": "cabrillo",
+    ".adi": "adif",
+    ".adif": "adif",
+}
 _IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 RATE_LIMIT_COUNT = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
@@ -89,17 +97,37 @@ def list_submittable_contests(
             .order_by(Contest.starts_at.desc(), Contest.id.asc())
         )
     )
-    return {
-        "items": [
-            {
-                "id": row.id,
-                "name": row.name,
-                "slug": row.slug,
-                "cutoff_at": row.log_submission_cutoff_at,
-            }
-            for row in contests
-        ]
-    }
+    items = []
+    for row in contests:
+        accepted_formats = _contest_upload_formats(session, row)
+        if accepted_formats:
+            items.append(
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "slug": row.slug,
+                    "cutoff_at": row.log_submission_cutoff_at,
+                    "accepted_formats": accepted_formats,
+                }
+            )
+    return {"items": items}
+
+
+def _contest_upload_formats(session: Session, contest: Contest) -> list[str]:
+    if contest.ruleset_version_id is None:
+        return ["cabrillo"]
+    version = session.get(RulesetVersion, contest.ruleset_version_id)
+    if version is None:
+        return []
+    definition = load_ruleset_version(version)
+    return sorted(
+        {
+            configured.rule.format
+            for configured in definition.rules
+            if configured.rule.kind == "format_mapping"
+            and configured.rule.format in {"cabrillo", "adif"}
+        }
+    )
 
 
 def _filename(value: str | None) -> str:
@@ -147,7 +175,7 @@ async def _read_upload(request: Request) -> tuple[bytes, str | None, str | None]
 
 def _contest_rules(
     session: Session, slug: str
-) -> tuple[int, str, str, object, str, list[str] | None, dict[str, str], list[dict[str, object]]]:
+) -> tuple[int, str, str, object, str, dict[str, dict[str, object]]]:
     contest = session.scalar(select(Contest).where(Contest.slug == slug))
     if contest is None:
         raise HTTPException(status_code=404, detail="Contest not found.")
@@ -158,9 +186,7 @@ def _contest_rules(
     now = datetime.now(UTC)
     if contest.log_submission_cutoff_at <= now:
         raise HTTPException(status_code=409, detail="The log submission deadline has passed.")
-    columns = None
-    header_fields: dict[str, str] = {}
-    mappings: list[dict[str, object]] = []
+    format_configs: dict[str, dict[str, object]] = {}
     late_policy = "accept_late"
     if contest.ruleset_version_id is not None:
         version = session.get(RulesetVersion, contest.ruleset_version_id)
@@ -168,12 +194,14 @@ def _contest_rules(
             raise HTTPException(status_code=409, detail="The contest ruleset is unavailable.")
         ruleset = load_ruleset_version(version)
         for configured in ruleset.rules:
-            if configured.rule.kind == "format_mapping" and configured.rule.format == "cabrillo":
-                columns = configured.rule.qso_columns or None
-                header_fields = configured.rule.header_fields
-                mappings = [
-                    item.model_dump(mode="json") for item in configured.rule.category_mappings
-                ]
+            if configured.rule.kind == "format_mapping":
+                format_configs[configured.rule.format] = {
+                    "qso_columns": configured.rule.qso_columns or None,
+                    "header_fields": configured.rule.header_fields,
+                    "category_mappings": [
+                        item.model_dump(mode="json") for item in configured.rule.category_mappings
+                    ],
+                }
             if isinstance(configured.rule, SubmissionRule):
                 late_policy = configured.rule.late_policy
     # Read-only metadata is captured, then release the DB transaction before parsing.
@@ -188,9 +216,32 @@ def _contest_rules(
         contest_name,
         contest_ends_at,
         late_policy,
-        columns,
-        header_fields,
-        mappings,
+        format_configs,
+    )
+
+
+def _selected_format_config(
+    format_configs: dict[str, dict[str, object]], upload_format: str
+) -> dict[str, object]:
+    # Legacy contests without a stored ruleset keep their original Cabrillo behavior.
+    if not format_configs and upload_format == "cabrillo":
+        return {"qso_columns": None, "header_fields": {}, "category_mappings": []}
+    config = format_configs.get(upload_format)
+    if config is None:
+        raise HTTPException(
+            status_code=415,
+            detail=f"This contest's ruleset does not accept {upload_format.upper()} logs.",
+        )
+    return config
+
+
+def _parse_log(content: str, upload_format: str, config: dict[str, object]) -> ParsedLog:
+    if upload_format == "adif":
+        return parse_adif(content)
+    return parse_cabrillo(
+        content,
+        qso_columns=config.get("qso_columns") or None,
+        header_fields=config.get("header_fields") or {},
     )
 
 
@@ -242,7 +293,7 @@ async def submit_log(
     session: Annotated[Session, Depends(get_session)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> dict[str, object]:
-    """Accept a complete Cabrillo log anonymously, atomically creating one entry."""
+    """Accept a complete ruleset-supported log anonymously and atomically."""
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
     enforce_rate_limit(
@@ -255,10 +306,13 @@ async def submit_log(
     content_bytes, upload_filename, content_type = await _read_upload(request)
     filename = _filename(upload_filename)
     suffix = PurePosixPath(filename).suffix.casefold()
-    if suffix not in ALLOWED_SUFFIXES:
+    upload_format = FORMAT_SUFFIXES.get(suffix)
+    if upload_format is None:
         raise HTTPException(
             status_code=415,
-            detail="Only Cabrillo .log, .cbr, .cabrillo, or .txt files are accepted.",
+            detail=(
+                "Use a supported Cabrillo (.log/.cbr/.cabrillo/.txt) or ADI/ADIF (.adi/.adif) file."
+            ),
         )
     if not content_bytes:
         raise HTTPException(status_code=422, detail="The uploaded log file is empty.")
@@ -272,11 +326,11 @@ async def submit_log(
         selected_name,
         contest_ends_at,
         late_policy,
-        columns,
-        header_fields,
-        category_mappings,
+        format_configs,
     ) = _contest_rules(session, contest_slug)
-    parsed = parse_cabrillo(content, qso_columns=columns, header_fields=header_fields)
+    format_config = _selected_format_config(format_configs, upload_format)
+    category_mappings = format_config["category_mappings"]
+    parsed = _parse_log(content, upload_format, format_config)
     category_values, validation = _validate_log(
         parsed, selected_slug, selected_name, category_mappings
     )
@@ -333,6 +387,7 @@ async def submit_log(
             receipt_token=receipt_token,
             is_late=is_late,
             late_policy=late_policy,
+            import_format=upload_format,
         )
         session.commit()
     except IdempotencyConflict as exc:
@@ -389,8 +444,11 @@ async def resubmit_log(
         raise HTTPException(status_code=400, detail="Idempotency-Key has an invalid format.")
     content_bytes, upload_filename, content_type = await _read_upload(request)
     filename = _filename(upload_filename)
-    if PurePosixPath(filename).suffix.casefold() not in ALLOWED_SUFFIXES:
-        raise HTTPException(status_code=415, detail="Only Cabrillo log files are accepted.")
+    upload_format = FORMAT_SUFFIXES.get(PurePosixPath(filename).suffix.casefold())
+    if upload_format is None:
+        raise HTTPException(
+            status_code=415, detail="Use a supported Cabrillo or ADI/ADIF log file."
+        )
     try:
         content = content_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -402,28 +460,29 @@ async def resubmit_log(
     contest_id, contest_slug, contest_name = contest.id, contest.slug, contest.name
     contest_ends_at = contest.ends_at
     late_policy = "accept_late"
-    columns: list[str] | None = None
-    header_fields: dict[str, str] = {}
-    mappings: list[dict[str, object]] = []
+    format_configs: dict[str, dict[str, object]] = {}
     if contest.ruleset_version_id is not None:
         ruleset_row = session.get(RulesetVersion, contest.ruleset_version_id)
         if ruleset_row:
             ruleset = load_ruleset_version(ruleset_row)
             for configured in ruleset.rules:
-                if (
-                    configured.rule.kind == "format_mapping"
-                    and configured.rule.format == "cabrillo"
-                ):
-                    columns = configured.rule.qso_columns or None
-                    header_fields = configured.rule.header_fields
-                    mappings = [
-                        item.model_dump(mode="json") for item in configured.rule.category_mappings
-                    ]
+                if configured.rule.kind == "format_mapping":
+                    format_configs[configured.rule.format] = {
+                        "qso_columns": configured.rule.qso_columns or None,
+                        "header_fields": configured.rule.header_fields,
+                        "category_mappings": [
+                            item.model_dump(mode="json")
+                            for item in configured.rule.category_mappings
+                        ],
+                    }
                 if isinstance(configured.rule, SubmissionRule):
                     late_policy = configured.rule.late_policy
     session.rollback()
-    parsed = parse_cabrillo(content, qso_columns=columns, header_fields=header_fields)
-    category_values, validation = _validate_log(parsed, contest_slug, contest_name, mappings)
+    format_config = _selected_format_config(format_configs, upload_format)
+    parsed = _parse_log(content, upload_format, format_config)
+    category_values, validation = _validate_log(
+        parsed, contest_slug, contest_name, format_config["category_mappings"]
+    )
     errors = [message for message in validation if message.code != "unmapped_category"]
     warnings = [
         *parsed.warnings,
@@ -500,6 +559,7 @@ async def resubmit_log(
             participant.participant_email_id if participant is not None else None
         ),
         received_via="participant_session" if participant is not None else "entry_receipt",
+        import_format=upload_format,
     )
     current.is_late = is_late
     if is_late and late_policy == "checklog":

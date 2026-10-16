@@ -135,6 +135,8 @@ def persist_revision(
     session.add(station)
     session.flush()
     for qso in parsed.qsos:
+        sent_values = qso.fields.get("_exchange_sent_values", {})
+        received_values = qso.fields.get("_exchange_received_values", {})
         session.add(
             Qso(
                 entry_revision_id=revision.id,
@@ -145,8 +147,16 @@ def persist_revision(
                 callsign_normalized="".join(qso.callsign_received.upper().split()),
                 band=qso.frequency,
                 mode=qso.mode.upper(),
-                exchange_sent_submitted={"raw": qso.exchange_sent, "rst": qso.rst_sent},
-                exchange_received_submitted={"raw": qso.exchange_received, "rst": qso.rst_received},
+                exchange_sent_submitted={
+                    "raw": qso.exchange_sent,
+                    "rst": qso.rst_sent,
+                    **({"values": sent_values} if isinstance(sent_values, dict) else {}),
+                },
+                exchange_received_submitted={
+                    "raw": qso.exchange_received,
+                    "rst": qso.rst_received,
+                    **({"values": received_values} if isinstance(received_values, dict) else {}),
+                },
                 source_fields={**qso.fields, "extra_fields": qso.extra_fields},
             )
         )
@@ -167,6 +177,7 @@ def create_guest_entry(
     receipt_token: str,
     is_late: bool = False,
     late_policy: str = "accept_late",
+    import_format: str = "cabrillo",
 ) -> tuple[Entry, str, bool]:
     """Create an entry, receipt grant, first revision, and idempotency row together."""
     previous = session.scalar(
@@ -240,6 +251,7 @@ def create_guest_entry(
         filename=filename,
         content_type=content_type,
         category_values=category_values,
+        import_format=import_format,
     )
     session.add(EntryAccessGrant(entry_id=entry.id, token_hash=digest(receipt_token)))
     session.add(

@@ -129,15 +129,7 @@
       "id": "format-mapping",
       "rule": {
         "kind": "format_mapping",
-        "format": "cabrillo",
-        "qso_columns": [
-          "band",
-          "mode",
-          "callsign",
-          "time_on",
-          "exchange_sent",
-          "exchange_received"
-        ],
+        "format": "adif",
         "preserve_unknown_fields": true
       }
     },

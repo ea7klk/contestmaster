@@ -217,6 +217,21 @@ def test_ruleset_schema_rejects_unknown_and_fractional_values():
         validate_ruleset(payload)
 
 
+def test_ruleset_can_enable_multiple_distinct_log_formats_only_once_each():
+    payload = valid_payload()
+    payload["rules"].append(
+        {"id": "adif-format", "rule": {"kind": "format_mapping", "format": "adif"}}
+    )
+    assert validate_ruleset(payload).ruleset_key == "sample-sprint"
+
+    payload["rules"].append(
+        {"id": "adif-format-again", "rule": {"kind": "format_mapping", "format": "adif"}}
+    )
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any("only once" in str(issue["message"]) for issue in error.value.errors)
+
+
 def test_ruleset_validator_rejects_duplicate_keys_unsafe_patterns_and_bad_fact_paths():
     payload = valid_payload()
     payload["rules"].append(payload["rules"][0])
