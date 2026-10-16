@@ -114,6 +114,12 @@ describe('App privileged navigation', () => {
 
     const trigger = wrapper.get('.menu-toggle')
     const nav = wrapper.get('#main-navigation')
+    expect(trigger.element.parentElement?.firstElementChild).toBe(
+      trigger.element,
+    )
+    expect(trigger.element.nextElementSibling).toBe(
+      wrapper.get('.wordmark').element,
+    )
     expect(trigger.attributes('aria-controls')).toBe('main-navigation')
     expect(trigger.attributes('aria-label')).toBe('Open main menu')
     expect(trigger.attributes('aria-expanded')).toBe('false')

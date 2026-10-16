@@ -73,13 +73,6 @@ watch(
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header">
       <div class="site-header-row">
-        <a class="wordmark" href="/" aria-label="Contestmaster home"
-          >Contestmaster</a
-        >
-        <span class="header-caption">Amateur radio contest engine</span>
-        <RouterLink class="header-upload-action" to="/submit-log">
-          Submit a log
-        </RouterLink>
         <button
           ref="menuButton"
           class="menu-toggle"
@@ -91,6 +84,13 @@ watch(
         >
           <span aria-hidden="true" class="menu-toggle-lines"></span>
         </button>
+        <a class="wordmark" href="/" aria-label="Contestmaster home"
+          >Contestmaster</a
+        >
+        <span class="header-caption">Amateur radio contest engine</span>
+        <RouterLink class="header-upload-action" to="/submit-log">
+          Submit a log
+        </RouterLink>
       </div>
       <nav
         id="main-navigation"

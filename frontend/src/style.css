@@ -102,20 +102,19 @@ a:hover {
 .site-header {
   position: relative;
   z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
+  display: block;
   padding: 0.8rem max(1.25rem, calc((100vw - 1200px) / 2));
   color: var(--color-surface);
   background: var(--color-brand-900);
   box-shadow: 0 3px 14px rgb(50 18 20 / 13%);
 }
 .site-header-row {
+  width: min(1200px, 100%);
   min-height: 3rem;
   display: flex;
   align-items: center;
   gap: 1rem;
-  flex: 0 0 auto;
+  margin-inline: auto;
 }
 .wordmark {
   flex: 0 0 auto;
@@ -137,7 +136,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 0;
+  margin-left: auto;
   padding: 0.55rem 0.9rem;
   border: 1px solid var(--color-surface);
   border-radius: 0.45rem;
@@ -154,7 +153,7 @@ a:hover {
 .menu-toggle {
   width: 2.75rem;
   height: 2.75rem;
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-header-circle);
@@ -188,14 +187,26 @@ a:hover {
   top: 0.38rem;
 }
 .site-navigation {
+  width: min(1200px, 100%);
+  display: none;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 0;
+  margin: 0.65rem auto 0;
+  padding: 0.35rem;
+  border: 1px solid var(--color-header-outline);
+  border-radius: 0.6rem;
+  background: var(--color-brand-800);
+}
+.site-navigation.is-open {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.85rem;
-  margin-left: auto;
 }
 .site-navigation a,
 .sign-out-button {
+  min-height: 2.8rem;
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
   color: var(--color-brand-on-dark);
   font-size: 0.9rem;
   font-weight: 650;
@@ -205,13 +216,11 @@ a:hover {
 .site-navigation a:hover,
 .site-navigation a.router-link-active {
   color: var(--color-surface);
-  text-decoration: underline;
-  text-decoration-color: var(--color-accent);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 0.4rem;
+  border-radius: 0.35rem;
+  background: var(--color-brand-900);
+  text-decoration: none;
 }
 .sign-out-button {
-  padding: 0;
   border: 0;
   color: var(--color-brand-on-dark);
   background: transparent;
@@ -424,49 +433,6 @@ input[type='radio'] {
   white-space: nowrap;
   border: 0;
 }
-@media (max-width: 1400px) {
-  .site-header {
-    display: block;
-    padding-inline: max(1rem, calc((100vw - 1200px) / 2));
-  }
-  .site-header-row {
-    width: 100%;
-    justify-content: flex-start;
-  }
-  .header-caption {
-    margin-right: auto;
-  }
-  .menu-toggle {
-    display: inline-flex;
-  }
-  .site-navigation {
-    display: none;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0;
-    margin: 0.65rem 0 0;
-    padding: 0.35rem;
-    border: 1px solid var(--color-header-outline);
-    border-radius: 0.6rem;
-    background: var(--color-brand-800);
-  }
-  .site-navigation.is-open {
-    display: flex;
-  }
-  .site-navigation a,
-  .site-navigation .sign-out-button {
-    min-height: 2.8rem;
-    display: flex;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-  }
-  .site-navigation a:hover,
-  .site-navigation a.router-link-active {
-    border-radius: 0.35rem;
-    background: var(--color-brand-900);
-    text-decoration: none;
-  }
-}
 @media (max-width: 560px) {
   .site-header {
     padding: 0.65rem 1rem;
@@ -480,7 +446,6 @@ input[type='radio'] {
   }
   .header-upload-action {
     min-height: 2.4rem;
-    margin-left: auto;
     padding-inline: 0.65rem;
     font-size: 0.86rem;
   }
