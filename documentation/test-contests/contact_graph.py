@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from random import Random
+
+BAND_MIN_FREQUENCY_KHZ = 14_000
+BAND_MAX_FREQUENCY_KHZ = 14_350
 
 
 @dataclass(frozen=True)
 class Contact:
     worked_callsign: str
     occurred_at: datetime
+    frequency_khz: int
     sent_serial: int
     received_serial: int
     matched: bool
@@ -62,13 +67,29 @@ def build_contact_plan(callsigns: list[str], starts_at: datetime) -> dict[str, l
 
     events: list[list[dict[str, object]]] = [[] for _ in callsigns]
     adjacency = [0] * count
+    frequency_rng = Random("contestmaster-synthetic-20m")
     for edge_index, (left, right) in enumerate(sorted(set(edges))):
         occurred_at = starts_at + timedelta(seconds=edge_index)
+        frequency_khz = frequency_rng.randint(
+            BAND_MIN_FREQUENCY_KHZ, BAND_MAX_FREQUENCY_KHZ
+        )
         events[left].append(
-            {"peer": right, "worked": callsigns[right], "at": occurred_at, "matched": True}
+            {
+                "peer": right,
+                "worked": callsigns[right],
+                "at": occurred_at,
+                "frequency_khz": frequency_khz,
+                "matched": True,
+            }
         )
         events[right].append(
-            {"peer": left, "worked": callsigns[left], "at": occurred_at, "matched": True}
+            {
+                "peer": left,
+                "worked": callsigns[left],
+                "at": occurred_at,
+                "frequency_khz": frequency_khz,
+                "matched": True,
+            }
         )
         adjacency[left] += 1
         adjacency[right] += 1
@@ -85,6 +106,9 @@ def build_contact_plan(callsigns: list[str], starts_at: datetime) -> dict[str, l
                     "peer": None,
                     "worked": _external_callsign(external_index),
                     "at": starts_at + timedelta(hours=2, seconds=external_index * 10),
+                    "frequency_khz": frequency_rng.randint(
+                        BAND_MIN_FREQUENCY_KHZ, BAND_MAX_FREQUENCY_KHZ
+                    ),
                     "matched": False,
                 }
             )
@@ -111,6 +135,7 @@ def build_contact_plan(callsigns: list[str], starts_at: datetime) -> dict[str, l
                 Contact(
                     worked_callsign=str(event["worked"]),
                     occurred_at=event["at"],
+                    frequency_khz=int(event["frequency_khz"]),
                     sent_serial=serial,
                     received_serial=serials[(peer, station)] if matched else 1,
                     matched=matched,

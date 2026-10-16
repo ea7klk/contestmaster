@@ -38,9 +38,12 @@ def build_logs() -> dict[str, str]:
         for contact in contact_plan[station]:
             time_on = contact.occurred_at.strftime("%H%M%S")
             worked = contact.worked_callsign
+            whole_mhz, fractional_khz = divmod(contact.frequency_khz, 1000)
+            frequency_mhz = f"{whole_mhz}.{fractional_khz:03d}"
             records.append(
                 f"<STATION_CALLSIGN:{len(station)}>{station} "
-                f"<CALL:{len(worked)}>{worked} <BAND:3>20M <MODE:3>FT8 "
+                f"<CALL:{len(worked)}>{worked} <BAND:3>20M "
+                f"<FREQ:{len(frequency_mhz)}>{frequency_mhz} <MODE:3>FT8 "
                 f"<QSO_DATE:8>{QSO_DATE} <TIME_ON:6>{time_on} "
                 "<RST_SENT:3>-10 <RST_RCVD:3>-12 <EOR>"
             )

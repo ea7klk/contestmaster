@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from decimal import Decimal
 from pathlib import Path
 
 from backend.app.logs.adif import parse_adif
@@ -12,6 +13,14 @@ from backend.app.rulesets.schema import RulesetDefinition
 from backend.app.rulesets.validation import validate_ruleset
 
 ROOT = Path(__file__).resolve().parent
+MIN_20M_FREQUENCY_KHZ = Decimal(14_000)
+MAX_20M_FREQUENCY_KHZ = Decimal(14_350)
+
+
+def _frequency_khz(folder: str, qso) -> Decimal:
+    if folder == "cabrillo":
+        return Decimal(qso.frequency)
+    return Decimal(qso.fields["freq"]) * 1000
 
 
 def _load_generator(format_name: str):
@@ -59,6 +68,7 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
         assert len({path.stem for path in actual_files}) == expected_count
         participants = {path.stem for path in actual_files}
         parsed_logs = {}
+        frequencies_khz = set()
         total_calls = matched_calls = 0
         for path in actual_files:
             content = path.read_text(encoding="utf-8")
@@ -72,11 +82,16 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
                 assert parsed.headers["EMAIL"] == [f"{path.stem}@nomail.invalid"]
             assert 5 <= len(parsed.qsos) <= 80
             assert all(qso.callsign_sent == path.stem for qso in parsed.qsos)
+            for qso in parsed.qsos:
+                frequency_khz = _frequency_khz(folder, qso)
+                assert MIN_20M_FREQUENCY_KHZ <= frequency_khz <= MAX_20M_FREQUENCY_KHZ
+                frequencies_khz.add(frequency_khz)
             total_calls += len(parsed.qsos)
             matched_calls += sum(qso.callsign_received in participants for qso in parsed.qsos)
             parsed_logs[path.stem] = parsed.qsos
 
         assert matched_calls * 5 == total_calls * 4
+        assert len(frequencies_khz) >= 30
         for station, qsos in parsed_logs.items():
             if folder == "cabrillo":
                 assert [qso.exchange_sent for qso in qsos] == [
@@ -87,6 +102,9 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
                 if peer in participants:
                     reciprocal = {item.callsign_received: item for item in parsed_logs[peer]}
                     assert station in reciprocal
+                    assert _frequency_khz(folder, qso) == _frequency_khz(
+                        folder, reciprocal[station]
+                    )
                     if folder == "cabrillo":
                         assert qso.exchange_sent.isdecimal()
                         assert qso.exchange_received.isdecimal()

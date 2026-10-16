@@ -38,7 +38,7 @@ def build_logs() -> dict[str, str]:
         for contact in contact_plan[station]:
             time_on = contact.occurred_at.strftime("%H%M%S")
             qso_lines.append(
-                "QSO: 14000 CW "
+                f"QSO: {contact.frequency_khz} CW "
                 f"{QSO_DATE} {time_on} {station} 599 {contact.sent_serial:03d} "
                 f"{contact.worked_callsign} 599 {contact.received_serial:03d}"
             )

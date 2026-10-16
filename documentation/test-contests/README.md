@@ -9,6 +9,8 @@ These two synthetic contests exercise the public log intake with no participant 
 
 Every station and contact is synthetic. Each participant log contains 10, 15, or 20 QSOs. Exactly 80% of worked-call entries name another participant whose log contains the reciprocal QSO; the other 20% name external stations with no log in that contest. Cabrillo QSO lines put the logging station's exchange after its callsign and the correspondent's exchange after the correspondent's callsign, as shown in the [WWROF Cabrillo QSO data specification](https://wwrof.org/cabrillo/cabrillo-qso-data/). The fixtures use sequential sent serials and include the serial received from each matched correspondent; the Cabrillo ruleset requires the serial in both directions.
 
+Both fixture sets use the 20 m band and vary each QSO frequency from 14.000 through 14.350 MHz. Matched contacts have the same frequency in both logs. Cabrillo records frequency in kHz; ADIF records it in the standard `FREQ` field in MHz and retains `BAND: 20M`.
+
 Every Cabrillo fixture includes a synthetic `EMAIL: <callsign>@nomail.invalid` header. The reserved `.invalid` domain ensures these addresses cannot deliver mail.
 
 The generated set contains 1,645 Cabrillo QSOs (1,316 matching and 329 unmatched) and 835 ADIF QSOs (668 matching and 167 unmatched). These counts are reproducible from the checked-in generators.
