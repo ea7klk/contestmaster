@@ -115,16 +115,19 @@ describe('App privileged navigation', () => {
     const trigger = wrapper.get('.menu-toggle')
     const nav = wrapper.get('#main-navigation')
     expect(trigger.attributes('aria-controls')).toBe('main-navigation')
+    expect(trigger.attributes('aria-label')).toBe('Open main menu')
     expect(trigger.attributes('aria-expanded')).toBe('false')
     expect(wrapper.get('.header-upload-action').attributes('href')).toBe(
       '/submit-log',
     )
 
     await trigger.trigger('click')
+    expect(trigger.attributes('aria-label')).toBe('Close main menu')
     expect(trigger.attributes('aria-expanded')).toBe('true')
     expect(nav.classes()).toContain('is-open')
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
+    expect(trigger.attributes('aria-label')).toBe('Open main menu')
     expect(trigger.attributes('aria-expanded')).toBe('false')
     expect(document.activeElement).toBe(trigger.element)
 

@@ -424,10 +424,10 @@ input[type='radio'] {
   white-space: nowrap;
   border: 0;
 }
-@media (max-width: 1240px) {
+@media (max-width: 1400px) {
   .site-header {
     display: block;
-    padding-inline: max(1rem, calc((100vw - 1000px) / 2));
+    padding-inline: max(1rem, calc((100vw - 1200px) / 2));
   }
   .site-header-row {
     width: 100%;
