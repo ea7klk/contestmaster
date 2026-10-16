@@ -332,6 +332,25 @@ function exportDraft() {
   URL.revokeObjectURL(link.href)
 }
 
+function normalizeImportedRule(item: RulesetDraft['rules'][number]) {
+  const rule = { ...item.rule }
+  if (rule.kind === 'bonus' && Object.hasOwn(rule, 'evidence_required')) {
+    const legacyRequired = rule.evidence_required
+    const hasEvidenceKey =
+      rule.evidence_key !== undefined && rule.evidence_key !== null
+    if (
+      typeof legacyRequired !== 'boolean' ||
+      legacyRequired !== hasEvidenceKey
+    ) {
+      throw new Error(
+        'Legacy bonus evidence_required must agree with whether evidence_key is set.',
+      )
+    }
+    delete rule.evidence_required
+  }
+  return { ...item, rule }
+}
+
 async function importDraft(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
@@ -349,7 +368,8 @@ async function importDraft(event: Event) {
     version.value = parsed.version
     sourceUrl.value = parsed.source_url ?? ''
     sourceEdition.value = parsed.source_edition ?? ''
-    rules.value = parsed.rules.map((item) => ({ ...item }))
+    const normalizedRules = parsed.rules.map(normalizeImportedRule)
+    rules.value = normalizedRules.map((item) => ({ ...item }))
   } catch (error) {
     generalError.value =
       error instanceof Error

@@ -483,9 +483,7 @@ def score_entry(
         ):
             for _qso, context in eligible_contexts:
                 if _condition_applies(configured_rule, context):
-                    if rule.evidence_required and not entry.declarations.get(
-                        rule.evidence_key or ""
-                    ):
+                    if rule.evidence_key and not entry.declarations.get(rule.evidence_key):
                         continue
                     amount += rule.points
                     bonus_by_qso[_qso.qso_id] = bonus_by_qso.get(_qso.qso_id, 0) + rule.points
@@ -493,7 +491,7 @@ def score_entry(
             _condition_applies(configured_rule, entry_context)
             and len(eligible_contexts) >= rule.minimum_eligible_qsos
         ):
-            if rule.evidence_required and not entry.declarations.get(rule.evidence_key or ""):
+            if rule.evidence_key and not entry.declarations.get(rule.evidence_key):
                 continue
             amount = rule.points
         if rule.cap is not None:

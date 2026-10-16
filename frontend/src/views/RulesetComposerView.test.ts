@@ -36,7 +36,10 @@ function operatingCatalogResponse() {
   return { items: [] }
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('RulesetComposerView', () => {
   it.each([
@@ -119,6 +122,91 @@ describe('RulesetComposerView', () => {
         toggle!.element.compareDocumentPosition(legend!.element) & 4,
       ).toBeTruthy()
     }
+  })
+
+  it('normalizes legacy bonus evidence flags and exports only the evidence key', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    let downloaded: Blob | undefined
+    class TestURL extends URL {
+      static createObjectURL(object: Blob | MediaSource) {
+        if (object instanceof Blob) downloaded = object
+        return 'blob:test-draft'
+      }
+
+      static revokeObjectURL() {}
+    }
+    vi.stubGlobal('URL', TestURL)
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    const legacyDraft = {
+      schema_version: 1,
+      ruleset_key: 'legacy-bonus',
+      version: '1',
+      rules: [
+        {
+          id: 'completion-bonus',
+          rule: {
+            kind: 'bonus',
+            basis: 'per_entry',
+            points: 5,
+            evidence_required: true,
+            evidence_key: 'proof',
+          },
+        },
+      ],
+    }
+    const input = wrapper.get('input[type="file"]')
+    const file = new File([JSON.stringify(legacyDraft)], 'legacy.json', {
+      type: 'application/json',
+    })
+    Object.defineProperty(file, 'text', {
+      value: async () => JSON.stringify(legacyDraft),
+    })
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file],
+    })
+    await input.trigger('change')
+    await flushPromises()
+    const downloadButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Download JSON draft')
+    expect(downloadButton).toBeDefined()
+    await downloadButton!.trigger('click')
+
+    expect(downloaded).toBeDefined()
+    const exportedText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(downloaded!)
+    })
+    const exported = JSON.parse(exportedText)
+    expect(exported.rules[0].rule).toEqual({
+      kind: 'bonus',
+      basis: 'per_entry',
+      points: 5,
+      evidence_key: 'proof',
+    })
   })
 
   it('explains UTC scheduling and the configurable rule sections', async () => {

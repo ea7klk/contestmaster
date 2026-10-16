@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, time
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AnyHttpUrl,
@@ -401,14 +401,28 @@ class BonusRule(StrictModel):
     points: PositiveInteger
     cap: NonNegativeInteger | None = None
     minimum_eligible_qsos: NonNegativeInteger = 0
-    evidence_required: bool = False
-    evidence_key: Identifier | None = None
+    evidence_key: Identifier | None = Field(
+        default=None,
+        description=(
+            "When set, award this bonus only when the entry includes the named evidence "
+            "declaration. Its presence enables the evidence requirement."
+        ),
+    )
 
-    @model_validator(mode="after")
-    def validate_evidence(self) -> BonusRule:
-        if self.evidence_required != (self.evidence_key is not None):
-            raise ValueError("evidence_required bonuses must name an evidence_key")
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_evidence_flag(cls, value: Any) -> Any:
+        """Accept and discard the v1 field that duplicated evidence_key presence."""
+        if not isinstance(value, dict) or "evidence_required" not in value:
+            return value
+        normalized = dict(value)
+        legacy_required = normalized.pop("evidence_required")
+        evidence_key = normalized.get("evidence_key")
+        if type(legacy_required) is not bool:
+            raise ValueError("legacy evidence_required must be a boolean")
+        if legacy_required != (evidence_key is not None):
+            raise ValueError("legacy evidence_required must agree with evidence_key presence")
+        return normalized
 
 
 class PenaltyRule(StrictModel):

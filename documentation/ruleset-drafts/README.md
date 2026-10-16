@@ -41,6 +41,8 @@ PY
 
 A successful schema check confirms that the current composer/backend can load the draft structure; it does not verify that the values implement the sponsor's full rulebook.
 
+The schema-version-1 bonus rule uses the presence of `evidence_key` to indicate that an evidence declaration is required. Older drafts that also include `evidence_required` are accepted only when the boolean agrees with the key's presence; import removes that redundant field and exports omit it. The supplied starter drafts have been checked against the current backend schema and do not need content changes for this normalization.
+
 The Vue import flow is covered by a test that loads every draft through the file-input workflow:
 
 ```sh

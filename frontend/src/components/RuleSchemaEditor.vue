@@ -84,6 +84,24 @@ const unionTypeOptions = computed(() => {
 const hasUnionTypeSelector = computed(() => unionTypeOptions.value.length > 1)
 const isRequired = (key: string) =>
   effectiveSchema.value.required?.includes(key) ?? false
+function isBooleanField(schema: JsonSchema): boolean {
+  const resolved = resolveSchema(schema)
+  if (resolved.anyOf) {
+    const nonNullOptions = resolved.anyOf.filter(
+      (option) => option.type !== 'null',
+    )
+    return (
+      nonNullOptions.length === 1 && isBooleanField(nonNullOptions[0] ?? {})
+    )
+  }
+  const type = resolved.type
+  return (
+    type === 'boolean' ||
+    (Array.isArray(type) &&
+      type.includes('boolean') &&
+      type.every((item) => item === 'boolean' || item === 'null'))
+  )
+}
 const objectValue = computed(() =>
   props.modelValue &&
   typeof props.modelValue === 'object' &&
@@ -253,35 +271,57 @@ function onEnumInput(event: Event) {
           v-if="key !== 'eligible_if' && !hiddenProperties.includes(key)"
           class="schema-field"
         >
-          <label v-if="!isRequired(key)" class="schema-enable">
-            <input
-              type="checkbox"
-              :checked="Object.hasOwn(objectValue, key)"
-              @change="
-                toggleProperty(
-                  key,
-                  childSchema,
-                  ($event.target as HTMLInputElement).checked,
-                )
+          <template v-if="isBooleanField(childSchema)">
+            <label class="schema-boolean">
+              <input
+                type="checkbox"
+                :checked="
+                  Boolean(objectValue[key] ?? initialValue(childSchema))
+                "
+                @change="
+                  updateProperty(
+                    key,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              {{ childSchema.title || key.replaceAll('_', ' ') }}
+            </label>
+            <p v-if="childSchema.description" class="schema-description">
+              {{ childSchema.description }}
+            </p>
+          </template>
+          <template v-else>
+            <label v-if="!isRequired(key)" class="schema-enable">
+              <input
+                type="checkbox"
+                :checked="Object.hasOwn(objectValue, key)"
+                @change="
+                  toggleProperty(
+                    key,
+                    childSchema,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              Configure {{ childSchema.title || key.replaceAll('_', ' ') }}
+            </label>
+            <RuleSchemaEditor
+              v-if="isRequired(key) || Object.hasOwn(objectValue, key)"
+              :schema="childSchema"
+              :root-schema="rootSchema"
+              :model-value="objectValue[key] ?? initialValue(childSchema)"
+              :label="
+                key === 'kind'
+                  ? ''
+                  : childSchema.title || key.replaceAll('_', ' ')
               "
+              :path="`${path}-${key}`"
+              :depth="depth + 1"
+              :hidden-properties="hiddenProperties"
+              @update:model-value="updateProperty(key, $event)"
             />
-            Configure {{ childSchema.title || key.replaceAll('_', ' ') }}
-          </label>
-          <RuleSchemaEditor
-            v-if="isRequired(key) || Object.hasOwn(objectValue, key)"
-            :schema="childSchema"
-            :root-schema="rootSchema"
-            :model-value="objectValue[key] ?? initialValue(childSchema)"
-            :label="
-              key === 'kind'
-                ? ''
-                : childSchema.title || key.replaceAll('_', ' ')
-            "
-            :path="`${path}-${key}`"
-            :depth="depth + 1"
-            :hidden-properties="hiddenProperties"
-            @update:model-value="updateProperty(key, $event)"
-          />
+          </template>
         </div>
       </template>
     </template>

@@ -54,6 +54,8 @@ An exchange schema is the ordered set of values sent, received, exchanged in bot
 
 Band and mode catalogs are separate shared reference values, managed by global administrators in distinct Bands and Modes sections, each with its own “Add catalog item” form. Contest managers select allowed values with checkboxes. Each Configure checkbox appears directly above its matching eligible-band or allowed-mode choices. An empty selection means that dimension is unrestricted. Inactive catalog entries cannot be selected in new drafts. Existing ruleset snapshots remain unchanged; an entry referenced by a saved ruleset may be deactivated but cannot be deleted or renamed.
 
+Boolean rule settings use one checkbox each; they do not have a separate “Configure” switch. For a bonus rule, setting `evidence_key` enables the evidence requirement and names the required declaration. The redundant `evidence_required` boolean has been removed. Existing schema-version-1 drafts containing that field remain importable only when it agrees with `evidence_key`; the composer removes it during import and omits it from exports. The schema version remains 1 for this compatible normalization.
+
 The initial catalog includes named amateur bands from 2200 m through the 0.2 mm / 1.4 THz region and common modes (including CW, SSB, RTTY, FT8, and FT4). Frequency text is a reference label, not a universal allocation: national authorizations, license privileges, and the published contest rules determine permitted use. Administrators may edit the catalog accordingly.
 
 An administrator may mark a band **contest-free**. The composer displays that managed designation in red and with visible text; it is advisory and never excludes a band or changes scoring automatically.

@@ -15,6 +15,7 @@ from backend.app.rulesets.schedules import (
     resolve_submission,
 )
 from backend.app.rulesets.schema import (
+    BonusRule,
     CategoryRule,
     Condition,
     ExchangeRule,
@@ -644,6 +645,49 @@ def test_scoring_is_deterministic_integer_only_and_keeps_explanations():
         contest_ends_at=END,
     )
     assert result.model_dump(mode="json") == rerun.model_dump(mode="json")
+
+
+def test_bonus_evidence_key_replaces_legacy_required_boolean_in_json():
+    payload = valid_payload()
+    legacy = next(item for item in payload["rules"] if item["id"] == "entry-bonus")
+    legacy["rule"]["evidence_required"] = True
+    legacy["rule"]["evidence_key"] = "proof"
+    ruleset = validate_ruleset(payload)
+    bonus = next(item.rule for item in ruleset.rules if item.id == "entry-bonus")
+
+    assert bonus.evidence_key == "proof"
+    assert "evidence_required" not in bonus.model_dump()
+    assert "evidence_required" not in BonusRule.model_json_schema()["properties"]
+    with pytest.raises(ValidationError, match="must agree"):
+        BonusRule.model_validate(
+            {
+                "kind": "bonus",
+                "basis": "per_entry",
+                "points": 5,
+                "evidence_required": False,
+                "evidence_key": "proof",
+            }
+        )
+
+
+def test_bonus_evidence_key_alone_controls_evidence_requirement():
+    payload = valid_payload()
+    bonus = next(item for item in payload["rules"] if item["id"] == "entry-bonus")
+    bonus["rule"]["evidence_key"] = "proof"
+    ruleset = validate_ruleset(payload)
+
+    without_evidence = score_entry(
+        ruleset, sample_entry(), contest_starts_at=START, contest_ends_at=END
+    )
+    entry_with_evidence = sample_entry().model_copy(
+        update={"declarations": {"section": "EMA", "proof": "uploaded"}}
+    )
+    with_evidence = score_entry(
+        ruleset, entry_with_evidence, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert without_evidence.bonus_points == 0
+    assert with_evidence.bonus_points == 5
 
 
 def test_scoring_applies_penalty_caps_and_surfaces_missing_mappings_for_review():
