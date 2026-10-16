@@ -48,6 +48,7 @@ def build_logs() -> dict[str, str]:
                 "CREATED-BY: Contestmaster synthetic test fixture",
                 f"CONTEST: {CONTEST}",
                 f"CALLSIGN: {station}",
+                f"EMAIL: {station}@nomail.invalid",
                 *qso_lines,
                 "END-OF-LOG:",
                 "",

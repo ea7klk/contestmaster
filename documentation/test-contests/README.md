@@ -9,6 +9,8 @@ These two synthetic contests exercise the public log intake with no participant 
 
 Every station and contact is synthetic. Each participant log contains 10, 15, or 20 QSOs. Exactly 80% of worked-call entries name another participant whose log contains the reciprocal QSO; the other 20% name external stations with no log in that contest. Cabrillo QSOs use sequential sent serials and the received serial from the other participant's matching record. The Cabrillo ruleset requires a serial both sent and received.
 
+Every Cabrillo fixture includes a synthetic `EMAIL: <callsign>@nomail.invalid` header. The reserved `.invalid` domain ensures these addresses cannot deliver mail.
+
 The generated set contains 1,645 Cabrillo QSOs (1,316 matching and 329 unmatched) and 835 ADIF QSOs (668 matching and 167 unmatched). These counts are reproducible from the checked-in generators.
 
 The contest event windows ended on **2024-09-14**. The separate submission cutoff is **2099-12-31 23:59:59 UTC**, and the rulesets accept late logs. Contest import creates each contest as a draft, so a contest manager must open it before the public upload endpoint will accept logs. The event being in the past does not close the submission window.

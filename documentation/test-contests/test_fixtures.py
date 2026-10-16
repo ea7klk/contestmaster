@@ -68,6 +68,8 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             else:
                 parsed = parse_adif(content)
             assert parsed.errors == []
+            if folder == "cabrillo":
+                assert parsed.headers["EMAIL"] == [f"{path.stem}@nomail.invalid"]
             assert 5 <= len(parsed.qsos) <= 80
             assert all(qso.callsign_sent == path.stem for qso in parsed.qsos)
             total_calls += len(parsed.qsos)
