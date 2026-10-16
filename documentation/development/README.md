@@ -62,7 +62,7 @@ Administrative account provisioning, contest edits and status changes, ruleset v
 
 Global administrators can inspect master-data versions and recent sync attempts at `/admin/master-data`. They can activate a validated candidate or delete only an unreferenced candidate/retired version. Deletion keeps source sync runs and appends an audit event; the API and SQLite reject active or retained-reference deletions.
 
-The API checks for an active Big CTY version on startup and checks CTY nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Big CTY `cty.dat` is the only provisioned master-data source. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run the one-shot import with `uv run contestmaster-master-data sync` or `uv run contestmaster-master-data sync-cty`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes provisioning status at `/api/v1/master-data/status`. Contest exchanges and rulesets, not general country/area feeds, supply contest-specific sections, grids, serials, and other identifiers.
+The API checks for an active Big CTY version on startup and checks CTY nightly at `MASTER_DATA_NIGHTLY_HOUR_UTC` (default `2`, UTC). Big CTY `cty.dat` is the only provisioned master-data source. Set `MASTER_DATA_SCHEDULER_ENABLED=false` only for one-shot or test processes. Run the one-shot import with `uv run contestmaster-master-data sync` or `uv run contestmaster-master-data sync-cty`; inspect recent runs and active versions with `uv run contestmaster-master-data status`. The API exposes provisioning status at `/api/v1/master-data/status`. Contest exchanges and rulesets supply contest-specific sections, grids, serials, and other identifiers.
 
 ## Useful commands
 

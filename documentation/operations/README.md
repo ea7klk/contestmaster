@@ -22,7 +22,7 @@ Configuration is read from the process environment or `.env` in the working dire
 | `EMAIL_FROM_ADDRESS` | unset | Required in staging/production and authorized by the mail provider. | No |
 | `FRONTEND_BASE_URL` | `http://localhost:5173` | Public HTTPS origin used in email links. | No |
 | `ENTRY_RECEIPT_SECRET` | development placeholder | Generate a unique random value of at least 32 bytes. Rotating it invalidates deterministic receipt-token replay behavior; coordinate rotation and notify operators. | Yes |
-| `MASTER_DATA_SCHEDULER_ENABLED` | `true` | Must be enabled in staging/production. The API imports immediately on startup if required active versions are absent, then checks nightly. | No |
+| `MASTER_DATA_SCHEDULER_ENABLED` | `true` | Must be enabled in staging/production. The API imports Big CTY immediately on startup if no active CTY version exists, then checks it nightly. | No |
 | `MASTER_DATA_NIGHTLY_HOUR_UTC` | `2` | Integer UTC hour from 0 through 23. | No |
 | `METRICS_ENABLED` | `false` | Enable only when a trusted local monitor can scrape the endpoint. | No |
 | `METRICS_BEARER_TOKEN` | unset | At least 32 random bytes when metrics are enabled. Rotate the token and monitor configuration together. | Yes |
@@ -35,7 +35,7 @@ Install the pinned tools and dependencies with `make setup`, apply migrations wi
 
 Before the first start, create the initial administrator interactively so the password is not passed as a command argument: `uv run contestmaster-admin create-first-admin --username admin --email admin@example.org --display-name "Contestmaster Administrator"`. Run it after migrations and before exposing the service. The command refuses to create another initial account once any system user exists. A global administrator creates later contest-manager accounts through the administration API/UI.
 
-Use `GET /api/v1/health/live` for process liveness and `GET /api/v1/health/ready` for database readiness. `GET /api/v1/master-data/status` reports active versions and the latest provisioning attempt. The global-admin interface provides detailed version operations. A startup master-data import can delay readiness while the initial datasets are fetched and validated. The standalone importer remains available through `uv run contestmaster-master-data sync`; `status` prints recent runs and active versions. The same command can later be called by a K3s CronJob as a one-shot Job.
+Use `GET /api/v1/health/live` for process liveness and `GET /api/v1/health/ready` for database readiness. `GET /api/v1/master-data/status` reports active versions and the latest provisioning attempt. The global-admin interface provides detailed version operations. The initial CTY import can delay readiness while its release is fetched and validated. The standalone importer remains available through `uv run contestmaster-master-data sync`; `status` prints recent runs and active versions. The same command can later be called by a K3s CronJob as a one-shot Job.
 
 The internal scheduler and in-process rate limiter require one API process. Process supervision (systemd, a container supervisor, or equivalent) should restart a failed process and retain its logs. Configure a graceful shutdown timeout so in-flight requests finish before restart.
 
@@ -86,7 +86,7 @@ Stop the API to prevent further writes. Preserve a copy of the damaged files for
 
 ### Failed or partial master-data refresh
 
-Inspect `/api/v1/master-data/status`, `contestmaster-master-data status`, and alert/dashboard history. A failed or ambiguous import must leave the last good active version intact. Resolve source availability or data validation issues, then rerun `uv run contestmaster-master-data sync`. Confirm each required dataset is active and valid for the relevant contest-start instant before generating scores. Do not manually replace files or activate an unreviewed partial import.
+Inspect `/api/v1/master-data/status`, `contestmaster-master-data status`, and alert/dashboard history. A failed or ambiguous import must leave the last good active version intact. Resolve source availability or data validation issues, then rerun `uv run contestmaster-master-data sync`. If the contest rules consume callsign-derived facts, confirm an active CTY version covers the contest-start instant before generating scores. Do not manually replace files or activate an unreviewed partial import.
 
 ### Failed scoring or publication
 

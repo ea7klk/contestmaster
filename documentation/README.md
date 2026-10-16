@@ -98,12 +98,13 @@ flowchart LR
     API -->|account-free log upload| Adapters[Import and export adapters]
     Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo and other log formats]
-    Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[Callable master-data import job]
-    CLI[Operator CLI] -->|start stack or run import once| API
+    Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[CTY cty.dat import job]
+    StackCLI[Stack CLI] -->|starts| API
+    MasterCLI[Master-data CLI] -->|one-shot sync| MasterImport
     DBCLI[Database maintenance CLI] -->|offline backup, integrity check, restore| Store
     API -->|low-cardinality metrics| Prometheus[Prometheus scraper]
     Prometheus --> Dashboard[Operations dashboard and alerts]
-    PublicSources[Public reference sources] --> MasterImport
+    CTYSource[Big CTY cty.dat] --> MasterImport
     MasterImport -->|ORM-managed writes| Store
     Store --> ReferenceData[(Versioned master data)]
 ```
@@ -117,8 +118,8 @@ flowchart LR
 - **Operating catalogs:** store reusable bands and modes in independent ORM-managed `band_catalog_items` and `mode_catalog_items` tables. The API exposes active values through separate resources; the global-admin page has distinct Bands and Modes sections, each with its own “Add catalog item” form. Eligibility selections persist stable keys in immutable ruleset configuration JSON; no foreign-key relationship makes historical snapshots depend on mutable catalog rows. Contest-free marks are advisory metadata shown in the composer and do not change scoring.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
 - **Master-data refresh:** the initial single API process invokes a reusable, idempotent Big CTY `cty.dat` import at startup if no active CTY version exists, then runs it nightly. The same job can run once from CLI and later from a K3s CronJob as a one-shot Job. It records provenance and source terms, validates complete candidate versions, then activates safe updates through ORM-managed writes. Prevent overlapping imports, expose provisioning status, keep the last valid version active on failures, and queue interpreted boundary changes for review. Scoring that depends on callsign-derived geography pins the CTY version valid at the contest's start instant. Contest-specific identifiers come from the log exchange or ruleset.
-- **Master-data version governance:** each dataset version has an effective UTC interval. For a contest, pin the version of each required dataset whose interval contains the contest start instant; keep those references on the contest and each score run so later source updates cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. A global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
-- **Global administration:** add a master-data version management section visible and accessible only to global administrators. Contest managers and public visitors cannot list, activate, or delete master-data versions.
+- **Master-data version governance:** CTY is the only provisioned dataset. When a contest's rules use callsign-derived facts, pin the CTY version whose effective UTC interval contains the contest start instant; keep the reference on the contest and each score run so later imports cannot change historical interpretation. An unchanged nightly check records its sync run but creates no new data version. The global-administrator-only web section lists versions, supports activation of validated candidates, and allows deletion only for non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference restrictions in the database.
+- **Global administration:** the master-data version management section is visible and accessible only to global administrators. Contest managers and public visitors cannot list, activate, or delete master-data versions.
 - **Initial operations:** start the stack from CLI on one host with SQLite on local storage. Run one API process so the internal timer has a single owner; keep the nightly importer independent of HTTP startup and callable as a standalone job for future K3s scheduling.
 - **Observability and recovery:** expose a protected, optional Prometheus metrics endpoint with low-cardinality counters and timings. The starter scrape configuration, dashboard, and alert rules are under `ops/observability`. Use the offline `contestmaster-db` CLI for integrity checks, verified SQLite backups, and staged atomic restore; stop the API during database maintenance. See the [operations guide](operations/README.md), [security review/accessibility checklist](security/README.md), [participant guide](participants/README.md), and [supported format list](formats/README.md).
 - **SQLite:** stores application state for the initial low-concurrency deployment. All application reads and writes pass through the ORM-managed persistence layer and connections. Use ORM-compatible migrations and enforce important invariants with foreign keys, unique constraints, and transactions.
@@ -129,7 +130,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. Each contest pins the required master-data dataset versions valid at its start; score runs preserve those exact version references.
+The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
 
 The active ORM schema and migration head contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. The migration history removes those unused tables; migration tests guard their continued absence. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots.
 
@@ -190,11 +191,11 @@ erDiagram
         integer auto_recalculate_on_upload
     }
     CONTEST_MASTER_DATA_VERSION {
-        integer contest_id PK, FK
-        text dataset_key PK
+        integer id PK
+        integer contest_id FK
+        text dataset_key
         integer master_data_version_id FK
-        text selected_at_utc
-        text contest_start_basis_utc
+        text pinned_at_utc
     }
     PARTICIPANT {
         integer id PK
@@ -385,8 +386,9 @@ erDiagram
         text explanation_json
     }
     SCORE_RUN_MASTER_DATA_VERSION {
-        integer score_run_id PK, FK
-        text dataset_key PK
+        integer id PK
+        integer score_run_id FK
+        text dataset_key
         integer master_data_version_id FK
     }
     QSO_SCORE {
@@ -464,12 +466,12 @@ erDiagram
     MASTER_DATA_VERSION ||--o{ ITU_ZONE : versions
     MASTER_DATA_VERSION ||--o{ CONTEST_ENTITY : versions
     MASTER_DATA_VERSION ||--o{ CALLSIGN_PREFIX : versions
-    CONTEST_ENTITY ||--o{ ENTITY_CQ_ZONE : assigned
-    CQ_ZONE ||--o{ ENTITY_CQ_ZONE : contains
-    CONTEST_ENTITY ||--o{ ENTITY_ITU_ZONE : assigned
-    ITU_ZONE ||--o{ ENTITY_ITU_ZONE : contains
-    CONTEST_ENTITY ||--o{ PREFIX_ASSIGNMENT : associated
-    CALLSIGN_PREFIX ||--o{ PREFIX_ASSIGNMENT : allocated
+    CONTEST_ENTITY ||--o{ ENTITY_CQ_ZONE_ASSIGNMENT : assigned
+    CQ_ZONE ||--o{ ENTITY_CQ_ZONE_ASSIGNMENT : contains
+    CONTEST_ENTITY ||--o{ ENTITY_ITU_ZONE_ASSIGNMENT : assigned
+    ITU_ZONE ||--o{ ENTITY_ITU_ZONE_ASSIGNMENT : contains
+    CONTEST_ENTITY ||--o{ PREFIX_ENTITY_ASSIGNMENT : associated
+    CALLSIGN_PREFIX ||--o{ PREFIX_ENTITY_ASSIGNMENT : allocated
     CALLSIGN_PREFIX ||--o{ PREFIX_CQ_ZONE_ASSIGNMENT : maps
     CQ_ZONE ||--o{ PREFIX_CQ_ZONE_ASSIGNMENT : resolves
     CALLSIGN_PREFIX ||--o{ PREFIX_ITU_ZONE_ASSIGNMENT : maps
@@ -482,7 +484,11 @@ erDiagram
         text canonical_url
         integer source_priority
         text authority_role
-        text use_terms
+        text use_terms_url
+        text license_notice
+        integer enabled
+        text created_at_utc
+        text updated_at_utc
     }
     MASTER_DATA_SYNC_RUN {
         integer id PK
@@ -493,8 +499,9 @@ erDiagram
         text retrieved_at_utc
         text source_url
         text source_release
-        text archive_checksum
+        text checksum
         text parser_version
+        text record_counts_json
         text status
         integer change_detected
         text error_summary
@@ -510,6 +517,7 @@ erDiagram
         text checksum
         text activated_at_utc
         text status
+        text created_at_utc
     }
     CQ_ZONE {
         integer id PK
@@ -532,6 +540,10 @@ erDiagram
         text authority_code
         text name
         text entity_type "sovereign_country, territory, award_entity, contest_entity, other"
+        text continent
+        real latitude
+        real longitude
+        real utc_offset
         text valid_from
         text valid_to
     }
@@ -540,16 +552,21 @@ erDiagram
         integer version_id FK
         text prefix_pattern
         text allocation_type
+        text continent_override
+        real latitude_override
+        real longitude_override
+        real utc_offset_override
         text valid_from
         text valid_to
     }
-    PREFIX_ASSIGNMENT {
+    PREFIX_ENTITY_ASSIGNMENT {
         integer id PK
         integer entity_id FK
         integer prefix_id FK
         integer version_id FK
         text valid_from
         text valid_to
+        text source_note
     }
     PREFIX_CQ_ZONE_ASSIGNMENT {
         integer id PK
@@ -569,7 +586,7 @@ erDiagram
         text valid_to
         text override_note
     }
-    ENTITY_CQ_ZONE {
+    ENTITY_CQ_ZONE_ASSIGNMENT {
         integer entity_id PK,FK
         integer cq_zone_id PK,FK
         integer version_id FK
@@ -577,7 +594,7 @@ erDiagram
         text valid_to
         text boundary_note
     }
-    ENTITY_ITU_ZONE {
+    ENTITY_ITU_ZONE_ASSIGNMENT {
         integer entity_id PK,FK
         integer itu_zone_id PK,FK
         integer version_id FK
@@ -587,8 +604,6 @@ erDiagram
     }
 ```
 
-The diagram is logical rather than a required physical schema. Big CTY is the only provisioned source for callsign-derived contest entity, prefix, CQ-zone, ITU-zone, continent, and geographic reference facts; contest publications govern their interpretation. `namespace` and `entity_type` distinguish award-defined entities (such as DXCC) from contest-defined entities. Join tables such as `ENTITY_CQ_ZONE`, `ENTITY_ITU_ZONE`, `PREFIX_CQ_ZONE_ASSIGNMENT`, and `PREFIX_ITU_ZONE_ASSIGNMENT` carry effective dates and source/version provenance. Prefix assignments support more than one allocation target and time period. A prefix-based zone mapping from Big CTY is the primary call-sign resolution mapping; it does not replace a contest's published exceptions or a location supplied in a QSO exchange. Preserve removed records as inactive or expired rows instead of deleting identifiers referenced by historical logs or score runs. All tables and sync operations use the Python ORM and ORM-managed transactions. Contest-specific station and exchange identifiers are configured in each contest's ruleset.
+The diagram is logical rather than a required physical schema. Big CTY is the only enabled source, stored under dataset key `cty`; it supplies callsign-derived entity, prefix, CQ-zone, ITU-zone, continent, and geographic reference facts, while contest publications govern how those facts are interpreted. Source and version records retain provenance, license/use terms, checksums, and effective intervals. The source priority and authority role fields describe source metadata; they do not arbitrate between feeds in this CTY-only setup. `namespace` and `entity_type` distinguish award-defined entities (such as DXCC) from contest-defined entities. The diagram names the current ORM tables, including `prefix_entity_assignments`, `entity_cq_zone_assignments`, `entity_itu_zone_assignments`, `prefix_cq_zone_assignments`, and `prefix_itu_zone_assignments`; they carry effective dates and source/version provenance. Prefix assignments support more than one allocation target and time period. Prefix-based zone mappings from Big CTY support callsign resolution; they do not replace a contest's published exceptions or a location supplied in a QSO exchange. Preserve old versions referenced by historical logs or score runs. All tables and sync operations use the Python ORM and ORM-managed transactions. Contest-specific station and exchange identifiers belong in each contest's ruleset.
 
-Run an initial source check/import at API startup when no valid active version exists, then run one scheduled source check/import each night. Expose whether initial provisioning is pending, active, or failed; scoring that requires the data must wait for a valid version. Sources with published change feeds or daily transactions can be applied incrementally; static publications should be checked for a changed release, ETag, or checksum. Validate keys, counts, relationships, effective dates, and expected completeness before activation. Retain each prior version and associate each contest with the exact version of each required dataset whose effective interval contains its start instant. Use that pinned set for all score runs; never substitute the latest version at scoring time. If no version covers contest start, block dependent scoring and report the missing dataset. For sources that require human interpretation, the nightly process should create a review candidate rather than silently changing contest classifications.
-
-Compare the canonical parsed checksum with the current version for each dataset. When the content is unchanged, record a successful `unchanged` sync outcome but do not create or activate a new `MasterDataVersion` or alter its effective interval. A real change closes the prior interval and starts a new one at activation time. A global administrator can inspect version and sync metadata and activate validated candidate versions in the web UI. Deletion is allowed only for a non-current version with no contest, score-run, QSO-resolution, or other retained-record references; retain versions needed for historical result reproduction.
+On startup, import Big CTY if no active CTY version exists; then check it nightly. Expose whether initial provisioning is pending, active, or failed. Rules that use callsign-derived facts require a CTY version valid at contest start, and scoring must block if no version covers that instant. Validate a complete CTY candidate before activation, preserve the last good version on failure, and stage material changes for review. The dated release and checksum identify upstream changes; unchanged normalized content records a successful sync without creating a new version or changing effective intervals. A global administrator can inspect source/run/version metadata and activate validated candidates in the web UI. Deletion is allowed only for a non-current version with no contest, score-run, QSO-resolution, or other retained-record references; keep versions needed for historical result reproduction.
