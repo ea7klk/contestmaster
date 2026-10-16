@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.app.db import build_engine
 from backend.app.models import (
     AuditEvent,
+    BandCatalogItem,
     ContestEntity,
     EntityType,
     MasterDataAuthorityRole,
@@ -18,6 +19,7 @@ from backend.app.models import (
     MasterDataSyncRun,
     MasterDataVersion,
     MasterDataVersionStatus,
+    ModeCatalogItem,
     RulesetVersion,
 )
 from backend.app.models.types import utc_now
@@ -108,11 +110,18 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
             "SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1"
         ).scalar_one()
     assert "operating_catalog_items" not in tables
-    assert version == "0015_split_operating_catalogs"
+    assert version == "0016_catalog_item_descriptions"
     assert foreign_keys == 1
     assert seeded_bands >= 30
     assert highest_band == "1.4 THz"
     assert ft8 == 1
+    with Session(engine) as session:
+        assert session.scalar(
+            select(BandCatalogItem.description).where(BandCatalogItem.key == "160m")
+        ) == "160 m HF band"
+        assert session.scalar(
+            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT8")
+        ) == "Weak-signal digital mode"
     assert {"category_values", "is_late"} <= {
         column["name"] for column in inspector.get_columns("entries")
     }
@@ -222,6 +231,62 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
                 {"version_id": active_version.id},
             )
         session.rollback()
+    engine.dispose()
+
+
+def test_catalog_description_migration_updates_only_generic_descriptions(tmp_path) -> None:
+    database_path = tmp_path / "catalog-descriptions.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0015_split_operating_catalogs"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        band = session.scalar(select(BandCatalogItem).where(BandCatalogItem.key == "20m"))
+        mode = session.scalar(select(ModeCatalogItem).where(ModeCatalogItem.key == "CW"))
+        assert band is not None
+        assert mode is not None
+        band.description = "Administrator's band notes"
+        mode.description = "Administrator's mode notes"
+        session.commit()
+    engine.dispose()
+
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        bands = list(session.scalars(select(BandCatalogItem)))
+        modes = list(session.scalars(select(ModeCatalogItem)))
+        assert all(item.description and len(item.description) < 40 for item in bands)
+        assert all(item.description and len(item.description) < 40 for item in modes)
+        assert session.scalar(
+            select(BandCatalogItem.description).where(BandCatalogItem.key == "20m")
+        ) == "Administrator's band notes"
+        assert session.scalar(
+            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "CW")
+        ) == "Administrator's mode notes"
+        assert session.scalar(
+            select(BandCatalogItem.description).where(BandCatalogItem.key == "40m")
+        ) == "40 m HF band"
+        assert session.scalar(
+            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT4")
+        ) == "Fast weak-signal digital mode"
     engine.dispose()
 
 
