@@ -8,6 +8,20 @@ import SiteFooter from './SiteFooter.vue'
 describe('SiteFooter', () => {
   it('provides a keyboard-accessible attribution link to source license terms', () => {
     const wrapper = mount(SiteFooter)
+    const footer = wrapper.get('footer')
+    expect(footer.classes()).toContain('site-footer')
+    expect(footer.text()).toContain(
+      'Copyright © 2026 Volker Kerkhoff and contributors. Contestmaster is licensed under AGPL-3.0-only.',
+    )
+    const repository = wrapper.get(
+      'a[href="https://github.com/ea7klk/contestmaster"]',
+    )
+    expect(repository.text()).toBe('Project repository')
+    const projectLicense = wrapper.get(
+      'a[href="https://github.com/ea7klk/contestmaster/blob/main/LICENSE"]',
+    )
+    expect(projectLicense.text()).toBe('License')
+
     const license = wrapper.get(
       'a[href="https://github.com/WSJTX/wsjtx/blob/master/cty.dat_copyright.txt"]',
     )
@@ -32,7 +46,7 @@ describe('SiteFooter', () => {
     expect(wrapper.get('footer').text()).toContain(
       'M49 numeric codes are used as published, without modification or derived geographic classifications.',
     )
-    for (const link of [license, ungegnTerms, m49Source, m49Terms]) {
+    for (const link of [repository, projectLicense, license, ungegnTerms, m49Source, m49Terms]) {
       expect(link.attributes('target')).toBe('_blank')
       expect(link.attributes('rel')).toContain('noreferrer')
     }
@@ -44,6 +58,8 @@ describe('SiteFooter', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia(), router] } })
 
     expect(wrapper.get('footer').text()).toContain('license and use terms')
+    expect(wrapper.get('footer').text()).toContain('Copyright © 2026 Volker Kerkhoff and contributors.')
+    expect(wrapper.find('footer a[href="https://github.com/ea7klk/contestmaster"]').exists()).toBe(true)
     expect(wrapper.get('footer').text()).toContain('open access terms')
     expect(wrapper.get('footer').text()).toContain('UN website terms')
   })
