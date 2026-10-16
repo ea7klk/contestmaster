@@ -374,6 +374,8 @@ describe('ContestManagerView', () => {
     const wrapper = mountManager()
     await flushPromises()
     await wrapper.get('.contest-card .secondary-button').trigger('click')
+    expect(wrapper.text()).toContain('Contest description (Markdown)')
+    expect(wrapper.text()).toContain('Supports Markdown such as paragraphs')
     expect(
       (wrapper.get('.contest-form input').element as HTMLInputElement).value,
     ).toBe('Summer QSO Party')
@@ -381,11 +383,17 @@ describe('ContestManagerView', () => {
     expect(
       (wrapper.get('.contest-form select').element as HTMLSelectElement).value,
     ).toBe('annual_date')
+    const description = wrapper.get('.contest-form textarea')
+    expect((description.element as HTMLTextAreaElement).value).toBe(
+      'Annual **contest**',
+    )
+    await description.setValue('Now _updated_')
     await wrapper.get('.contest-form input').setValue('Updated QSO Party')
     await wrapper.get('.contest-form').trigger('submit')
     await flushPromises()
 
     expect(updateBodies[0]?.name).toBe('Updated QSO Party')
+    expect(updateBodies[0]?.description).toBe('Now _updated_')
     expect(updateBodies[0]?.periodicity).toEqual({
       frequency: 'annual_date',
       month: 7,
@@ -541,7 +549,7 @@ const editableContest = {
   owner_user_id: 4,
   name: 'Summer QSO Party',
   slug: 'summer-qso-party',
-  description: 'Annual contest',
+  description: 'Annual **contest**',
   starts_at: '2026-07-04T12:00:00Z',
   ends_at: '2026-07-04T18:00:00Z',
   periodicity: { frequency: 'annual_date', month: 7, day: 4 },

@@ -58,9 +58,54 @@ describe('describeContestRuleset', () => {
     })
 
     expect(descriptions).toEqual([
-      'Entries are classified by Operator: Single operator and Multi operator.',
+      'Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: Operator (required): Single operator and Multi operator.',
       'Stations exchange Serial number (sent and received) and Section (received).',
       'Only when contact band is 20m: final score: contact points multiplied by multipliers plus bonus points. Scores use whole-number points.',
+    ])
+  })
+
+  it('explains category segmentation, required choices, declarations, and exclusions', () => {
+    const descriptions = describeContestRuleset({
+      schema_version: 2,
+      ruleset_key: 'segmented-sprint',
+      version: '2026',
+      rules: [
+        {
+          id: 'categories',
+          rule: {
+            kind: 'categories',
+            dimensions: [
+              {
+                key: 'operator',
+                label: 'Operator class',
+                required: true,
+                choices: [
+                  { key: 'single', label: 'Single operator' },
+                  {
+                    key: 'multi',
+                    label: 'Multi operator',
+                    requires_declaration: true,
+                  },
+                ],
+              },
+              {
+                key: 'power',
+                label: 'Power class',
+                required: false,
+                choices: [
+                  { key: 'low', label: 'Low power' },
+                  { key: 'high', label: 'High power' },
+                ],
+              },
+            ],
+            mutually_exclusive: [['operator', 'power']],
+          },
+        },
+      ],
+    })
+
+    expect(descriptions).toEqual([
+      'Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: Operator class (required): Single operator and Multi operator; Power class (optional): Low power and High power. The ruleset marks Multi operator in Operator class as requiring a declaration. These dimensions cannot be combined: Operator class and Power class.',
     ])
   })
 

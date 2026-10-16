@@ -81,28 +81,70 @@ function summarizeRule(rule: JsonRecord): string {
       }`
     }
     case 'categories': {
-      const dimensions = Array.isArray(rule.dimensions)
-        ? rule.dimensions.filter(isRecord).map((dimension) => {
-            const choices = Array.isArray(dimension.choices)
-              ? dimension.choices
-                  .filter(isRecord)
-                  .map((choice) =>
-                    stringValue(choice.label, stringValue(choice.key)),
-                  )
-              : []
-            const label = stringValue(
-              dimension.label,
-              stringValue(dimension.key, 'Category'),
-            )
-            const optional = dimension.required === false ? ' (optional)' : ''
-            return choices.length
-              ? `${label}${optional}: ${names(choices, '')}`
-              : `${label}${optional}`
-          })
+      const dimensionRows = Array.isArray(rule.dimensions)
+        ? rule.dimensions.filter(isRecord)
         : []
-      return dimensions.length
-        ? `Entries are classified by ${names(dimensions, 'the configured categories')}.`
-        : 'Entry categories are configured for this contest.'
+      const dimensions = dimensionRows.map((dimension) => {
+        const choices = Array.isArray(dimension.choices)
+          ? dimension.choices
+              .filter(isRecord)
+              .map((choice) =>
+                stringValue(choice.label, stringValue(choice.key)),
+              )
+          : []
+        const label = stringValue(
+          dimension.label,
+          stringValue(dimension.key, 'Category'),
+        )
+        const requirement =
+          dimension.required === false ? 'optional' : 'required'
+        return choices.length
+          ? `${label} (${requirement}): ${names(choices, '')}`
+          : `${label} (${requirement})`
+      })
+      const exclusions = Array.isArray(rule.mutually_exclusive)
+        ? rule.mutually_exclusive
+            .filter(Array.isArray)
+            .map((group) =>
+              group.map((key) => {
+                const dimension = dimensionRows.find(
+                  (candidate) => candidate.key === key,
+                )
+                return isRecord(dimension)
+                  ? stringValue(dimension.label, String(key))
+                  : String(key)
+              }),
+            )
+            .filter((group) => group.length > 1)
+        : []
+      if (dimensions.length === 0) {
+        return 'Entry categories are configured for this contest.'
+      }
+      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: ${dimensions.join('; ')}.`
+      const declarationChoices = dimensionRows.flatMap((dimension) => {
+        const dimensionLabel = stringValue(
+          dimension.label,
+          stringValue(dimension.key, 'Category'),
+        )
+        return Array.isArray(dimension.choices)
+          ? dimension.choices
+              .filter(isRecord)
+              .filter((choice) => choice.requires_declaration === true)
+              .map(
+                (choice) =>
+                  `${stringValue(choice.label, stringValue(choice.key, 'Category choice'))} in ${dimensionLabel}`,
+              )
+          : []
+      })
+      const declarationText = declarationChoices.length
+        ? ` The ruleset marks ${names(declarationChoices, 'the marked choices')} as requiring a declaration.`
+        : ''
+      const exclusionText = exclusions.length
+        ? ` These dimensions cannot be combined: ${exclusions
+            .map((group) => names(group, 'configured dimensions'))
+            .join('; ')}.`
+        : ''
+      return `${summary}${declarationText}${exclusionText}`
     }
     case 'exchange': {
       const fields = Array.isArray(rule.fields)

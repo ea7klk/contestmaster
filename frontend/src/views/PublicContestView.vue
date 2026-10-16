@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import { getPublicContest, type PublicContestDetails } from '../api/results'
+import { renderContestMarkdown } from './contestMarkdown'
 import { describeContestRuleset } from './publicContestDescription'
 
 const props = defineProps<{ slug: string }>()
@@ -11,6 +12,9 @@ const loading = ref(true)
 const error = ref('')
 const rulesetSummary = computed(() =>
   describeContestRuleset(contest.value?.ruleset ?? null),
+)
+const contestDescriptionHtml = computed(() =>
+  renderContestMarkdown(contest.value?.description ?? null),
 )
 
 const utcDateTime = new Intl.DateTimeFormat('en-GB', {
@@ -55,12 +59,25 @@ onMounted(async () => {
     <p v-else-if="error" role="alert" class="error-panel">{{ error }}</p>
     <template v-else-if="contest">
       <h1 id="public-contest-title">{{ contest.name }}</h1>
-      <p v-if="contest.description">{{ contest.description }}</p>
+      <!-- HTML is parsed and sanitized in contestMarkdown.ts before rendering. -->
+      <!-- eslint-disable vue/no-v-html -->
+      <section
+        v-if="contestDescriptionHtml"
+        class="contest-description markdown-content"
+        aria-label="Contest description"
+        v-html="contestDescriptionHtml"
+      />
+      <!-- eslint-enable vue/no-v-html -->
       <section
         class="ruleset-overview"
         aria-labelledby="ruleset-overview-title"
       >
         <h2 id="ruleset-overview-title">Contest rules at a glance</h2>
+        <p class="generated-summary-note">
+          This summary is automatically generated from the ruleset and may be
+          imprecise. Refer to the contest’s official published rules for the
+          authoritative requirements.
+        </p>
         <ul v-if="rulesetSummary.length">
           <li v-for="(item, index) in rulesetSummary" :key="index">
             {{ item }}
@@ -113,6 +130,17 @@ onMounted(async () => {
   display: grid;
   gap: 0.75rem;
 }
+.contest-description {
+  margin: 0.75rem 0 1.5rem;
+}
+.markdown-content :deep(p:first-child) {
+  margin-top: 0;
+}
+.markdown-content :deep(p:last-child),
+.markdown-content :deep(ul:last-child),
+.markdown-content :deep(ol:last-child) {
+  margin-bottom: 0;
+}
 .ruleset-overview {
   margin: 1.5rem 0;
   padding: 1rem 1.25rem;
@@ -123,6 +151,10 @@ onMounted(async () => {
 .ruleset-overview h2 {
   margin-top: 0;
   font-size: 1.2rem;
+}
+.generated-summary-note {
+  color: var(--muted, #65564d);
+  font-size: 0.95rem;
 }
 .ruleset-overview ul {
   margin-bottom: 0;

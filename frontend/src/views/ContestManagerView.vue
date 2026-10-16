@@ -616,8 +616,18 @@ onMounted(refreshData)
           >
         </label>
         <label class="full-width">
-          Description
-          <textarea v-model="form.description" maxlength="10000" rows="3" />
+          Contest description (Markdown)
+          <textarea
+            v-model="form.description"
+            maxlength="10000"
+            rows="6"
+            aria-describedby="contest-description-help"
+          />
+          <span id="contest-description-help" class="field-help">
+            Supports Markdown such as paragraphs, lists, emphasis, and links.
+            This description is shown to participants above the generated rules
+            summary.
+          </span>
         </label>
         <label>
           Contest starts (UTC)

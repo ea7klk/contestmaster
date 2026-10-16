@@ -56,6 +56,9 @@ describe('PublicContestView', () => {
     expect(wrapper.get('#ruleset-overview-title').text()).toBe(
       'Contest rules at a glance',
     )
+    expect(wrapper.text()).toContain(
+      'automatically generated from the ruleset and may be imprecise',
+    )
     expect(wrapper.text()).toContain('bands 20m and 40m')
     expect(wrapper.text()).toContain('modes CW')
     expect(wrapper.text()).toContain('Each eligible contact is worth 2 points.')
@@ -63,6 +66,64 @@ describe('PublicContestView', () => {
       '/submit-log?contest=autumn-test',
     )
     await expectAccessible(wrapper.element)
+  })
+
+  it('renders manager Markdown above the generated summary and strips unsafe HTML', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...details,
+              description:
+                'A **public** contest.\n\n<script>alert(1)</script><img src=x onerror=alert(1)> [unsafe](javascript:alert(1))',
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+
+    const description = wrapper.get('.contest-description')
+    expect(description.find('strong').text()).toBe('public')
+    expect(description.find('script').exists()).toBe(false)
+    expect(description.find('img').exists()).toBe(false)
+    expect(description.find('a').exists()).toBe(false)
+    expect(
+      wrapper.element
+        .querySelector('.contest-description')
+        ?.compareDocumentPosition(
+          wrapper.element.querySelector('.ruleset-overview') as Node,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await expectAccessible(wrapper.element)
+  })
+
+  it('omits an empty contest description', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ...details, description: '  ' }), {
+            status: 200,
+          }),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+    expect(wrapper.find('.contest-description').exists()).toBe(false)
   })
 
   it('explains when log submission has closed', async () => {
