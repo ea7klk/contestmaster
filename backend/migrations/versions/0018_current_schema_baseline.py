@@ -92,7 +92,7 @@ def upgrade() -> None:
         bind=bind,
         tables=[
             table for table in Base.metadata.sorted_tables
-            if table.name != "contest_deletion_permits"
+            if table.name not in {"contest_deletion_permits", "ruleset_deletion_permits"}
         ],
     )
     # This baseline predates contest periodicity. Keep its shape stable even

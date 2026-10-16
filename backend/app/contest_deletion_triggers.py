@@ -139,3 +139,17 @@ def install_contest_deletion_guards(connection: Connection) -> None:
     )
     for statement in statements:
         connection.exec_driver_sql(statement)
+
+
+def install_ruleset_deletion_guard(connection: Connection) -> None:
+    """Allow ruleset-version deletion only with the scoped transactional permit."""
+    connection.exec_driver_sql("DROP TRIGGER IF EXISTS guard_ruleset_versions_delete")
+    connection.exec_driver_sql("DROP TRIGGER IF EXISTS immutable_ruleset_versions_delete")
+    connection.exec_driver_sql(
+        """CREATE TRIGGER guard_ruleset_versions_delete BEFORE DELETE ON ruleset_versions
+        WHEN NOT EXISTS (
+            SELECT 1 FROM ruleset_deletion_permits p
+            WHERE p.ruleset_version_id = OLD.id
+        )
+        BEGIN SELECT RAISE(ABORT, 'ruleset versions require deletion permit'); END"""
+    )

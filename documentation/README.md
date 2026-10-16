@@ -135,7 +135,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo or ADI/ADIF input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
 
-The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots. Contest-history delete guards remain active except when the authorized deletion service inserts a transaction-scoped permit for the contest being removed.
+The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots. Contest-history delete guards remain active except when the authorized deletion service inserts a transaction-scoped permit for the contest being removed. Ruleset definitions remain protected from direct deletion; deleting an unused version requires the authorized service to verify all references and insert a transaction-scoped version permit.
 
 ```mermaid
 erDiagram
@@ -149,6 +149,7 @@ erDiagram
     CONTEST ||--o{ RULESET_VERSION : selects
     CONTEST ||--o{ RULESET_ACTIVATION : history
     CONTEST ||--o| CONTEST_DELETION_PERMIT : temporarily_authorizes_removal
+    RULESET_VERSION ||--o| RULESET_DELETION_PERMIT : temporarily_authorizes_removal
     RULESET_VERSION ||--o{ RULESET_ACTIVATION : activated
     SYSTEM_USER o|--o{ RULESET_ACTIVATION : activates
     CONTEST ||--o{ CONTEST_MASTER_DATA_VERSION : pins
@@ -243,6 +244,9 @@ erDiagram
         text source_edition
         text rule_type_keys_json
         text configuration_json
+    }
+    RULESET_DELETION_PERMIT {
+        integer ruleset_version_id PK "temporary FK to ruleset version"
     }
     BAND_CATALOG_ITEM {
         integer id PK

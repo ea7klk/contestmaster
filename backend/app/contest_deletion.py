@@ -20,6 +20,7 @@ from backend.app.models import (
     ResultPublication,
     ResultPublicationEntry,
     RulesetActivation,
+    RulesetDeletionPermit,
     RulesetVersion,
     ScoreRun,
     ScoreRunMasterDataVersion,
@@ -151,5 +152,7 @@ def delete_unused_ruleset_version(session: Session, version: RulesetVersion) -> 
                 "This ruleset version is referenced by a contest or score history "
                 "and cannot be deleted."
             )
+    session.add(RulesetDeletionPermit(ruleset_version_id=version.id))
+    session.flush()
     session.delete(version)
     session.flush()

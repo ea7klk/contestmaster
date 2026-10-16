@@ -10,7 +10,10 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.api.auth import hash_password
 from backend.app.api.contests import _integrity_failure_kind
-from backend.app.contest_deletion_triggers import install_contest_deletion_guards
+from backend.app.contest_deletion_triggers import (
+    install_contest_deletion_guards,
+    install_ruleset_deletion_guard,
+)
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
@@ -64,6 +67,7 @@ def deletion_database(monkeypatch):
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
         install_contest_deletion_guards(connection)
+        install_ruleset_deletion_guard(connection)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(
         "backend.app.api.auth.get_settings",
@@ -388,6 +392,14 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
         assert event.event_metadata["entries"] == 1
         # Ruleset assignment history and score runs are gone, so the version is now deletable.
         assert session.get(RulesetVersion, deletion_fixture["ruleset_id"]) is not None
+
+    with deletion_database() as session:
+        unused_ruleset = session.get(RulesetVersion, deletion_fixture["ruleset_id"])
+        assert unused_ruleset is not None
+        session.delete(unused_ruleset)
+        with pytest.raises(IntegrityError, match="ruleset versions require deletion permit"):
+            session.flush()
+        session.rollback()
 
     delete_ruleset = client.request(
         "DELETE",

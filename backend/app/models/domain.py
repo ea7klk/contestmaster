@@ -214,6 +214,16 @@ class RulesetVersion(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
+class RulesetDeletionPermit(Base):
+    """Transactional database guard permitting removal of one unused ruleset version."""
+
+    __tablename__ = "ruleset_deletion_permits"
+
+    ruleset_version_id: Mapped[int] = mapped_column(
+        ForeignKey("ruleset_versions.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class RulesetActivation(Base):
     __tablename__ = "ruleset_activations"
     __table_args__ = (

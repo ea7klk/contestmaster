@@ -70,6 +70,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
         "participants",
         "contests",
         "contest_deletion_permits",
+        "ruleset_deletion_permits",
         "entries",
         "entry_revisions",
         "log_submission_requests",
@@ -93,7 +94,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "operating_catalog_items" not in tables
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0020_authorized_contest_deletion"
+            "0021_authorized_ruleset_deletion"
         )
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
@@ -133,7 +134,6 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
         )
         assert {
             "immutable_ruleset_versions_update",
-            "immutable_ruleset_versions_delete",
             "immutable_entry_revisions_update",
             "immutable_ruleset_activations_update",
             "guard_entry_revisions_delete",
@@ -142,6 +142,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
             "guard_qso_decisions_update",
             "guard_qso_decisions_delete",
             "guard_ruleset_activations_delete",
+            "guard_ruleset_versions_delete",
             "guard_score_runs_delete",
             "guard_qso_scores_delete",
             "guard_result_publications_delete",
@@ -153,6 +154,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
             "prevent_active_master_data_version_delete",
         } <= triggers
         assert not {
+            "immutable_ruleset_versions_delete",
             "immutable_entry_revisions_delete",
             "immutable_stations_delete",
             "immutable_qsos_delete",
@@ -199,7 +201,21 @@ def test_contest_deletion_permit_is_added_by_forward_migration(tmp_path) -> None
     engine.dispose()
 
 
-def test_migration_history_has_one_baseline_and_forward_migration() -> None:
+def test_ruleset_deletion_permit_is_added_by_forward_migration(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'ruleset-deletion-permit.sqlite3'}"
+
+    _alembic(database_url, "upgrade", "0020_authorized_contest_deletion")
+    engine = build_engine(database_url)
+    assert "ruleset_deletion_permits" not in set(inspect(engine).get_table_names())
+    engine.dispose()
+
+    _alembic(database_url, "upgrade", "head")
+    engine = build_engine(database_url)
+    assert "ruleset_deletion_permits" in set(inspect(engine).get_table_names())
+    engine.dispose()
+
+
+def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
@@ -208,13 +224,15 @@ def test_migration_history_has_one_baseline_and_forward_migration() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 3
-    assert revisions[0].revision == "0020_authorized_contest_deletion"
-    assert revisions[0].down_revision == "0019_contest_periodicity"
-    assert revisions[1].revision == "0019_contest_periodicity"
-    assert revisions[1].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[2].down_revision is None
-    assert revisions[2].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 4
+    assert revisions[0].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[0].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[1].revision == "0020_authorized_contest_deletion"
+    assert revisions[1].down_revision == "0019_contest_periodicity"
+    assert revisions[2].revision == "0019_contest_periodicity"
+    assert revisions[2].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[3].down_revision is None
+    assert revisions[3].revision == "0018_remove_unscored_country_data"
 
 
 def test_periodicity_migration_copies_legacy_ruleset_recurrence(tmp_path) -> None:
@@ -319,7 +337,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0020_authorized_contest_deletion"
+            "0021_authorized_ruleset_deletion"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
@@ -338,7 +356,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0020_authorized_contest_deletion"
+            "0021_authorized_ruleset_deletion"
         )
     engine.dispose()
 
@@ -423,7 +441,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0020_authorized_contest_deletion"
+            "0021_authorized_ruleset_deletion"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1
