@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { expectAccessible } from '../test/a11y'
 import CategoryExchangeEditor from './CategoryExchangeEditor.vue'
 
 describe('CategoryExchangeEditor', () => {
@@ -52,5 +53,41 @@ describe('CategoryExchangeEditor', () => {
       value_type: 'serial',
       direction: 'both',
     })
+  })
+
+  it('groups category and choice controls into wrapping editor rows', async () => {
+    const wrapper = mount(CategoryExchangeEditor, {
+      props: {
+        kind: 'categories',
+        modelValue: {
+          kind: 'categories',
+          dimensions: [
+            {
+              key: 'assisted',
+              label: 'Assistance',
+              required: true,
+              choices: [
+                {
+                  key: 'assisted',
+                  label: 'Assisted',
+                  requires_declaration: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    expect(wrapper.find('.controlled-row').exists()).toBe(true)
+    expect(wrapper.find('.controlled-choice-list').exists()).toBe(true)
+    expect(wrapper.find('.controlled-choice').findAll('label')).toHaveLength(3)
+    expect(
+      wrapper
+        .find('.controlled-row')
+        .findAll('button')
+        .some((button) => button.text() === 'Add choice'),
+    ).toBe(true)
+    await expectAccessible(wrapper.element)
   })
 })

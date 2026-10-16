@@ -2,6 +2,20 @@
 
 The Vue composer exposes the same typed ruleset definition that the API validates. A contest manager should compare every draft with the sponsor's current rules before saving or activating it. The backend remains authoritative; browser controls only help build valid configuration.
 
+## Ruleset creation workflow
+
+1. Record the official rules URL and edition so a saved configuration can be traced back to its source.
+2. Configure the required rule types. These describe the contest's categories, exchange, contact eligibility, duplicate handling, point values, score formula, late-log policy, and accepted log formats.
+3. Add optional rule types only when the published rules require them. Multipliers, bonuses, penalties, operating constraints, and workflow hooks represent different behaviors; do not select a rule just because it is available.
+4. Validate the draft. Read each field-level error, correct the configuration, and validate again. Review the generated explanation and worked integer-score example against the official scoring formula.
+5. Save the validated configuration as a new immutable version. Assign it to a contest from **Contest manager** when ready. Editing a saved version creates a new version and does not change existing contest assignments.
+
+The ruleset can be reused for contest editions with different event dates. Start/end times, recurrence, and the UTC submission cutoff belong to each contest. The ruleset's submission setting only describes how the application classifies logs received after that cutoff. Stable keys identify rules, categories, choices, and exchange fields in data and references; labels are intended for display and may be revised when making a new version.
+
+## Conditions
+
+A condition tests an existing fact, such as `qso.band`, `qso.entity`, `entry.categories.operator`, or `station.callsign`. Choose a fact path, comparison, and matching value. “Is one of” and “Is not one of” compare against a comma-separated list; “Is present” checks whether the fact has a value. “All conditions” requires every child condition to match, “Any condition” accepts one or more matches, and “Not a condition” inverts its child. An eligibility condition decides whether a contact can count at all; a rule-level condition decides whether that rule applies. They are separate controls. Conditions only use supported facts and operators, which are checked when validating the draft. If the sponsor defines behavior that the available condition controls cannot express, record it for review rather than approximating it.
+
 ## Import contests and edit saved rulesets
 
 From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and, optionally, a `ruleset` object. The contest object uses UTC start, end, and submission-cutoff timestamps plus optional periodicity; an included ruleset uses schema version 2 described in [ruleset drafts](../ruleset-drafts/README.md). A package without a ruleset creates a manager-owned draft with no ruleset assigned. A package with a ruleset creates a manager-owned draft and saves and assigns its immutable ruleset version. Both paths are transactional: malformed input, invalid contest data, unavailable operating-catalog keys, or conflicting records leave no partial import.
@@ -49,7 +63,7 @@ Contest configuration owns the separate UTC log submission cutoff. The ruleset's
 
 ## Categories and exchanges
 
-A category dimension is one entry-classification axis, such as operator, power, band, mode, assistance, transmitter count, or overlay. Its choices are the values allowed on that axis. A required dimension must have a selected value; an optional dimension may be left blank. A choice can be marked as requiring a participant declaration. Mutually exclusive groups identify dimensions that may not be selected together. Common keys and labels are selected from the controls; choose the custom option for sponsor-specific values. Keys are stable references used by imported categories, conditions, and format mappings. Changing a label never changes a key. These settings feed the category portion of the public “Contest rules at a glance” summary, which is automatically generated and may be imprecise.
+A category dimension is one entry-classification axis, such as operator, power, band, mode, assistance, transmitter count, or overlay. Its choices are the values allowed on that axis. A required dimension must have a selected value; an optional dimension may be left blank. A choice can be marked as requiring a participant declaration. Mutually exclusive groups identify dimensions that may not be selected together. Common keys and labels are selected from the controls; choose the custom option for sponsor-specific values. Keys are stable references used by imported categories, conditions, and format mappings. For custom values, changing a display label never changes its key; built-in labels follow their preset. These settings feed the category portion of the public “Contest rules at a glance” summary, which is automatically generated and may be imprecise.
 
 ## Contest description and generated overview
 

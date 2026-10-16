@@ -475,17 +475,33 @@ function onEnumInput(event: Event) {
   padding: 0.9rem;
   border: 1px solid var(--color-border);
   border-radius: 0.65rem;
+  background: var(--color-surface-muted);
 }
 .schema-editor-nested {
-  background: var(--color-surface);
+  min-width: 0;
+  padding: 0.35rem 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 legend {
   padding: 0 0.3rem;
   font-size: 0.9rem;
   font-weight: 650;
 }
+.schema-editor-nested > legend {
+  padding: 0;
+  color: var(--color-brand-900);
+}
 .schema-field {
-  margin: 0.7rem 0;
+  min-width: 0;
+  margin: 0.65rem 0;
+  padding: 0 0 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.schema-field:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 .schema-enable,
 .schema-boolean {
@@ -498,7 +514,9 @@ legend {
 .schema-control {
   display: grid;
   gap: 0.35rem;
-  max-width: 42rem;
+  width: 100%;
+  max-width: 52rem;
+  min-width: 0;
   color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
@@ -526,13 +544,13 @@ textarea {
 .schema-array-item,
 .schema-map-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: end;
   gap: 0.6rem;
   margin: 0.6rem 0;
 }
 .schema-map-row {
-  grid-template-columns: minmax(8rem, 0.8fr) minmax(12rem, 1.5fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
 }
 .schema-map-row > label {
   display: grid;
@@ -544,6 +562,7 @@ textarea {
   color: var(--color-muted);
 }
 .schema-description {
+  max-width: 70rem;
   margin: 0.3rem 0 0;
   color: var(--color-muted);
   font-size: 0.84rem;
@@ -569,8 +588,11 @@ textarea {
   opacity: 0.6;
 }
 @media (max-width: 720px) {
+  .schema-array-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .schema-map-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

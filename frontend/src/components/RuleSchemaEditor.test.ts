@@ -88,4 +88,39 @@ describe('RuleSchemaEditor', () => {
     const updates = wrapper.emitted('update:modelValue') ?? []
     expect(updates.at(-1)?.[0]).toEqual({ value: 42 })
   })
+
+  it('keeps generated fields within consistent nested field groups', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      title: 'Eligibility settings',
+      properties: {
+        reject_self_contacts: {
+          type: 'boolean',
+          title: 'Reject self contacts',
+          description: 'Do not credit contacts made with the entrant own call.',
+        },
+        action: {
+          type: 'string',
+          title: 'Failure action',
+          enum: ['not_credited', 'needs_review'],
+          description: 'Choose how to handle a contact that fails a check.',
+        },
+      },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: {
+          reject_self_contacts: true,
+          action: 'not_credited',
+        },
+      },
+    })
+
+    expect(wrapper.findAll('.schema-field')).toHaveLength(2)
+    expect(wrapper.findAll('.schema-editor-nested')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Do not credit contacts')
+    expect(wrapper.text()).toContain('Choose how to handle a contact')
+  })
 })

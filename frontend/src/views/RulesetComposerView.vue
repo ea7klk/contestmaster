@@ -198,15 +198,31 @@ function setSelectedValues(
 
 const helpText: Record<string, string> = {
   submission:
-    'The contest configuration owns the UTC log submission cutoff. This rule chooses whether uploads received after that cutoff are rejected, accepted as late, or classified as checklog; a manager extension is available only when enabled.',
+    'The contest editor owns the event start, event end, recurrence, and UTC log-submission cutoff. This reusable rule only describes what the system does with a log received after that contest cutoff: reject it, accept and mark it late, or accept it for checklog review. Enable a manager extension only when the sponsor permits an explicit extension; it does not change the original cutoff automatically.',
+  categories:
+    'Use these dimensions and choices to define the entrant classes shown in results. The controls below explain stable keys, required choices, declarations, and incompatible combinations.',
+  exchange:
+    'Define the canonical values used to validate contacts and entrant declarations. The controls below explain field keys, labels, directions, value types, and serial settings; format mappings connect these values to uploaded log fields.',
+  eligibility:
+    'This rule determines which submitted contacts may count before points and multipliers are applied. Use band and mode selections when the sponsor restricts operating segments; leave those lists unrestricted when any catalog value is allowed. Add a condition for geography or other supported contact facts only when the written rules define that limit. The built-in checks can reject self-contacts, out-of-period contacts, and missing required exchange data. Select whether a failed check is uncredited or held for review.',
   duplicates:
-    'The scope combines the worked callsign with any selected band, mode, grid, or transmitter values. A wider scope permits repeat contacts when one of those selected values differs. The effect says whether a repeat is ignored, uncredited, penalized, or held for review.',
+    'Choose the values that make two contacts count as the same contact. Worked callsign is always part of the identity; adding band, mode, grid, or transmitter makes otherwise repeated contacts distinct when that value changes. For example, callsign plus band permits one contact per station on each band. Then choose the sponsor’s consequence for another contact in the same scope: ignore it, leave it uncredited, apply an integer penalty, or send it for review.',
   points:
-    'QSO points are non-negative integers. Fixed points apply to every eligible contact; lookup points use the selected contact fact and exact configured value. The optional default handles values absent from that lookup.',
+    'This rule assigns the base integer points for each eligible contact, before multiplier and bonus rules. Fixed points give every eligible contact the same value. A lookup assigns a value by one supported fact, such as band, mode, entity, zone, or an exchange field. Add a default only if the sponsor defines what to do when the fact has no matching lookup entry. Every value must be an integer at least zero; do not convert fractional point rules into decimals.',
+  multiplier:
+    'A multiplier is a distinct value that increases the score according to the contest formula. Choose the submitted or resolved fact that supplies the value, then choose where uniqueness resets: once for the whole contest, per band, per mode, per band and mode, per grid, or per transmitter. Multiple contacts can earn points while the same multiplier value is counted only once within its configured scope. Use the scope stated in the sponsor rules.',
+  bonus:
+    'Use a bonus for additional integer points awarded per eligible contact or once per entry. Set a cap when the sponsor limits the total, and set a minimum eligible-contact count when a threshold applies. If proof or a declaration is required, choose its stable evidence key; the bonus is awarded only when that declaration is present. Keep ordinary per-contact points in QSO Points instead.',
+  penalty:
+    'Add one penalty rule for each distinct violation and consequence described by the sponsor. Give the reason a stable code so score explanations can identify it. Choose whether the violation removes a contact, deducts integer points, reclassifies the entry, disqualifies it, or sends it for review. Point deductions require a positive integer; set the maximum number of times this penalty can apply to one entry.',
   score_formula:
-    'Start with an integer variable or constant, then apply steps from top to bottom. Addition, subtraction, and multiplication keep integer values. Division requires an explicit integer operation and rounding rule. Example: 120 points × 8 multipliers + 10 bonus − 5 penalty = 965.',
+    'This is the final arithmetic applied after contacts, multipliers, bonuses, and penalties have been determined. Select the starting score and add operations in the same order as the published formula. Each step consumes the prior integer result and another supported integer variable or constant. Division must specify its integer rounding rule. Review the worked example after validation; it demonstrates the formula with sample values and is not a prediction of an entrant’s score. Example: 120 points × 8 multipliers + 10 bonus − 5 penalty = 965.',
+  operating_constraints:
+    'Use this rule for entry-level or operating limits the engine can check, such as required off-time periods, a maximum number of transmitters, or a permitted band/mode combination. Add only constraints supported by the shown fields and the official rules. Choose whether a violation is uncredited or requires human review when the result is ambiguous.',
   format_mapping:
-    'Each format mapping enables one supported log-file format for this contest. Add separate mappings when the sponsor accepts more than one format. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native are descriptive options only. Unknown input fields can be preserved for review.',
+    'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Map sponsor-specific exchange names to stable field keys. Unrecognized source fields can be preserved for later review.',
+  workflow_hook:
+    'Workflow hooks describe cross-log comparisons, review, publication, or award behavior that affects more than one contact. Enable a hook only when the sponsor’s rules require that workflow and its configured settings express the rule. Hooks do not execute arbitrary code; unsupported or ambiguous cases must be reviewed rather than guessed.',
 }
 
 function buildDraft(): RulesetDraft {
@@ -486,11 +502,44 @@ function catalogErrorMessage(reason: unknown) {
     <p class="eyebrow">Contest manager tools</p>
     <h1 id="composer-title">Ruleset composer</h1>
     <p class="intro">
-      Build a declarative contest ruleset by adding rule types and configuring
-      their fields. The API checks the draft and shows a readable summary and
-      integer scoring example.
+      Turn the sponsor’s published rules into a reusable, versioned set of
+      configuration. The API validates the settings and explains the scoring
+      behavior; it remains authoritative when the contest is run.
     </p>
     <a class="secondary-button" href="/manage/rulesets">← Back to rulesets</a>
+
+    <section class="workflow-guide" aria-labelledby="workflow-title">
+      <h2 id="workflow-title">How to create a ruleset</h2>
+      <ol>
+        <li>
+          <strong>Start from the published rules.</strong> Use the rules URL and
+          edition below so the configuration can be traced to its source.
+        </li>
+        <li>
+          <strong>Configure the required rule types.</strong> These provide the
+          basic entry categories, exchange, contact eligibility, duplicate
+          handling, point calculation, and accepted log format.
+        </li>
+        <li>
+          <strong>Add optional rule types only when needed.</strong> Add
+          multipliers, bonuses, penalties, operating constraints, or workflow
+          steps only when the sponsor’s rules define them. Use each section’s
+          help to translate that rule into settings.
+        </li>
+        <li>
+          <strong>Validate, then save and assign.</strong> Fix any field errors,
+          review the generated summary and example, and save a new immutable
+          version. Assign that version to a contest from the contest manager.
+        </li>
+      </ol>
+      <p>
+        Event dates, recurrence, and the UTC log-submission cutoff belong to the
+        contest configuration. A ruleset can be reused by contests with
+        different dates; its submission rule only defines late-log handling. If
+        a sponsor requirement cannot be expressed by the available settings, do
+        not approximate it with a different rule; record the gap for review.
+      </p>
+    </section>
 
     <p v-if="generalError" role="alert" class="error-panel">
       {{ generalError }}
@@ -504,6 +553,11 @@ function catalogErrorMessage(reason: unknown) {
     <template v-else-if="catalog.length">
       <fieldset class="panel metadata-panel">
         <legend>Ruleset identity</legend>
+        <p class="section-help">
+          These values identify the reusable configuration and its source. A
+          saved version is immutable; changing its settings requires a new
+          version identifier.
+        </p>
         <div class="metadata-grid">
           <label>
             Ruleset key
@@ -513,6 +567,11 @@ function catalogErrorMessage(reason: unknown) {
               autocomplete="off"
               @input="clearValidation"
             />
+            <span class="field-help">
+              Stable, lowercase identifier for this family of rules, such as
+              <code>spring-sprint</code>. Keep it the same when saving a later
+              version of the same contest rules.
+            </span>
           </label>
           <label>
             Version
@@ -527,6 +586,10 @@ function catalogErrorMessage(reason: unknown) {
               Editing {{ editingSource }}. Enter a new version identifier; saved
               versions cannot be changed.
             </span>
+            <span v-else class="field-help">
+              Use a year, edition, or other unique label. Validation requires a
+              version, and each saved version is a permanent snapshot.
+            </span>
           </label>
           <label>
             Published rules URL <span class="optional-label">Optional</span>
@@ -537,6 +600,10 @@ function catalogErrorMessage(reason: unknown) {
               autocomplete="url"
               @input="clearValidation"
             />
+            <span class="field-help">
+              Link the official rules page or document used to configure this
+              version. The contest sponsor’s rules remain authoritative.
+            </span>
           </label>
           <label>
             Source edition or year <span class="optional-label">Optional</span>
@@ -545,6 +612,10 @@ function catalogErrorMessage(reason: unknown) {
               maxlength="120"
               @input="clearValidation"
             />
+            <span class="field-help">
+              Record the published year or edition so managers can tell which
+              revision of the sponsor’s rules this version follows.
+            </span>
           </label>
         </div>
       </fieldset>
@@ -553,28 +624,34 @@ function catalogErrorMessage(reason: unknown) {
         <div class="section-heading">
           <div>
             <h2 id="configured-rules-title">Configured rule types</h2>
-            <p>Rules marked required are needed for a valid initial ruleset.</p>
+            <p>
+              Required sections form the built-in baseline and cannot be
+              removed. Configure their values to match the sponsor’s rules;
+              optional sections add other supported behavior.
+            </p>
           </div>
           <div class="add-rule-control">
-            <label for="add-rule-type">Add a rule type</label>
-            <select id="add-rule-type" v-model="selectedType">
-              <option value="">Choose a rule type</option>
-              <option
-                v-for="type in optionalTypes"
-                :key="type.key"
-                :value="type.key"
-                :disabled="
-                  [
-                    'submission',
-                    'categories',
-                    'format_mapping',
-                    'score_formula',
-                  ].includes(type.key) && usedSingletonKinds.has(type.key)
-                "
-              >
-                {{ type.label }}
-              </option>
-            </select>
+            <label for="add-rule-type"
+              >Add an optional rule type
+              <select id="add-rule-type" v-model="selectedType">
+                <option value="">Choose a rule type</option>
+                <option
+                  v-for="type in optionalTypes"
+                  :key="type.key"
+                  :value="type.key"
+                  :disabled="
+                    [
+                      'submission',
+                      'categories',
+                      'format_mapping',
+                      'score_formula',
+                    ].includes(type.key) && usedSingletonKinds.has(type.key)
+                  "
+                >
+                  {{ type.label }}
+                </option>
+              </select>
+            </label>
             <button
               type="button"
               class="secondary-button"
@@ -583,6 +660,11 @@ function catalogErrorMessage(reason: unknown) {
             >
               Add rule
             </button>
+            <p class="field-help">
+              Choose a supported optional rule type, then add it. You can add
+              repeatable types more than once and remove an optional rule that
+              does not apply.
+            </p>
           </div>
         </div>
 
@@ -620,6 +702,10 @@ function catalogErrorMessage(reason: unknown) {
               maxlength="80"
               @input="clearValidation"
             />
+            <span class="field-help">
+              A unique lowercase key for this rule inside the ruleset. It helps
+              identify the rule in validation messages and score explanations.
+            </span>
           </label>
           <RuleSchemaEditor
             v-if="
@@ -655,12 +741,6 @@ function catalogErrorMessage(reason: unknown) {
             {{ helpText[String(configured.rule.kind)] }}
           </p>
           <template v-if="configured.rule.kind === 'eligibility'">
-            <p class="rule-explanation">
-              Eligibility controls which contacts can be credited. Empty band or
-              mode selections mean no restriction for that dimension. Band
-              contest-free markings are advisory labels from the shared catalog;
-              they never silently change scoring.
-            </p>
             <label
               ><input
                 type="checkbox"
@@ -736,6 +816,12 @@ function catalogErrorMessage(reason: unknown) {
               />
               Require contacts to match an eligibility condition
             </label>
+            <p class="field-help">
+              This controls whether a contact is eligible at all. Use it only
+              for a contact-level restriction in the sponsor’s rules, such as
+              requiring a particular entity. The API reports unsupported facts
+              when you validate.
+            </p>
             <ConditionEditor
               v-if="configured.rule.eligible_if"
               :model-value="
@@ -765,6 +851,12 @@ function catalogErrorMessage(reason: unknown) {
               />
               Apply this rule only when a condition matches
             </label>
+            <p class="field-help">
+              This makes the whole rule conditional instead of applying it to
+              every entry or contact. For example, a points or multiplier rule
+              may apply only on a particular band. This is separate from QSO
+              eligibility, which decides whether the contact can count at all.
+            </p>
             <ConditionEditor
               v-if="configured.when"
               :model-value="configured.when"
@@ -860,6 +952,33 @@ function catalogErrorMessage(reason: unknown) {
 }
 .composer-page .intro {
   margin: 0;
+  max-width: 75ch;
+  line-height: 1.55;
+}
+.workflow-guide {
+  padding: 1rem 1.25rem;
+  border-left: 0.35rem solid var(--color-brand-600);
+  border-radius: 0.65rem;
+  background: var(--color-surface-muted);
+}
+.workflow-guide h2 {
+  margin: 0 0 0.6rem;
+}
+.workflow-guide ol {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+.workflow-guide li {
+  padding-left: 0.2rem;
+  line-height: 1.5;
+}
+.workflow-guide p {
+  max-width: 78ch;
+  margin: 0.9rem 0 0;
+  color: var(--color-muted);
+  line-height: 1.5;
 }
 .panel,
 .rule-card,
@@ -876,7 +995,8 @@ function catalogErrorMessage(reason: unknown) {
 }
 .metadata-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
+  align-items: start;
   gap: 1rem;
 }
 .metadata-grid label,
@@ -890,6 +1010,8 @@ function catalogErrorMessage(reason: unknown) {
 .metadata-grid input,
 .rule-id-control input,
 .add-rule-control select {
+  width: 100%;
+  min-width: 0;
   min-height: 2.7rem;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--color-border);
@@ -903,6 +1025,25 @@ function catalogErrorMessage(reason: unknown) {
   font-size: 0.8rem;
   font-weight: 400;
 }
+.section-help,
+.field-help {
+  display: block;
+  max-width: 76ch;
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.section-help {
+  margin: 0.3rem 0 0.9rem;
+}
+.metadata-grid code,
+.mutually-exclusive code {
+  padding: 0.05rem 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--color-surface-muted);
+}
 .rules-section {
   display: grid;
   gap: 0.9rem;
@@ -914,6 +1055,9 @@ function catalogErrorMessage(reason: unknown) {
   justify-content: space-between;
   gap: 1rem;
 }
+.section-heading {
+  flex-wrap: wrap;
+}
 .section-heading h2,
 .rule-card-heading h3 {
   margin: 0;
@@ -924,12 +1068,24 @@ function catalogErrorMessage(reason: unknown) {
   color: var(--color-muted);
 }
 .add-rule-control {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto;
   align-items: end;
   gap: 0.5rem;
+  flex: 1 1 24rem;
+  width: min(100%, 38rem);
+  max-width: 38rem;
+  min-width: min(100%, 24rem);
 }
 .add-rule-control label {
-  min-width: 12rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-brand-900);
+  font-weight: 600;
+}
+.add-rule-control .field-help {
+  grid-column: 1 / -1;
 }
 .rule-card {
   display: grid;
@@ -939,7 +1095,16 @@ function catalogErrorMessage(reason: unknown) {
   align-items: center;
 }
 .rule-id-control {
-  max-width: 22rem;
+  width: min(100%, 36rem);
+}
+.rule-explanation {
+  max-width: 80ch;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid var(--color-border-strong);
+  color: var(--color-muted);
+  background: var(--color-surface-muted);
+  line-height: 1.55;
 }
 .required-badge {
   padding: 0.3rem 0.55rem;
@@ -1049,17 +1214,17 @@ function catalogErrorMessage(reason: unknown) {
   margin-top: 0.35rem;
 }
 @media (max-width: 760px) {
-  .metadata-grid {
-    grid-template-columns: 1fr;
-  }
   .section-heading,
   .rule-card-heading {
     flex-direction: column;
     align-items: stretch;
   }
   .add-rule-control {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+  .add-rule-control .field-help {
+    grid-column: auto;
   }
 }
 </style>

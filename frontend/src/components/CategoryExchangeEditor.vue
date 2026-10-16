@@ -190,9 +190,15 @@ function setChoice(index: number, choiceIndex: number, key: string) {
     <div v-if="kind === 'categories'">
       <p>
         <strong>Dimensions</strong> are separate entry-classification axes, such
-        as operator, power, or band. Their choices are the values entrants may
-        select. Keys stay stable when a display label changes. Choose “Custom
-        dimension” to define a contest-specific axis.
+        as operator, power, band, mode, or assistance. Their choices are the
+        values entrants may select, and together they determine the result
+        categories. Stable keys are used in saved rules and data; labels are
+        shown to entrants. Built-in labels follow their presets; custom labels
+        can be changed without changing the stable key. Mark a dimension
+        required only if the sponsor requires an entrant to choose one.
+        “Requires declaration” means the choice needs an entry declaration such
+        as a section or station class. Use mutually exclusive groups only for
+        combinations the sponsor disallows.
       </p>
       <article v-for="(row, index) in rows" :key="index" class="controlled-row">
         <label
@@ -414,8 +420,13 @@ function setChoice(index: number, choiceIndex: number, key: string) {
         Add dimension
       </button>
       <label class="mutually-exclusive"
-        >Mutually exclusive dimension groups (one comma-separated key group per
-        line)<textarea
+        >Mutually exclusive dimension groups
+        <span class="field-help">
+          Enter stable dimension keys separated by commas, one incompatible
+          group per line. For example, if you define custom dimensions named
+          <code>single_band</code> and <code>all_band</code>, listing both means
+          an entry cannot configure both dimensions. </span
+        ><textarea
           :value="
             Array.isArray(modelValue.mutually_exclusive)
               ? (modelValue.mutually_exclusive as string[][])
@@ -444,10 +455,17 @@ function setChoice(index: number, choiceIndex: number, key: string) {
     <div v-else>
       <p>
         <strong>Exchange schema</strong> describes the fields sent and received
-        for each contact, plus entry-level declarations. Field keys are stable
-        references; labels are for display. Select a common field to prefill its
-        key, label, type, and direction, or choose “Custom exchange field” for a
-        contest-specific value.
+        for each contact, plus values declared once for the whole entry. It is
+        the canonical vocabulary used by validation and scoring; the format
+        mapping section connects these fields to names in uploaded Cabrillo or
+        ADIF logs. Field keys are stable references used by the system; labels
+        are for display. Select a common field to prefill its key, label, type,
+        and direction, or choose “Custom exchange field” for a contest-specific
+        value. Choose “sent”, “received”, or “both” for contact exchanges, and
+        “entry” for a single entry-level declaration. Mark a field required only
+        if the sponsor requires it. Serial scope controls when a sent sequence
+        number increments; enum values restrict accepted text to the listed
+        choices.
       </p>
       <article v-for="(row, index) in rows" :key="index" class="controlled-row">
         <label
@@ -631,7 +649,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 }
 .controlled-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  min-width: 0;
   gap: 0.65rem;
   padding: 0.8rem;
   margin: 0.7rem 0;
@@ -641,10 +660,13 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 .controlled-row > label,
 .controlled-choice label {
   display: grid;
+  min-width: 0;
   gap: 0.3rem;
 }
 .controlled-row input:not([type='checkbox']),
 .controlled-row select {
+  width: 100%;
+  min-width: 0;
   min-height: 2.5rem;
   padding: 0.45rem;
   border: 1px solid var(--color-border-strong);
@@ -652,6 +674,11 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 }
 .controlled-choice-list {
   grid-column: 1 / -1;
+  min-width: 0;
+}
+.controlled-choice-list > strong {
+  display: block;
+  margin-bottom: 0.35rem;
 }
 .mutually-exclusive {
   display: grid;
@@ -660,9 +687,34 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 }
 .controlled-choice {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  align-items: end;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  align-items: start;
   gap: 0.5rem;
   margin: 0.5rem 0;
+}
+.controlled-choice > button {
+  align-self: end;
+}
+.controlled-choice label:has(input[type='checkbox']) {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.controlled-choice input[type='checkbox'] {
+  width: 1.1rem;
+  min-height: 1.1rem;
+}
+.field-help {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+@media (max-width: 560px) {
+  .controlled-row,
+  .controlled-choice {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

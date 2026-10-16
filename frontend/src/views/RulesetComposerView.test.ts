@@ -257,15 +257,71 @@ describe('RulesetComposerView', () => {
     await flushPromises()
     await expectAccessible(wrapper.element)
     const text = wrapper.text()
+    expect(text).toContain('How to create a ruleset')
+    expect(wrapper.findAll('.workflow-guide li')).toHaveLength(4)
+    expect(text).toContain('save a new immutable')
+    expect(text).toContain('Assign that version to a contest')
+    expect(text).toContain('Stable, lowercase identifier')
+    expect(text).toContain('new version identifier')
     expect(text).not.toContain('All contest times use UTC')
     expect(text).not.toContain('Daylight-saving clock folds')
     expect(text).not.toContain('Contest schedule')
     expect(text).toContain('classification axes')
     expect(text).toContain('Exchange schema')
-    expect(text).toContain('combines the worked callsign')
-    expect(text).toContain('non-negative integers')
-    expect(text).toContain('apply steps from top to bottom')
-    expect(text).toContain('Unknown input fields can be preserved')
+    expect(text).toContain('Worked callsign is always part of the identity')
+    expect(text).toContain('integer at least zero')
+    expect(text).toContain('in the same order as the published formula')
+    expect(text).toContain('Unrecognized source fields can be preserved')
+    expect(text).toContain(
+      'after contacts, multipliers, bonuses, and penalties',
+    )
+  })
+
+  it('shows useful help for optional multiplier rules when they are added', async () => {
+    const response = catalogResponse()
+    response.rule_types.push({
+      key: 'multiplier',
+      label: 'Multiplier',
+      description: 'Define a multiplier.',
+      execution: 'automatic',
+      required: false,
+      schema: {
+        type: 'object',
+        properties: { kind: { const: 'multiplier', type: 'string' } },
+        required: ['kind'],
+      },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(response), { status: 200 })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    await wrapper.get('#add-rule-type').setValue('multiplier')
+    await wrapper.get('.add-rule-control button').trigger('click')
+
+    const multiplierCard = wrapper
+      .findAll('.rule-card')
+      .find((card) => card.get('h3').text() === 'Multiplier')
+    expect(multiplierCard).toBeDefined()
+    expect(multiplierCard!.get('.rule-explanation').text()).toContain(
+      'where uniqueness resets',
+    )
+    expect(multiplierCard!.get('.rule-explanation').text()).toContain(
+      'once for the whole contest, per band, per mode',
+    )
   })
 
   it('loads required rule types and sends the configured draft for validation', async () => {

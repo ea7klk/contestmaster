@@ -58,6 +58,18 @@ const compareOperators = [
   'matches',
   'exists',
 ]
+const operatorLabels: Record<string, string> = {
+  eq: 'Equals',
+  ne: 'Does not equal',
+  in: 'Is one of',
+  not_in: 'Is not one of',
+  lt: 'Less than',
+  lte: 'Less than or equal to',
+  gt: 'Greater than',
+  gte: 'Greater than or equal to',
+  matches: 'Matches pattern',
+  exists: 'Is present',
+}
 
 function update(patch: Record<string, unknown>) {
   emit('update:modelValue', { ...props.modelValue, ...patch })
@@ -157,8 +169,14 @@ function updateNegated(condition: Record<string, unknown>) {
 <template>
   <fieldset class="condition-editor">
     <legend>Condition</legend>
+    <p class="condition-help">
+      A condition compares supported contest data with a value. Choose a fact
+      path, select how it should compare, then enter the value to match. A
+      condition narrows when a rule applies; it does not define a new exchange
+      field or create a scoring rule.
+    </p>
     <label>
-      Match type
+      Condition structure
       <select
         :value="kind"
         @change="
@@ -182,6 +200,7 @@ function updateNegated(condition: Record<string, unknown>) {
           placeholder="qso.band"
           @input="update({ fact: ($event.target as HTMLInputElement).value })"
         />
+        <small>Examples: <code>qso.band</code>, <code>qso.entity</code>.</small>
       </label>
       <datalist :id="factsListId">
         <option value="qso.band" />
@@ -206,7 +225,7 @@ function updateNegated(condition: Record<string, unknown>) {
             :key="operator"
             :value="operator"
           >
-            {{ operator }}
+            {{ operatorLabels[operator] }} ({{ operator }})
           </option>
         </select>
       </label>
@@ -247,11 +266,26 @@ function updateNegated(condition: Record<string, unknown>) {
               valueKind === 'list' ? onListInput($event) : onValueInput($event)
             "
           />
+          <small v-if="valueKind === 'list'">
+            Separate values with commas. The “Is one of” and “Is not one of”
+            comparisons use this list.
+          </small>
+          <small v-if="modelValue.operator === 'matches'">
+            Enter the pattern the fact must match. Validation checks that the
+            pattern is supported before the ruleset can be saved.
+          </small>
         </label>
       </template>
+      <p v-if="modelValue.operator === 'exists'" class="condition-help">
+        “Is present” checks whether the fact has a value; it does not compare
+        against another value.
+      </p>
     </template>
 
     <div v-else-if="kind === 'not'" class="condition-child">
+      <p class="condition-help">
+        This condition is true only when its nested condition is false.
+      </p>
       <ConditionEditor
         :model-value="negatedCondition"
         :depth="depth + 1"
@@ -263,8 +297,8 @@ function updateNegated(condition: Record<string, unknown>) {
       <p>
         {{
           kind === 'all'
-            ? 'Every condition below must match.'
-            : 'At least one condition below must match.'
+            ? 'Every condition below must match for this group to be true. Use this to combine limits.'
+            : 'At least one condition below must match for this group to be true. Use this when any listed alternative is allowed.'
         }}
       </p>
       <div
@@ -296,6 +330,7 @@ function updateNegated(condition: Record<string, unknown>) {
 <style scoped>
 .condition-editor {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 0.7rem;
   min-width: 0;
   margin: 0;
@@ -305,19 +340,39 @@ function updateNegated(condition: Record<string, unknown>) {
   background: var(--color-surface-muted);
 }
 legend {
+  grid-column: 1 / -1;
   padding: 0 0.3rem;
   font-weight: 650;
 }
+.condition-help {
+  grid-column: 1 / -1;
+  max-width: 76ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
 label {
   display: grid;
+  min-width: 0;
   gap: 0.35rem;
   max-width: 40rem;
   color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
 }
+small {
+  color: var(--color-muted);
+  font-size: 0.83rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
 input,
 select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   min-height: 2.55rem;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--color-border);
@@ -336,10 +391,21 @@ input[type='checkbox'] {
   align-items: center;
 }
 .condition-group > p {
+  grid-column: 1 / -1;
   margin: 0.1rem 0 0.6rem;
   color: var(--color-muted);
 }
+.condition-group {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
 .condition-child {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
   margin: 0.7rem 0;
 }
 .secondary-button,
