@@ -7,26 +7,46 @@ import argparse
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from random import Random
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from contact_graph import build_contact_plan  # noqa: E402
 
-PARTICIPANT_COUNT = 32
+PARTICIPANT_COUNT = 2_500
+PARTICIPANTS_PER_ENTITY = 250
+ENTITY_PREFIXES = (
+    "K0",  # United States
+    "VE3",  # Canada
+    "DL1",  # Germany
+    "EA7",  # Spain
+    "JA1",  # Japan
+    "VK2",  # Australia
+    "LU1",  # Argentina
+    "PY2",  # Brazil
+    "ZS1",  # South Africa
+    "F4",  # France
+)
+SEED = "contestmaster-advanced-cabrillo-2500-v1"
 CONTEST = "test-advanced-cabrillo-rules-challenge"
 QSO_DATE = "2024-09-14"
 STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 ENDS_AT = datetime(2024, 9, 14, 18, 0, tzinfo=UTC)
+EVENT_WINDOWS = (
+    (STARTS_AT, STARTS_AT + timedelta(minutes=25)),
+    (STARTS_AT + timedelta(minutes=90), STARTS_AT + timedelta(minutes=115)),
+)
 
 
 def callsign(index: int) -> str:
-    if index < 0 or index >= 26**3:
+    if index < 0 or index >= PARTICIPANT_COUNT:
         raise ValueError("participant index is outside the callsign fixture range")
+    entity_index, suffix_index = divmod(index, PARTICIPANTS_PER_ENTITY)
     chars = []
-    value = index
+    value = suffix_index
     for _ in range(3):
         chars.append(chr(ord("A") + value % 26))
         value //= 26
-    return "K0" + "".join(reversed(chars))
+    return ENTITY_PREFIXES[entity_index] + "".join(reversed(chars))
 
 
 def _power(index: int) -> str:
@@ -35,40 +55,37 @@ def _power(index: int) -> str:
 
 def build_logs() -> dict[str, str]:
     stations = [callsign(index) for index in range(PARTICIPANT_COUNT)]
+    count_rng = Random(f"{SEED}:qso-counts")
+    qso_counts = [count_rng.randint(50, 200) for _ in stations]
+    # Feature a predictable top trio so the advanced scoring fixture has clear
+    # results as well as broad randomized coverage.
+    qso_counts[:3] = [250, 230, 210]
+    contact_degrees = [(count * 4 // 5 // 2) * 2 for count in qso_counts]
+    unmatched_counts = [
+        count - degree for count, degree in zip(qso_counts, contact_degrees, strict=True)
+    ]
     contact_plan = build_contact_plan(
         stations,
         STARTS_AT,
-        featured_contact_degrees={0: 24, 1: 16, 2: 8},
+        featured_contact_degrees={},
+        contact_degrees=contact_degrees,
+        unmatched_counts=unmatched_counts,
+        seed=SEED,
+        event_windows=EVENT_WINDOWS,
     )
     logs: dict[str, str] = {}
     for station_index, station in enumerate(stations):
         contacts = list(contact_plan[station])
-        # K0AAA intentionally repeats its first worked station to exercise duplicate
-        # identification and the configured duplicate-contact penalty.
-        if station_index == 0:
-            first = contacts[0]
-            contacts.append(
-                type(first)(
-                    worked_callsign=first.worked_callsign,
-                    occurred_at=ENDS_AT
-                    - timedelta(minutes=1)
-                    + timedelta(seconds=first.occurred_at.second % 2),
-                    frequency_khz=first.frequency_khz,
-                    sent_serial=len(contacts) + 1,
-                    received_serial=first.received_serial,
-                    matched=first.matched,
-                )
-            )
         qso_lines = []
         for contact in contacts:
             time_on = contact.occurred_at.strftime("%H%M%S")
-            mode = "CW" if contact.occurred_at.second % 2 == 0 else "SSB"
             qso_lines.append(
-                f"QSO: {contact.frequency_khz} {mode} {QSO_DATE} {time_on} "
+                f"QSO: {contact.frequency_khz} CW {QSO_DATE} {time_on} "
                 f"{station} 599 {contact.sent_serial:03d} "
-                f"{contact.worked_callsign} 599 {contact.received_serial:03d}"
+                f"{contact.worked_callsign} 599 {contact.received_serial:03d} "
+                f"{1 + contact.sent_serial % 2}"
             )
-        operator = "MULTI-OP" if station_index % 7 == 0 else "SINGLE-OP"
+        operator = "MULTI-OP"
         power = _power(station_index)
         overlay = "ROOKIE" if station_index % 5 == 0 else "NONE"
         lines = [
@@ -80,7 +97,8 @@ def build_logs() -> dict[str, str]:
             f"CATEGORY-OPERATOR: {operator}",
             f"CATEGORY-POWER: {power}",
             "CATEGORY-BAND: 20M",
-            "CATEGORY-MODE: MIXED",
+            "CATEGORY-MODE: CW",
+            "CATEGORY-TRANSMITTER: TWO",
             f"CATEGORY-OVERLAY: {overlay}",
             *qso_lines,
             "END-OF-LOG:",

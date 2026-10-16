@@ -9,7 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from backend.app.api.contests import ContestImportPayload
-from backend.app.logs.adif import parse_adif
+from backend.app.logs.adif import band_from_frequency_mhz, parse_adif
 from backend.app.logs.cabrillo import map_categories, parse_cabrillo
 from backend.app.rulesets.engine import ScoringEntry, ScoringQso, score_entry
 from backend.app.rulesets.schema import RulesetDefinition
@@ -44,7 +44,15 @@ def _score_generated_contest(folder: str) -> dict[str, object]:
     scores = {}
     for entry_id, path in enumerate(sorted((ROOT / folder / "logs").glob(extension)), start=1):
         content = path.read_text(encoding="utf-8")
-        parsed = parse_cabrillo(content) if folder == "cabrillo" else parse_adif(content)
+        if folder in {"cabrillo", "advanced-cabrillo"}:
+            mapping = next(
+                rule.rule
+                for rule in definition.rules
+                if rule.rule.kind == "format_mapping"
+            )
+            parsed = parse_cabrillo(content, qso_columns=mapping.qso_columns or None)
+        else:
+            parsed = parse_adif(content)
         qsos = []
         for qso_id, qso in enumerate(parsed.qsos, start=1):
             if folder == "cabrillo":
@@ -60,7 +68,11 @@ def _score_generated_contest(folder: str) -> dict[str, object]:
                     qso_id=qso_id,
                     occurred_at=qso.occurred_at,
                     worked_callsign=qso.callsign_received,
-                    band="20m",
+                    band=(
+                        band_from_frequency_mhz(str(Decimal(qso.frequency) / 1000))
+                        if folder in {"cabrillo", "advanced-cabrillo"}
+                        else "20m"
+                    ),
                     mode=mode,
                     sent_exchange=sent_exchange,
                     received_exchange=received_exchange,
@@ -100,6 +112,8 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
         ]
         assert len(publication) == 1
         assert publication[0].parameters["include_late"] is True
+        if folder == "advanced-cabrillo":
+            assert publication[0].parameters["include_needs_review"] is False
         if folder in {"cabrillo", "advanced-cabrillo"}:
             exchange = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "exchange")
             serial = next(field for field in exchange.fields if field.key == "serial")
@@ -159,7 +173,10 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             assert parsed.errors == []
             if folder in {"cabrillo", "advanced-cabrillo"}:
                 assert parsed.headers["EMAIL"] == [f"{path.stem}@nomail.invalid"]
-            assert 5 <= len(parsed.qsos) <= 80
+            if folder == "advanced-cabrillo":
+                assert 50 <= len(parsed.qsos) <= 250
+            else:
+                assert 5 <= len(parsed.qsos) <= 80
             assert all(qso.callsign_sent == path.stem for qso in parsed.qsos)
             for qso in parsed.qsos:
                 frequency_khz = _frequency_khz(folder, qso)
@@ -168,8 +185,15 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             total_calls += len(parsed.qsos)
             matched_calls += sum(qso.callsign_received in participants for qso in parsed.qsos)
             parsed_logs[path.stem] = parsed.qsos
+        reciprocal_lookups = {
+            station: {qso.callsign_received: qso for qso in qsos}
+            for station, qsos in parsed_logs.items()
+        }
 
-        assert matched_calls * 5 == total_calls * 4
+        if folder == "advanced-cabrillo":
+            assert 0.78 <= matched_calls / total_calls <= 0.82
+        else:
+            assert matched_calls * 5 == total_calls * 4
         assert len(frequencies_khz) >= 30
         for station, qsos in parsed_logs.items():
             if folder == "cabrillo":
@@ -179,16 +203,14 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             by_peer = {qso.callsign_received: qso for qso in qsos}
             for peer, qso in by_peer.items():
                 if peer in participants:
-                    reciprocal = {item.callsign_received: item for item in parsed_logs[peer]}
-                    assert station in reciprocal
-                    assert _frequency_khz(folder, qso) == _frequency_khz(
-                        folder, reciprocal[station]
-                    )
+                    reciprocal = reciprocal_lookups[peer].get(station)
+                    assert reciprocal is not None
+                    assert _frequency_khz(folder, qso) == _frequency_khz(folder, reciprocal)
                     if folder in {"cabrillo", "advanced-cabrillo"}:
                         assert qso.exchange_sent.isdecimal()
                         assert qso.exchange_received.isdecimal()
-                        assert qso.exchange_sent == reciprocal[station].exchange_received
-                        assert qso.exchange_received == reciprocal[station].exchange_sent
+                        assert qso.exchange_sent == reciprocal.exchange_received
+                        assert qso.exchange_received == reciprocal.exchange_sent
                 elif folder in {"cabrillo", "advanced-cabrillo"}:
                     assert qso.exchange_sent.isdecimal()
                     assert qso.exchange_received.isdecimal()
@@ -225,9 +247,15 @@ def _score_advanced_cabrillo() -> dict[str, object]:
         if item.rule.kind == "format_mapping"
     )
     serialized_mappings = [mapping.model_dump(mode="json") for mapping in mappings]
+    format_rule = next(
+        item.rule for item in definition.rules if item.rule.kind == "format_mapping"
+    )
     scores = {}
     for entry_id, path in enumerate(sorted((ROOT / folder / "logs").glob("*.log")), start=1):
-        parsed = parse_cabrillo(path.read_text(encoding="utf-8"))
+        parsed = parse_cabrillo(
+            path.read_text(encoding="utf-8"),
+            qso_columns=format_rule.qso_columns or None,
+        )
         assert parsed.errors == []
         categories, warnings = map_categories(parsed, serialized_mappings)
         assert not warnings
@@ -236,9 +264,9 @@ def _score_advanced_cabrillo() -> dict[str, object]:
                 qso_id=qso_id,
                 occurred_at=qso.occurred_at,
                 worked_callsign=qso.callsign_received,
-                band="20m",
+                band=band_from_frequency_mhz(str(Decimal(qso.frequency) / 1000)),
                 mode=qso.mode,
-                transmitter="1",
+                transmitter=qso.fields["transmitter"],
                 sent_exchange={"serial": int(qso.exchange_sent)},
                 received_exchange={"serial": int(qso.exchange_received)},
             )
@@ -258,51 +286,77 @@ def _score_advanced_cabrillo() -> dict[str, object]:
     return scores
 
 
-def test_advanced_cabrillo_fixture_exercises_penalties_bonuses_multipliers_and_review():
+def test_advanced_cabrillo_fixture_scores_with_advanced_rules_without_review():
     generator = _load_generator("advanced-cabrillo")
     logs = generator.build_logs()
     paths = sorted((ROOT / "advanced-cabrillo" / "logs").glob("*.log"))
-    assert len(logs) == len(paths) == 32
+    assert len(logs) == len(paths) == 2_500
     assert all(path.read_text(encoding="utf-8") == logs[path.name] for path in paths)
+    assert len(generator.ENTITY_PREFIXES) == 10
+    assert {
+        next(prefix for prefix in generator.ENTITY_PREFIXES if path.stem.startswith(prefix))
+        for path in paths
+    } == set(generator.ENTITY_PREFIXES)
 
+    format_rule = next(
+        item.rule
+        for item in RulesetDefinition.model_validate(
+            json.loads((ROOT / "advanced-cabrillo" / "contest.json").read_text())[
+                "ruleset"
+            ]
+        ).rules
+        if item.rule.kind == "format_mapping"
+    )
     parsed_logs = {
-        path.stem: parse_cabrillo(path.read_text(encoding="utf-8")).qsos for path in paths
+        path.stem: parse_cabrillo(
+            path.read_text(encoding="utf-8"),
+            qso_columns=format_rule.qso_columns or None,
+        ).qsos
+        for path in paths
+    }
+    reciprocal_lookups = {
+        station: {
+            (qso.callsign_received, qso.occurred_at): qso
+            for qso in qsos
+        }
+        for station, qsos in parsed_logs.items()
     }
     for station, qsos in parsed_logs.items():
         assert [qso.exchange_sent for qso in qsos] == [
             f"{serial:03d}" for serial in range(1, len(qsos) + 1)
         ]
         for qso in qsos:
-            if station == "K0AAA" and qso.occurred_at.hour == 17:
-                # This final record is the deliberately unpaired duplicate.
-                continue
             if qso.callsign_received not in parsed_logs:
                 continue
-            reciprocal = next(
-                item
-                for item in parsed_logs[qso.callsign_received]
-                if item.callsign_received == station and item.occurred_at == qso.occurred_at
+            reciprocal = reciprocal_lookups[qso.callsign_received].get(
+                (station, qso.occurred_at)
             )
+            assert reciprocal is not None
             assert qso.exchange_sent == reciprocal.exchange_received
             assert qso.exchange_received == reciprocal.exchange_sent
 
+    assert all(50 <= len(qsos) <= 250 for qsos in parsed_logs.values())
+    assert all(
+        len({qso.fields["transmitter"] for qso in qsos}) <= 2
+        for qsos in parsed_logs.values()
+    )
+    assert all(
+        MIN_20M_FREQUENCY_KHZ <= Decimal(qso.frequency) <= MAX_20M_FREQUENCY_KHZ
+        for qsos in parsed_logs.values()
+        for qso in qsos
+    )
     scores = _score_advanced_cabrillo()
     ordered = sorted(scores.items(), key=lambda item: item[1].final_score, reverse=True)
-    assert ordered[0][0] == "K0AAA"
-    assert [(name, score.final_score) for name, score in ordered[:3]] == [
-        ("K0AAA", 21344),
-        ("K0AAB", 8487),
-        ("K0AAC", 1534),
-    ]
+    assert [name for name, _score in ordered[:3]] == ["K0AAA", "K0AAB", "K0AAC"]
     assert ordered[0][1].final_score > ordered[1][1].final_score
+    assert ordered[1][1].final_score > ordered[2][1].final_score
     assert len({score.final_score for _callsign, score in ordered[:3]}) == 3
     assert ordered[0][1].bonus_points >= 250
     assert ordered[0][1].penalty_points > 0
-    assert any("duplicate" in qso.reasons for qso in ordered[0][1].qso_scores)
     assert any(
         "low-serial-review" in qso.reasons
         for _callsign, score in ordered
         for qso in score.qso_scores
     )
-    assert any(score.workflow_actions for score in scores.values())
-    assert all(score.final_score >= 0 for score in scores.values())
+    assert all(score.final_score > 0 for score in scores.values())
+    assert all(score.outcome == "scored" and not score.review_reasons for score in scores.values())

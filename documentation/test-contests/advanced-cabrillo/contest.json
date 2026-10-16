@@ -18,7 +18,11 @@
     "rules": [
       {
         "id": "submission",
-        "rule": {"kind": "submission", "late_policy": "accept_late", "manager_extension_allowed": false}
+        "rule": {
+          "kind": "submission",
+          "late_policy": "accept_late",
+          "manager_extension_allowed": false
+        }
       },
       {
         "id": "publication-policy",
@@ -27,7 +31,10 @@
           "stage": "publication",
           "key": "synthetic-test-results",
           "execution": "automatic",
-          "parameters": {"include_late": true, "include_needs_review": true}
+          "parameters": {
+            "include_late": true,
+            "include_needs_review": false
+          }
         }
       },
       {
@@ -35,11 +42,84 @@
         "rule": {
           "kind": "categories",
           "dimensions": [
-            {"key": "operator", "label": "Operator", "required": true, "choices": [{"key": "single", "label": "Single operator"}, {"key": "multi", "label": "Multi operator"}]},
-            {"key": "power", "label": "Power", "required": true, "choices": [{"key": "qrp", "label": "QRP"}, {"key": "low", "label": "Low power"}, {"key": "high", "label": "High power"}]},
-            {"key": "band_class", "label": "Band category", "required": true, "choices": [{"key": "band_20m", "label": "20 metres"}]},
-            {"key": "mode", "label": "Mode category", "required": true, "choices": [{"key": "mixed", "label": "Mixed mode"}]},
-            {"key": "overlay", "label": "Overlay", "required": false, "choices": [{"key": "rookie", "label": "Rookie"}, {"key": "none", "label": "No overlay"}]}
+            {
+              "key": "operator",
+              "label": "Operator",
+              "required": true,
+              "choices": [
+                {
+                  "key": "multi",
+                  "label": "Multi operator"
+                }
+              ]
+            },
+            {
+              "key": "power",
+              "label": "Power",
+              "required": true,
+              "choices": [
+                {
+                  "key": "qrp",
+                  "label": "QRP"
+                },
+                {
+                  "key": "low",
+                  "label": "Low power"
+                },
+                {
+                  "key": "high",
+                  "label": "High power"
+                }
+              ]
+            },
+            {
+              "key": "band_class",
+              "label": "Band category",
+              "required": true,
+              "choices": [
+                {
+                  "key": "band_20m",
+                  "label": "20 metres"
+                }
+              ]
+            },
+            {
+              "key": "mode",
+              "label": "Mode category",
+              "required": true,
+              "choices": [
+                {
+                  "key": "cw",
+                  "label": "CW"
+                }
+              ]
+            },
+            {
+              "key": "overlay",
+              "label": "Overlay",
+              "required": false,
+              "choices": [
+                {
+                  "key": "rookie",
+                  "label": "Rookie"
+                },
+                {
+                  "key": "none",
+                  "label": "No overlay"
+                }
+              ]
+            },
+            {
+              "key": "transmitter_count",
+              "label": "Transmitters",
+              "required": true,
+              "choices": [
+                {
+                  "key": "two",
+                  "label": "Two transmitters"
+                }
+              ]
+            }
           ]
         }
       },
@@ -48,7 +128,15 @@
         "rule": {
           "kind": "exchange",
           "fields": [
-            {"key": "serial", "label": "Serial number", "value_type": "serial", "direction": "both", "required": true, "max_length": 6, "serial_scope": "entry"}
+            {
+              "key": "serial",
+              "label": "Serial number",
+              "value_type": "serial",
+              "direction": "both",
+              "required": true,
+              "max_length": 6,
+              "serial_scope": "entry"
+            }
           ]
         }
       },
@@ -56,12 +144,31 @@
         "id": "eligibility",
         "rule": {
           "kind": "eligibility",
-          "eligible_if": {"kind": "all", "conditions": [
-            {"kind": "compare", "fact": "qso.band", "operator": "eq", "value": "20m"},
-            {"kind": "compare", "fact": "qso.mode", "operator": "in", "value": ["CW", "SSB"]}
-          ]},
-          "allowed_bands": ["20m"],
-          "allowed_modes": ["CW", "SSB"],
+          "eligible_if": {
+            "kind": "all",
+            "conditions": [
+              {
+                "kind": "compare",
+                "fact": "qso.band",
+                "operator": "eq",
+                "value": "20m"
+              },
+              {
+                "kind": "compare",
+                "fact": "qso.mode",
+                "operator": "in",
+                "value": [
+                  "CW"
+                ]
+              }
+            ]
+          },
+          "allowed_bands": [
+            "20m"
+          ],
+          "allowed_modes": [
+            "CW"
+          ],
           "reject_self_contacts": true,
           "reject_out_of_period": true,
           "reject_missing_required_exchange": true,
@@ -70,30 +177,186 @@
       },
       {
         "id": "duplicate-contact-penalty",
-        "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band", "mode"], "effect": "penalty", "penalty_points": 5}
+        "rule": {
+          "kind": "duplicates",
+          "scope": [
+            "worked_callsign",
+            "band",
+            "mode"
+          ],
+          "effect": "penalty",
+          "penalty_points": 5
+        }
       },
-      {"id": "base-points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 2}},
-      {"id": "mode-points", "rule": {"kind": "points", "fact": "mode", "values": {"CW": 5, "SSB": 2}, "default_points": 0}},
-      {"id": "band-points", "rule": {"kind": "points", "fact": "band", "values": {"20m": 4}, "default_points": 0}},
-      {"id": "received-serial-points", "rule": {"kind": "points", "fact": "exchange", "exchange_field": "serial", "values": {"1": 5, "2": 4, "3": 3}, "default_points": 1}},
-      {"id": "worked-call-multiplier", "rule": {"kind": "multiplier", "source_fact": "qso.worked_callsign", "scope": "contest", "label": "Unique callsigns"}},
-      {"id": "received-serial-multiplier", "rule": {"kind": "multiplier", "source_fact": "exchange.received.serial", "scope": "contest", "label": "Unique received serials"}},
-      {"id": "mode-band-multiplier", "rule": {"kind": "multiplier", "source_fact": "qso.mode", "scope": "band", "label": "Modes per band"}},
-      {"id": "high-power-bonus", "rule": {"kind": "bonus", "basis": "per_entry", "points": 250, "cap": 250, "minimum_eligible_qsos": 10}, "when": {"kind": "compare", "fact": "entry.categories.power", "operator": "eq", "value": "high"}},
-      {"id": "single-op-activity-bonus", "rule": {"kind": "bonus", "basis": "per_entry", "points": 100, "minimum_eligible_qsos": 10}, "when": {"kind": "compare", "fact": "entry.categories.operator", "operator": "eq", "value": "single"}},
-      {"id": "ssb-point-penalty", "rule": {"kind": "penalty", "reason_code": "ssb-adjustment", "action": "deduct_points", "points": 3, "maximum_occurrences": 2}, "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "SSB"}},
-      {"id": "low-serial-contact-removal", "rule": {"kind": "penalty", "reason_code": "low-serial-review", "action": "remove_contact", "maximum_occurrences": 1}, "when": {"kind": "compare", "fact": "exchange.received.serial", "operator": "eq", "value": 1}},
-      {"id": "operating-limits", "rule": {"kind": "operating_constraints", "max_operating_minutes": 180, "operating_session_gap_minutes": 240, "minimum_off_time_minutes": 60, "required_off_periods": 1, "off_period_gap_minutes": 60, "maximum_band_changes": 0, "maximum_transmitters": 1}},
-      {"id": "multi-op-cross-log-review", "rule": {"kind": "workflow_hook", "stage": "cross_log", "key": "compare-multi-op-entries", "execution": "human_review", "parameters": {}}, "when": {"kind": "compare", "fact": "entry.categories.operator", "operator": "eq", "value": "multi"}},
-      {"id": "ssb-adjudication-hook", "rule": {"kind": "workflow_hook", "stage": "adjudication", "key": "review-ssb-contact", "execution": "human_review", "parameters": {}}, "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "SSB"}},
-      {"id": "award-workflow", "rule": {"kind": "workflow_hook", "stage": "award", "key": "synthetic-award-review", "execution": "automatic", "parameters": {}}},
+      {
+        "id": "base-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 2
+        }
+      },
+      {
+        "id": "mode-points",
+        "rule": {
+          "kind": "points",
+          "fact": "mode",
+          "values": {
+            "CW": 5
+          },
+          "default_points": 0
+        }
+      },
+      {
+        "id": "band-points",
+        "rule": {
+          "kind": "points",
+          "fact": "band",
+          "values": {
+            "20m": 4
+          },
+          "default_points": 0
+        }
+      },
+      {
+        "id": "received-serial-points",
+        "rule": {
+          "kind": "points",
+          "fact": "exchange",
+          "exchange_field": "serial",
+          "values": {
+            "1": 5,
+            "2": 4,
+            "3": 3
+          },
+          "default_points": 1
+        }
+      },
+      {
+        "id": "worked-call-multiplier",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "qso.worked_callsign",
+          "scope": "contest",
+          "label": "Unique callsigns"
+        }
+      },
+      {
+        "id": "received-serial-multiplier",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "exchange.received.serial",
+          "scope": "contest",
+          "label": "Unique received serials"
+        }
+      },
+      {
+        "id": "mode-band-multiplier",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "qso.mode",
+          "scope": "band",
+          "label": "Modes per band"
+        }
+      },
+      {
+        "id": "high-power-bonus",
+        "rule": {
+          "kind": "bonus",
+          "basis": "per_entry",
+          "points": 250,
+          "cap": 250,
+          "minimum_eligible_qsos": 10
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "entry.categories.power",
+          "operator": "eq",
+          "value": "high"
+        }
+      },
+      {
+        "id": "low-serial-point-penalty",
+        "rule": {
+          "kind": "penalty",
+          "reason_code": "low-serial-adjustment",
+          "action": "deduct_points",
+          "points": 3,
+          "maximum_occurrences": 1
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.received.serial",
+          "operator": "eq",
+          "value": 1
+        }
+      },
+      {
+        "id": "low-serial-contact-removal",
+        "rule": {
+          "kind": "penalty",
+          "reason_code": "low-serial-review",
+          "action": "remove_contact",
+          "maximum_occurrences": 1
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.received.serial",
+          "operator": "eq",
+          "value": 1
+        }
+      },
+      {
+        "id": "operating-limits",
+        "rule": {
+          "kind": "operating_constraints",
+          "max_operating_minutes": 180,
+          "operating_session_gap_minutes": 240,
+          "minimum_off_time_minutes": 60,
+          "required_off_periods": 1,
+          "off_period_gap_minutes": 60,
+          "maximum_band_changes": 0,
+          "maximum_transmitters": 2
+        }
+      },
+      {
+        "id": "award-workflow",
+        "rule": {
+          "kind": "workflow_hook",
+          "stage": "award",
+          "key": "synthetic-award-review",
+          "execution": "automatic",
+          "parameters": {}
+        }
+      },
       {
         "id": "score-formula",
-        "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": [
-          {"operator": "add", "operand": {"variable": "bonus_points"}},
-          {"operator": "subtract", "operand": {"variable": "penalty_points"}},
-          {"operator": "multiply", "operand": {"variable": "multiplier_count"}}
-        ]}
+        "rule": {
+          "kind": "score_formula",
+          "start": {
+            "variable": "points_total"
+          },
+          "steps": [
+            {
+              "operator": "add",
+              "operand": {
+                "variable": "bonus_points"
+              }
+            },
+            {
+              "operator": "subtract",
+              "operand": {
+                "variable": "penalty_points"
+              }
+            },
+            {
+              "operator": "multiply",
+              "operand": {
+                "variable": "multiplier_count"
+              }
+            }
+          ]
+        }
       },
       {
         "id": "cabrillo-format",
@@ -101,17 +364,75 @@
           "kind": "format_mapping",
           "format": "cabrillo",
           "category_mappings": [
-            {"external_value": "SINGLE-OP", "category_values": {"operator": "single"}},
-            {"external_value": "MULTI-OP", "category_values": {"operator": "multi"}},
-            {"external_value": "QRP", "category_values": {"power": "qrp"}},
-            {"external_value": "LOW", "category_values": {"power": "low"}},
-            {"external_value": "HIGH", "category_values": {"power": "high"}},
-            {"external_value": "20M", "category_values": {"band_class": "band_20m"}},
-            {"external_value": "MIXED", "category_values": {"mode": "mixed"}},
-            {"external_value": "ROOKIE", "category_values": {"overlay": "rookie"}},
-            {"external_value": "NONE", "category_values": {"overlay": "none"}}
+            {
+              "external_value": "MULTI-OP",
+              "category_values": {
+                "operator": "multi"
+              }
+            },
+            {
+              "external_value": "QRP",
+              "category_values": {
+                "power": "qrp"
+              }
+            },
+            {
+              "external_value": "LOW",
+              "category_values": {
+                "power": "low"
+              }
+            },
+            {
+              "external_value": "HIGH",
+              "category_values": {
+                "power": "high"
+              }
+            },
+            {
+              "external_value": "20M",
+              "category_values": {
+                "band_class": "band_20m"
+              }
+            },
+            {
+              "external_value": "ROOKIE",
+              "category_values": {
+                "overlay": "rookie"
+              }
+            },
+            {
+              "external_value": "NONE",
+              "category_values": {
+                "overlay": "none"
+              }
+            },
+            {
+              "external_value": "CW",
+              "category_values": {
+                "mode": "cw"
+              }
+            },
+            {
+              "external_value": "TWO",
+              "category_values": {
+                "transmitter_count": "two"
+              }
+            }
           ],
-          "preserve_unknown_fields": true
+          "preserve_unknown_fields": true,
+          "qso_columns": [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "exchange_received",
+            "transmitter"
+          ]
         }
       }
     ]

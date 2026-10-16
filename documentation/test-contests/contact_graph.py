@@ -21,13 +21,21 @@ class Contact:
 
 
 def _external_callsign(index: int) -> str:
+    if index < 26**3:
+        chars = []
+        value = index
+        for _ in range(3):
+            chars.append(chr(ord("A") + value % 26))
+            value //= 26
+        return "W9" + "".join(reversed(chars))
+    district, value = divmod(index, 26**3)
+    if district > 9:
+        raise ValueError("external callsign fixture range exceeded")
     chars = []
     for _ in range(3):
-        chars.append(chr(ord("A") + index % 26))
-        index //= 26
-    if index:
-        raise ValueError("external callsign fixture range exceeded")
-    return "W9" + "".join(reversed(chars))
+        chars.append(chr(ord("A") + value % 26))
+        value //= 26
+    return f"W{district}" + "".join(reversed(chars))
 
 
 def build_contact_plan(
@@ -35,26 +43,44 @@ def build_contact_plan(
     starts_at: datetime,
     *,
     featured_contact_degrees: dict[int, int],
+    contact_degrees: list[int] | None = None,
+    unmatched_counts: list[int] | None = None,
+    seed: str = "contestmaster-synthetic-20m",
+    event_windows: tuple[tuple[datetime, datetime], ...] = (),
 ) -> dict[str, list[Contact]]:
     """Build reciprocal graphs with featured stations and 80% reciprocal calls."""
     count = len(callsigns)
     if count < 17:
         raise ValueError("at least 17 stations are needed for the configured contact degrees")
 
+    if contact_degrees is not None and len(contact_degrees) != count:
+        raise ValueError("one reciprocal contact degree is required for each station")
+    if unmatched_counts is not None and len(unmatched_counts) != count:
+        raise ValueError("one unmatched contact count is required for each station")
+    if contact_degrees is not None and any(
+        degree < 0 or degree >= count or degree % 2 for degree in contact_degrees
+    ):
+        raise ValueError("reciprocal contact degrees must be even and in range")
+    if unmatched_counts is not None and any(value < 0 for value in unmatched_counts):
+        raise ValueError("unmatched contact counts cannot be negative")
     if any(
         station < 0 or station >= count or degree < 4 or degree >= count or degree % 2
         for station, degree in featured_contact_degrees.items()
     ):
         raise ValueError("featured stations need valid, even reciprocal contact degrees")
-    degrees = [4] * count
-    for station, degree in featured_contact_degrees.items():
-        degrees[station] = degree
+    degrees = list(contact_degrees) if contact_degrees is not None else [4] * count
+    if contact_degrees is None:
+        for station, degree in featured_contact_degrees.items():
+            degrees[station] = degree
     if sum(degrees) % 2:
         raise ValueError("reciprocal contact degrees must sum to an even number")
     remaining = degrees.copy()
     tie_break = list(range(count))
-    # A stable permutation varies the graph without introducing nondeterminism.
-    tie_break = sorted(tie_break, key=lambda index: ((index * 37) % count, index))
+    if contact_degrees is None:
+        # Preserve the original small fixture graph exactly.
+        tie_break = sorted(tie_break, key=lambda index: ((index * 37) % count, index))
+    else:
+        Random(f"{seed}:graph").shuffle(tie_break)
     rank = {station: position for position, station in enumerate(tie_break)}
     edges: list[tuple[int, int]] = []
 
@@ -80,9 +106,26 @@ def build_contact_plan(
 
     events: list[list[dict[str, object]]] = [[] for _ in callsigns]
     adjacency = [0] * count
-    frequency_rng = Random("contestmaster-synthetic-20m")
+    frequency_rng = Random(
+        "contestmaster-synthetic-20m"
+        if contact_degrees is None
+        else f"{seed}:frequency"
+    )
+    event_rng = Random(f"{seed}:events")
+
+    def event_time() -> datetime:
+        window_start, window_end = event_rng.choice(event_windows)
+        window_seconds = int((window_end - window_start).total_seconds())
+        if window_seconds <= 0:
+            raise ValueError("event windows must have positive duration")
+        return window_start + timedelta(seconds=event_rng.randrange(window_seconds))
+
     for edge_index, (left, right) in enumerate(sorted(set(edges))):
-        occurred_at = starts_at + timedelta(seconds=edge_index)
+        occurred_at = (
+            event_time()
+            if event_windows
+            else starts_at + timedelta(seconds=edge_index)
+        )
         frequency_khz = frequency_rng.randint(
             BAND_MIN_FREQUENCY_KHZ, BAND_MAX_FREQUENCY_KHZ
         )
@@ -112,13 +155,21 @@ def build_contact_plan(
         expected_degree = degrees[station]
         if degree != expected_degree:
             raise ValueError("generated reciprocal graph does not match its degree sequence")
-        unmatched_count = degree // 4
+        unmatched_count = (
+            unmatched_counts[station]
+            if unmatched_counts is not None
+            else degree // 4
+        )
         for _local_index in range(unmatched_count):
             events[station].append(
                 {
                     "peer": None,
                     "worked": _external_callsign(external_index),
-                    "at": starts_at + timedelta(hours=2, seconds=external_index * 10),
+                    "at": (
+                        event_time()
+                        if event_windows
+                        else starts_at + timedelta(hours=2, seconds=external_index * 10)
+                    ),
                     "frequency_khz": frequency_rng.randint(
                         BAND_MIN_FREQUENCY_KHZ, BAND_MAX_FREQUENCY_KHZ
                     ),

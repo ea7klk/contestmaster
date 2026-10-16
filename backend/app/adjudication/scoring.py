@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from datetime import UTC
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +21,7 @@ from backend.app.adjudication.domain import (
     normalize_callsign,
     resolve_cty_callsign,
 )
+from backend.app.logs.adif import band_from_frequency_mhz
 from backend.app.master_data.jobs import MissingContestMasterData
 from backend.app.metrics import record_score_run
 from backend.app.models import (
@@ -178,13 +180,17 @@ def _scoring_inputs(
             direction="received",
         )
         occurred = qso.occurred_at.astimezone(UTC)
+        scoring_band = _scoring_band(qso.band)
+        raw_transmitter = qso.source_fields.get("transmitter")
+        transmitter = str(raw_transmitter).strip() if raw_transmitter is not None else None
         scoring_qsos.append(
             ScoringQso(
                 qso_id=qso.id,
                 occurred_at=occurred,
                 worked_callsign=callsign,
-                band=qso.band,
+                band=scoring_band,
                 mode=qso.mode,
+                transmitter=transmitter or None,
                 entity=entity,
                 cq_zone=cq_zone,
                 itu_zone=itu_zone,
@@ -199,7 +205,7 @@ def _scoring_inputs(
                 occurred_at=occurred,
                 station_callsign=station.callsign_normalized or station.callsign_submitted,
                 worked_callsign=callsign,
-                band=qso.band,
+                band=scoring_band,
                 mode=qso.mode,
                 sent_exchange=sent_exchange,
                 received_exchange=received_exchange,
@@ -213,6 +219,20 @@ def _scoring_inputs(
         qsos=scoring_qsos,
     )
     return entry_input, qsos, source_facts
+
+
+def _scoring_band(value: str | None) -> str | None:
+    """Normalize stored Cabrillo kHz frequencies and preserve existing band keys."""
+    if value is None:
+        return None
+    try:
+        frequency = Decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return value.casefold()
+    if frequency >= 1000:
+        frequency /= 1000
+    band = band_from_frequency_mhz(str(frequency))
+    return band or value
 
 
 def _entry_declarations(definition: RulesetDefinition, revision: EntryRevision) -> dict[str, Any]:

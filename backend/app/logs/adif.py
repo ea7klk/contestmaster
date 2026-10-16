@@ -53,7 +53,7 @@ def _line_at(text: str, position: int) -> int:
     return text.count("\n", 0, position) + 1
 
 
-def _band_from_frequency(value: str) -> str | None:
+def band_from_frequency_mhz(value: str) -> str | None:
     try:
         mhz = float(value)
     except ValueError:
@@ -123,7 +123,7 @@ def _qso(fields: dict[str, list[str]], line: int) -> tuple[ParsedQso | None, Imp
     band = (
         _BAND_KEYS.get(band_value, band_value.lower())
         if band_value
-        else _band_from_frequency(frequency)
+        else band_from_frequency_mhz(frequency)
     )
     required = [
         name
