@@ -47,7 +47,11 @@ Contest configuration owns the separate UTC log submission cutoff. The ruleset's
 
 ## Categories and exchanges
 
-A category dimension is one entry-classification axis, such as operator, power, band, mode, assistance, transmitter count, or overlay. Its choices are the values allowed on that axis. Common keys and labels are selected from the controls; choose the custom option for sponsor-specific values. Keys are stable references used by imported categories, conditions, and format mappings. Changing a label never changes a key.
+A category dimension is one entry-classification axis, such as operator, power, band, mode, assistance, transmitter count, or overlay. Its choices are the values allowed on that axis. A required dimension must have a selected value; an optional dimension may be left blank. A choice can be marked as requiring a participant declaration. Mutually exclusive groups identify dimensions that may not be selected together. Common keys and labels are selected from the controls; choose the custom option for sponsor-specific values. Keys are stable references used by imported categories, conditions, and format mappings. Changing a label never changes a key. These settings feed the category portion of the public “Contest rules at a glance” summary, which is automatically generated and may be imprecise.
+
+## Contest description and generated overview
+
+The contest manager can add an optional Markdown description in contest configuration. It is stored as source text on the contest, outside its reusable ruleset, and displayed at the top of public contest details. The frontend sanitizes rendered Markdown. Below it, the frontend generates “Contest rules at a glance” from the selected ruleset, including category dimensions and choices. This generated overview may be incomplete or imprecise; the sponsor's official published rules remain authoritative.
 
 An exchange schema is the ordered set of values sent, received, exchanged in both directions, or declared once for an entry. Common fields include signal report, serial, CQ/ITU zone, section, grid, state/province, check, precedence, call area, and power. The selected value type controls validation (text, integer, callsign, serial, enum, grid, or zone). Custom fields remain supported. Enum values and serial scopes are validated by the API.
 

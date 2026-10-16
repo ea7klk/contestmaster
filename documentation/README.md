@@ -74,7 +74,7 @@ IARU organizational regions are outside the current release: they are not a firs
 
 ## Architecture overview
 
-The Vue application handles contest setup, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. It sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
+The Vue application handles contest setup, manager-authored Markdown contest descriptions, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. Public contest details display the manager's description above a generated ruleset summary. The frontend sanitizes rendered Markdown; the summary includes category dimensions and configured choices, but can be imprecise, so the sponsor's official rules remain authoritative. The frontend sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative.
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ flowchart LR
     Composer -->|rule configuration| API[Python REST API]
     CatalogAdmin -->|catalog reads and protected changes| API
     Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
-    Web -->|public contest results and standings| API
+    Web -->|public contest details, results, and standings| API
     API -->|privileged actions| Auth[Role and contest-scope authorization]
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
@@ -113,7 +113,7 @@ flowchart LR
 
 ### Main boundaries
 
-- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides contest management with JSON contest import and draft editing of saved rulesets as new immutable versions. The graphical composer validates and reviews contest rules. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
+- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides contest management with JSON contest import, Markdown contest descriptions, and draft editing of saved rulesets as new immutable versions. Render manager-authored contest descriptions safely from Markdown source. The public details page places this description above a generated category/rules overview that may be imprecise; the official contest rules remain authoritative. The graphical composer validates and reviews contest rules. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
 - **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for callsign normalization, QSO validation, duplicate selection, counterpart-log matching, scoring, and adjudication. Keep pure rule checks independent of HTTP and SQLite; ORM orchestration records immutable decisions and score runs at the application boundary.
 - **Rulesets:** define reusable categories, exchange interpretation, QSO eligibility predicates over contact geography, entry categories/declarations, and the station callsign, plus multipliers, penalties, and rounding rules. Contest start/end instants, periodicity, and log submission cutoff belong to contest configuration and are excluded from rulesets. The ruleset's submission rule only selects late-log handling. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Configured cross-log workflow hooks control reciprocal-contact tolerances and whether missing/mismatched counterpart contacts require review. Submitted configuration never executes code. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
@@ -186,6 +186,7 @@ erDiagram
         integer id PK
         integer owner_user_id FK
         text name
+        text description "nullable Markdown source"
         text starts_at_utc
         text ends_at_utc
         json periodicity
@@ -424,6 +425,8 @@ erDiagram
         text occurred_at_utc
     }
 ```
+
+`CONTEST.description` is an existing nullable text column. It stores the manager-authored Markdown source; rendering and HTML sanitization happen in the frontend, so Markdown support required no schema migration. This authored description is separate from the ruleset-derived “Contest rules at a glance” overview. The overview expands category dimensions, required/optional selections, choices, declaration markings, and mutually exclusive dimensions, but may be imprecise and does not replace the sponsor's official published rules.
 
 `BAND_CATALOG_ITEM` and `MODE_CATALOG_ITEM` are independent global-admin-managed reference tables. Both have stable keys, labels, descriptions, sort order, and active state. Bands additionally store frequency reference text and the advisory contest-free mark. The active band catalog ends at 10 GHz and marks 2200 m, 630 m, 60 m, 30 m, 17 m, and 12 m as no-contest advisory bands; higher-frequency legacy catalog keys remain inactive for compatibility with saved rulesets. The consolidated Alembic baseline creates and seeds these tables. `RULESET_VERSION.configuration_json` stores selected band/mode keys in the immutable ruleset snapshot. This intentional JSON reference avoids making historical versions depend on mutable catalog rows; referenced keys cannot be renamed or deleted, and deactivation does not rewrite saved rulesets.
 
