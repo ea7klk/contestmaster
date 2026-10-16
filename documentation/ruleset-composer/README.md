@@ -2,6 +2,34 @@
 
 The Vue composer exposes the same typed ruleset definition that the API validates. A contest manager should compare every draft with the sponsor's current rules before saving or activating it. The backend remains authoritative; browser controls only help build valid configuration.
 
+## Import contests and edit saved rulesets
+
+From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and a `ruleset` object. The contest object uses the regular contest fields (including offset-aware start, end, and submission-cutoff timestamps); the ruleset object uses the schema-version-1 draft format described in [ruleset drafts](../ruleset-drafts/README.md). The API validates both together, creates a manager-owned draft, saves and assigns its immutable ruleset version, and commits the operation atomically. If the file is malformed, the contest is invalid, an operating-catalog key is unavailable, or either record conflicts, no partial import is retained.
+
+For example, the package shape is:
+
+```json
+{
+  "contest": {
+    "name": "Example Sprint",
+    "slug": "example-sprint",
+    "description": null,
+    "starts_at": "2026-05-01T00:00:00Z",
+    "ends_at": "2026-05-01T06:00:00Z",
+    "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
+    "auto_recalculate_on_upload": false
+  },
+  "ruleset": {
+    "schema_version": 1,
+    "ruleset_key": "example-sprint",
+    "version": "2026",
+    "rules": []
+  }
+}
+```
+
+The example's empty `rules` array is a shape illustration only; a real ruleset must include and validate all required rule types. The **Edit ruleset** action on a contest opens its saved version in the graphic composer. It is loaded as a new draft: enter a new version identifier and save. Existing versions are immutable, and editing does not change the contest's current assignment. Select the newly saved version from the contest manager when ready.
+
 ## Schedule and submissions
 
 Contest schedules use UTC only. Fixed editions use an ISO 8601 UTC instant such as `2026-01-01T00:00:00Z`; recurring editions use a UTC calendar date, a UTC time, and a positive duration in minutes. A local start-time control has no useful meaning for a UTC event instant. Daylight-saving “fold” means the repeated local wall-clock hour when clocks move backward. Since schedule rules are UTC, a fold cannot occur and the composer/schema no longer asks for a fold value.

@@ -27,6 +27,26 @@ function mountManager() {
   })
 }
 
+async function selectFile(element: Element, file: File) {
+  const fileInput = element.querySelector('input[type="file"]')
+  if (!(fileInput instanceof HTMLInputElement))
+    throw new Error('File input missing')
+  Object.defineProperty(fileInput, 'files', {
+    configurable: true,
+    value: [file],
+  })
+  fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushPromises()
+}
+
+function jsonFile(contents: string, name: string) {
+  const file = new File([contents], name, { type: 'application/json' })
+  Object.defineProperty(file, 'text', {
+    value: async () => contents,
+  })
+  return file
+}
+
 describe('ContestManagerView', () => {
   it('creates a contest with separate cutoff and automatic recalculation settings', async () => {
     const saved: Record<string, unknown>[] = []
@@ -61,8 +81,8 @@ describe('ContestManagerView', () => {
     await flushPromises()
     await expectAccessible(wrapper.element)
 
-    await wrapper.get('input').setValue('Spring Sprint')
-    const textInputs = wrapper.findAll('input')
+    await wrapper.get('.contest-form input').setValue('Spring Sprint')
+    const textInputs = wrapper.findAll('.contest-form input')
     await textInputs[1]?.setValue('spring-sprint')
     const dateInputs = wrapper.findAll('input[type="datetime-local"]')
     await dateInputs[0]?.setValue('2026-05-01T00:00')
@@ -177,6 +197,7 @@ describe('ContestManagerView', () => {
       ),
     ).toBe(true)
     expect(wrapper.text()).toContain('Ruleset assigned to Field Day Sprint')
+    expect(wrapper.text()).toContain('Edit ruleset')
   })
 
   it('loads an existing contest into the edit form and saves its changed details', async () => {
@@ -209,10 +230,10 @@ describe('ContestManagerView', () => {
     const wrapper = mountManager()
     await flushPromises()
     await wrapper.get('.contest-card .secondary-button').trigger('click')
-    expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
-      'Summer QSO Party',
-    )
-    await wrapper.get('input').setValue('Updated QSO Party')
+    expect(
+      (wrapper.get('.contest-form input').element as HTMLInputElement).value,
+    ).toBe('Summer QSO Party')
+    await wrapper.get('.contest-form input').setValue('Updated QSO Party')
     await wrapper.get('.contest-form').trigger('submit')
     await flushPromises()
 
@@ -221,6 +242,144 @@ describe('ContestManagerView', () => {
     expect(wrapper.get('[role="status"]').text()).toContain(
       'Contest details saved',
     )
+  })
+
+  it('imports a contest JSON package and refreshes the contest list', async () => {
+    const packageDraft = {
+      contest: {
+        name: 'Imported Field Day',
+        slug: 'imported-field-day',
+        description: null,
+        starts_at: '2026-06-20T00:00:00Z',
+        ends_at: '2026-06-20T06:00:00Z',
+        log_submission_cutoff_at: '2026-06-27T00:00:00Z',
+        auto_recalculate_on_upload: false,
+      },
+      ruleset: {
+        schema_version: 1,
+        ruleset_key: 'imported-field-day',
+        version: '2026',
+        rules: [{ id: 'schedule', rule: { kind: 'schedule' } }],
+      },
+    }
+    const contest = {
+      id: 82,
+      owner_user_id: 4,
+      ...packageDraft.contest,
+      status: 'draft',
+      ruleset_version_id: 55,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    let imported = false
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/contests/import') && init?.method === 'POST') {
+          expect(JSON.parse(String(init.body))).toEqual(packageDraft)
+          imported = true
+          return ok({ contest, ruleset_version_id: 55 })
+        }
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        if (path.includes('/contests')) {
+          const items = imported ? [contest] : []
+          return ok({
+            items,
+            meta: { page: 1, page_size: 100, total: items.length, pages: 1 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountManager()
+    await flushPromises()
+    await expectAccessible(wrapper.element)
+
+    await selectFile(
+      wrapper.element,
+      jsonFile(JSON.stringify(packageDraft), 'field-day.json'),
+    )
+
+    expect(wrapper.text()).toContain('Imported Field Day')
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Imported Imported Field Day as a draft',
+    )
+    expect(
+      fetchMock.mock.calls.some(([path]) =>
+        String(path).endsWith('/contests/import'),
+      ),
+    ).toBe(true)
+  })
+
+  it('reports malformed contest package JSON without calling the API', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path.endsWith('/auth/me')) return ok(managerUser())
+      if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+      if (path.includes('/contests')) {
+        return ok({
+          items: [],
+          meta: { page: 1, page_size: 100, total: 0, pages: 0 },
+        })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountManager()
+    await flushPromises()
+    await selectFile(wrapper.element, jsonFile('{broken', 'broken.json'))
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('not valid JSON')
+    expect(
+      fetchMock.mock.calls.some(([path]) =>
+        String(path).endsWith('/contests/import'),
+      ),
+    ).toBe(false)
+  })
+
+  it('shows contest import API errors without hiding the draft form', async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        if (path.endsWith('/contests/import') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              error: { message: 'A contest slug is already in use.' },
+            }),
+            { status: 409 },
+          )
+        }
+        if (path.includes('/contests')) {
+          return ok({
+            items: [],
+            meta: { page: 1, page_size: 100, total: 0, pages: 0 },
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mountManager()
+    await flushPromises()
+    await selectFile(
+      wrapper.element,
+      jsonFile(
+        JSON.stringify({
+          contest: { name: 'Collision' },
+          ruleset: { schema_version: 1, ruleset_key: 'collision', rules: [] },
+        }),
+        'collision.json',
+      ),
+    )
+
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'A contest slug is already in use.',
+    )
+    expect(wrapper.find('.contest-form').exists()).toBe(true)
   })
 })
 

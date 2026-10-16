@@ -8,13 +8,14 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.api.auth import AuthenticatedUser, Principal, require_contest_access
-from backend.app.api.errors import API_ERROR_RESPONSES
+from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
@@ -27,11 +28,16 @@ from backend.app.models import (
     RulesetVersion,
     SystemRole,
 )
+from backend.app.rulesets.catalog_validation import catalog_reference_errors
 from backend.app.rulesets.persistence import (
+    RulesetConflictError,
     RulesetPersistenceError,
     activate_ruleset,
     load_ruleset_version,
+    save_ruleset_version,
 )
+from backend.app.rulesets.schema import RulesetDefinition
+from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 router = APIRouter(tags=["contests"])
 public_router = APIRouter(tags=["public contests"])
@@ -57,6 +63,13 @@ class ContestWrite(BaseModel):
         if self.starts_at >= self.ends_at:
             raise ValueError("Contest start must precede contest end")
         return self
+
+
+class ContestImportPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contest: ContestWrite
+    ruleset: RulesetDefinition
 
 
 class RulesetSelection(BaseModel):
@@ -200,6 +213,111 @@ def create_contest(
         ) from exc
     session.refresh(contest)
     return contest_output(contest)
+
+
+@router.post("/import", status_code=201, responses=API_ERROR_RESPONSES, response_model=None)
+def import_contest(
+    payload: ContestImportPayload,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object] | JSONResponse:
+    """Import contest metadata and its validated immutable ruleset atomically."""
+    try:
+        definition = validate_ruleset(payload.ruleset.model_dump(mode="json"))
+        catalog_errors = catalog_reference_errors(session, definition)
+        if catalog_errors:
+            raise RulesetValidationError(catalog_errors)
+    except RulesetValidationError as exc:
+        details = [
+            {
+                "location": [part for part in str(issue["path"]).split(".") if part],
+                "message": str(issue["message"]),
+                "type": "ruleset_configuration_error",
+            }
+            for issue in exc.errors
+        ]
+        return error_response(
+            request,
+            422,
+            "invalid_ruleset",
+            "Imported ruleset configuration is invalid.",
+            details,
+        )
+
+    contest_payload = payload.contest
+    contest = Contest(
+        owner_user_id=principal.user_id,
+        name=contest_payload.name,
+        slug=contest_payload.slug,
+        description=contest_payload.description,
+        starts_at=contest_payload.starts_at,
+        ends_at=contest_payload.ends_at,
+        log_submission_cutoff_at=contest_payload.log_submission_cutoff_at,
+        status=ContestStatus.DRAFT,
+        auto_recalculate_on_upload=contest_payload.auto_recalculate_on_upload,
+    )
+    try:
+        saved_ruleset = save_ruleset_version(
+            session, definition, created_by_user_id=principal.user_id
+        )
+        session.add(contest)
+        session.flush()
+        activation = activate_ruleset(
+            session,
+            contest_id=contest.id,
+            ruleset_version_id=saved_ruleset.version.id,
+            activated_by_user_id=principal.user_id,
+        )
+        record_audit_event(
+            session,
+            actor_user_id=principal.user_id,
+            action="contest.imported",
+            target_type="contest",
+            target_id=contest.id,
+            reason=contest_payload.audit_reason,
+            metadata={"slug": contest.slug, "ruleset_version_id": saved_ruleset.version.id},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        if saved_ruleset.created:
+            record_audit_event(
+                session,
+                actor_user_id=principal.user_id,
+                action="ruleset_version.created",
+                target_type="ruleset_version",
+                target_id=saved_ruleset.version.id,
+                metadata={
+                    "ruleset_key": saved_ruleset.version.ruleset_key,
+                    "version": saved_ruleset.version.version,
+                    "imported_with_contest": contest.id,
+                },
+                request_id=getattr(request.state, "request_id", None),
+            )
+        if activation is not None:
+            record_audit_event(
+                session,
+                actor_user_id=principal.user_id,
+                action="contest.ruleset_activated",
+                target_type="contest",
+                target_id=contest.id,
+                metadata={"ruleset_version_id": saved_ruleset.version.id},
+                request_id=getattr(request.state, "request_id", None),
+            )
+        session.commit()
+    except RulesetConflictError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (IntegrityError, RulesetPersistenceError) as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="The contest or ruleset conflicts with an existing record.",
+        ) from exc
+    session.refresh(contest)
+    return {
+        "contest": contest_output(contest),
+        "ruleset_version_id": saved_ruleset.version.id,
+    }
 
 
 @router.get("/{contest_id}", responses=API_ERROR_RESPONSES)

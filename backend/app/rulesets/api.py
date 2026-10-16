@@ -15,8 +15,14 @@ from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.audit import record_audit_event
 from backend.app.db import get_session
-from backend.app.models import BandCatalogItem, ModeCatalogItem, RulesetVersion
-from backend.app.rulesets.persistence import RulesetConflictError, save_ruleset_version
+from backend.app.models import RulesetVersion
+from backend.app.rulesets.catalog_validation import catalog_reference_errors
+from backend.app.rulesets.persistence import (
+    RulesetConflictError,
+    RulesetPersistenceError,
+    load_ruleset_version,
+    save_ruleset_version,
+)
 from backend.app.rulesets.registry import rule_catalog
 from backend.app.rulesets.schedules import ScheduleResolutionError, resolve_schedule
 from backend.app.rulesets.schema import RulesetDefinition, ScheduleRule
@@ -31,56 +37,6 @@ class SchedulePreviewPayload(BaseModel):
 
     schedule: ScheduleRule
     year: int = Field(ge=1900, le=2200)
-
-
-def _catalog_reference_errors(
-    session: Session, definition: RulesetDefinition
-) -> list[dict[str, object]]:
-    requested = [
-        ("band", value)
-        for configured in definition.rules
-        if configured.rule.kind == "eligibility"
-        for value in configured.rule.allowed_bands
-    ] + [
-        ("mode", value)
-        for configured in definition.rules
-        if configured.rule.kind == "eligibility"
-        for value in configured.rule.allowed_modes
-    ]
-    if not requested:
-        return []
-    available = {
-        *(
-            ("band", item.key)
-            for item in session.scalars(
-                select(BandCatalogItem).where(BandCatalogItem.is_active.is_(True))
-            )
-        ),
-        *(
-            ("mode", item.key)
-            for item in session.scalars(
-                select(ModeCatalogItem).where(ModeCatalogItem.is_active.is_(True))
-            )
-        ),
-    }
-    errors: list[dict[str, object]] = []
-    for index, configured in enumerate(definition.rules):
-        rule = configured.rule
-        if rule.kind != "eligibility":
-            continue
-        for field, kind, values in (
-            ("allowed_bands", "band", rule.allowed_bands),
-            ("allowed_modes", "mode", rule.allowed_modes),
-        ):
-            for value_index, value in enumerate(values):
-                if (kind, value) not in available:
-                    errors.append(
-                        {
-                            "path": f"rules[{index}].{field}[{value_index}]",
-                            "message": f"{value} is not an active {kind} in the operating catalog.",
-                        }
-                    )
-    return errors
 
 
 @router.get("/catalog", responses=API_ERROR_RESPONSES)
@@ -98,7 +54,7 @@ def validate_ruleset_payload(
     """Validate a proposed ruleset and return a readable summary/example without saving it."""
     try:
         definition = validate_ruleset(payload)
-        catalog_errors = _catalog_reference_errors(session, definition)
+        catalog_errors = catalog_reference_errors(session, definition)
         if catalog_errors:
             raise RulesetValidationError(catalog_errors)
     except RulesetValidationError as exc:
@@ -163,6 +119,22 @@ def list_ruleset_versions(
     }
 
 
+@router.get("/versions/{version_id}", responses=API_ERROR_RESPONSES)
+def get_ruleset_version(
+    version_id: int,
+    _actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    version = session.get(RulesetVersion, version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Ruleset version not found.")
+    try:
+        definition = load_ruleset_version(version)
+    except RulesetPersistenceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"id": version.id, "configuration": definition.model_dump(mode="json")}
+
+
 @router.post("/versions", responses=API_ERROR_RESPONSES, response_model=None)
 def persist_ruleset_version(
     payload: RulesetDefinition,
@@ -173,7 +145,7 @@ def persist_ruleset_version(
 ) -> dict[str, object] | JSONResponse:
     try:
         definition = validate_ruleset(payload.model_dump(mode="json"))
-        catalog_errors = _catalog_reference_errors(session, definition)
+        catalog_errors = catalog_reference_errors(session, definition)
         if catalog_errors:
             raise RulesetValidationError(catalog_errors)
     except RulesetValidationError as exc:

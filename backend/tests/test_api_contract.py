@@ -19,6 +19,8 @@ def test_openapi_is_published_under_versioned_api_path():
     assert "/api/v1/health/ready" in response.json()["paths"]
     assert "/api/v1/rulesets/bands" in response.json()["paths"]
     assert "/api/v1/rulesets/modes" in response.json()["paths"]
+    assert "/api/v1/contests/import" in response.json()["paths"]
+    assert "/api/v1/rulesets/versions/{version_id}" in response.json()["paths"]
     assert "/api/v1/rulesets/admin/bands" in response.json()["paths"]
     assert "/api/v1/rulesets/admin/modes" in response.json()["paths"]
     assert "post" in response.json()["paths"]["/api/v1/rulesets/admin/bands"]

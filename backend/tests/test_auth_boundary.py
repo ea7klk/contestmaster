@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
@@ -24,6 +25,8 @@ from backend.app.models import (
     Entry,
     EntryAccessGrant,
     Participant,
+    RulesetActivation,
+    RulesetVersion,
     SystemRole,
     SystemSession,
     SystemUser,
@@ -527,6 +530,108 @@ def test_invalid_ruleset_cannot_be_persisted(identity_database):
     assert response.json()["error"]["code"] == "invalid_ruleset"
     with identity_database() as session:
         assert session.query(RulesetVersion).count() == 0
+
+
+def test_contest_import_is_atomic_and_ruleset_version_is_readable(identity_database):
+    from backend.tests.test_rulesets import valid_payload
+
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="manager",
+        email="manager@example.test",
+    )
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "manager@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    headers = {"X-CSRF-Token": client.cookies.get("contestmaster_csrf")}
+    ruleset = valid_payload()
+    ruleset["ruleset_key"] = "imported-sprint"
+    ruleset["version"] = "2026"
+    package = {
+        "contest": {
+            "name": "Imported Sprint",
+            "slug": "imported-sprint",
+            "description": "An imported contest draft",
+            "starts_at": "2026-05-01T00:00:00Z",
+            "ends_at": "2026-05-01T06:00:00Z",
+            "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
+            "auto_recalculate_on_upload": True,
+        },
+        "ruleset": ruleset,
+    }
+
+    imported = client.post("/api/v1/contests/import", headers=headers, json=package)
+    assert imported.status_code == 201
+    imported_body = imported.json()
+    assert imported_body["contest"]["status"] == "draft"
+    assert imported_body["contest"]["ruleset_version_id"] == imported_body["ruleset_version_id"]
+    version_id = imported_body["ruleset_version_id"]
+    saved = client.get(f"/api/v1/rulesets/versions/{version_id}")
+    assert saved.status_code == 200
+    assert saved.json()["configuration"]["ruleset_key"] == "imported-sprint"
+    assert TestClient(app).get(f"/api/v1/rulesets/versions/{version_id}").status_code == 401
+    revised_ruleset = deepcopy(ruleset)
+    revised_ruleset["version"] = "2027"
+    revised = client.post("/api/v1/rulesets/versions", headers=headers, json=revised_ruleset)
+    assert revised.status_code == 201
+    assert revised.json()["id"] != version_id
+    assert (
+        client.get(f"/api/v1/contests/{imported_body['contest']['id']}").json()[
+            "ruleset_version_id"
+        ]
+        == version_id
+    )
+    assert (
+        client.get(f"/api/v1/rulesets/versions/{version_id}").json()["configuration"]["version"]
+        == "2026"
+    )
+
+    invalid_catalog_package = deepcopy(package)
+    invalid_catalog_package["contest"]["slug"] = "invalid-catalog"
+    invalid_catalog_package["ruleset"]["version"] = "invalid-catalog"
+    eligibility = next(
+        item["rule"]
+        for item in invalid_catalog_package["ruleset"]["rules"]
+        if item["rule"]["kind"] == "eligibility"
+    )
+    eligibility["allowed_bands"] = ["not-a-band"]
+    invalid_catalog = client.post(
+        "/api/v1/contests/import", headers=headers, json=invalid_catalog_package
+    )
+    assert invalid_catalog.status_code == 422
+    assert invalid_catalog.json()["error"]["code"] == "invalid_ruleset"
+
+    duplicate_slug_package = deepcopy(package)
+    duplicate_slug_package["ruleset"]["ruleset_key"] = "must-roll-back"
+    duplicate_slug_package["ruleset"]["version"] = "1"
+    conflict = client.post("/api/v1/contests/import", headers=headers, json=duplicate_slug_package)
+    assert conflict.status_code == 409
+
+    ruleset_conflict_package = deepcopy(package)
+    ruleset_conflict_package["contest"]["slug"] = "ruleset-conflict"
+    ruleset_conflict_package["ruleset"]["rules"][0]["id"] = "changed-schedule"
+    conflict = client.post(
+        "/api/v1/contests/import", headers=headers, json=ruleset_conflict_package
+    )
+    assert conflict.status_code == 409
+
+    with identity_database() as session:
+        assert session.query(Contest).count() == 1
+        assert session.query(RulesetVersion).count() == 2
+        assert session.query(RulesetActivation).count() == 1
+        actions = {event.action for event in session.query(AuditEvent).all()}
+        assert "contest.imported" in actions
+
+
+def test_contest_import_requires_authentication(identity_database):
+    response = TestClient(app).post("/api/v1/contests/import", json={})
+    assert response.status_code == 401
 
 
 def test_contest_status_requires_ruleset_and_public_routes_only_show_published(

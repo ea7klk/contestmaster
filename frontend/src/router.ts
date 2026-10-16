@@ -73,9 +73,12 @@ export const router = createRouter({
       component: () => import('./views/ContestManagerView.vue'),
     },
     {
-      path: '/rulesets/compose',
+      path: '/rulesets/compose/:editVersionId?',
       name: 'ruleset-composer',
       component: () => import('./views/RulesetComposerView.vue'),
+      props: (route) => ({
+        editVersionId: route.params.editVersionId as string | undefined,
+      }),
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

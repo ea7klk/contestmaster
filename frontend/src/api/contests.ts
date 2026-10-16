@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import type { RulesetDraft } from './rulesets'
 
 export type ContestStatus = 'draft' | 'open' | 'closed' | 'published'
 
@@ -28,6 +29,11 @@ export interface ContestDraft {
   auto_recalculate_on_upload: boolean
 }
 
+export interface ContestImportPackage {
+  contest: ContestDraft
+  ruleset: RulesetDraft
+}
+
 export interface ContestList {
   items: Contest[]
   meta: { page: number; page_size: number; total: number; pages: number }
@@ -48,6 +54,16 @@ export function createContest(draft: ContestDraft) {
     method: 'POST',
     body: JSON.stringify(draft),
   })
+}
+
+export function importContest(contestPackage: ContestImportPackage) {
+  return apiRequest<{ contest: Contest; ruleset_version_id: number }>(
+    '/contests/import',
+    {
+      method: 'POST',
+      body: JSON.stringify(contestPackage),
+    },
+  )
 }
 
 export function updateContest(id: number, draft: ContestDraft) {

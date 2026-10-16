@@ -11,6 +11,7 @@ import {
 } from '../api/operatingCatalog'
 import {
   getRuleCatalog,
+  getSavedRulesetVersion,
   RulesetApiError,
   saveRulesetVersion,
   previewSchedule,
@@ -47,6 +48,8 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const previewYear = ref(new Date().getUTCFullYear())
 const schedulePreview = ref('')
 const schedulePreviewError = ref('')
+const editingSource = ref('')
+const props = defineProps<{ editVersionId?: string }>()
 
 const optionalTypes = computed(() =>
   catalog.value.filter((type) => !type.required),
@@ -258,6 +261,11 @@ function buildDraft(): RulesetDraft {
 }
 
 async function validateDraft() {
+  if (!version.value.trim()) {
+    generalError.value =
+      'Enter a new version identifier before validating this ruleset.'
+    return
+  }
   validating.value = true
   generalError.value = ''
   issues.value = []
@@ -279,13 +287,20 @@ async function validateDraft() {
 
 async function persistDraft() {
   if (savingVersion.value) return
+  if (!version.value.trim()) {
+    generalError.value =
+      'Enter a new version identifier before saving this ruleset.'
+    return
+  }
   savingVersion.value = true
   generalError.value = ''
   savedMessage.value = ''
   try {
     const persisted = await saveRulesetVersion(buildDraft())
     savedMessage.value = persisted.created
-      ? `Saved ${persisted.ruleset_key} version ${persisted.version}. Assign it from the contest manager.`
+      ? editingSource.value
+        ? `Saved ${persisted.ruleset_key} version ${persisted.version}. ${editingSource.value} remains unchanged; select the new version from the contest manager when ready.`
+        : `Saved ${persisted.ruleset_key} version ${persisted.version}. Assign it from the contest manager.`
       : `This exact ${persisted.ruleset_key} version ${persisted.version} is already saved.`
   } catch (error) {
     if (error instanceof RulesetApiError) {
@@ -379,7 +394,22 @@ onMounted(async () => {
       ...bandsResult.value.items,
       ...modesResult.value.items,
     ]
-    seedRequiredRules()
+    if (props.editVersionId !== undefined) {
+      const versionId = Number(props.editVersionId)
+      if (!Number.isSafeInteger(versionId) || versionId < 1) {
+        throw new Error('The requested saved ruleset version is invalid.')
+      }
+      const saved = await getSavedRulesetVersion(versionId, controller.signal)
+      const definition = saved.configuration
+      rulesetKey.value = definition.ruleset_key
+      version.value = ''
+      sourceUrl.value = definition.source_url ?? ''
+      sourceEdition.value = definition.source_edition ?? ''
+      rules.value = definition.rules.map((item) => ({ ...item }))
+      editingSource.value = `${definition.ruleset_key} version ${definition.version}`
+    } else {
+      seedRequiredRules()
+    }
   } catch (error) {
     generalError.value =
       error instanceof Error
@@ -432,8 +462,13 @@ function catalogErrorMessage(reason: unknown) {
               v-model="version"
               maxlength="80"
               autocomplete="off"
+              required
               @input="clearValidation"
             />
+            <span v-if="editingSource" class="field-help">
+              Editing {{ editingSource }}. Enter a new version identifier; saved
+              versions cannot be changed.
+            </span>
           </label>
           <label>
             Published rules URL <span class="optional-label">Optional</span>
@@ -1030,8 +1065,9 @@ function catalogErrorMessage(reason: unknown) {
           Formula preview: {{ validation.worked_score_example.error }}
         </p>
         <p class="draft-note">
-          Saving creates an immutable version. Assign it to one of your draft
-          contests from the contest manager.
+          Saving creates an immutable version. Existing versions and contest
+          assignments remain unchanged; assign a new version from the contest
+          manager when you are ready.
         </p>
         <button
           type="button"

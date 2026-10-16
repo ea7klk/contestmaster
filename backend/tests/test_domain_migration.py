@@ -116,12 +116,14 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
     assert highest_band == "1.4 THz"
     assert ft8 == 1
     with Session(engine) as session:
-        assert session.scalar(
-            select(BandCatalogItem.description).where(BandCatalogItem.key == "160m")
-        ) == "160 m HF band"
-        assert session.scalar(
-            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT8")
-        ) == "Weak-signal digital mode"
+        assert (
+            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "160m"))
+            == "160 m HF band"
+        )
+        assert (
+            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT8"))
+            == "Weak-signal digital mode"
+        )
     assert {"category_values", "is_late"} <= {
         column["name"] for column in inspector.get_columns("entries")
     }
@@ -275,18 +277,22 @@ def test_catalog_description_migration_updates_only_generic_descriptions(tmp_pat
         modes = list(session.scalars(select(ModeCatalogItem)))
         assert all(item.description and len(item.description) < 40 for item in bands)
         assert all(item.description and len(item.description) < 40 for item in modes)
-        assert session.scalar(
-            select(BandCatalogItem.description).where(BandCatalogItem.key == "20m")
-        ) == "Administrator's band notes"
-        assert session.scalar(
-            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "CW")
-        ) == "Administrator's mode notes"
-        assert session.scalar(
-            select(BandCatalogItem.description).where(BandCatalogItem.key == "40m")
-        ) == "40 m HF band"
-        assert session.scalar(
-            select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT4")
-        ) == "Fast weak-signal digital mode"
+        assert (
+            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "20m"))
+            == "Administrator's band notes"
+        )
+        assert (
+            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "CW"))
+            == "Administrator's mode notes"
+        )
+        assert (
+            session.scalar(select(BandCatalogItem.description).where(BandCatalogItem.key == "40m"))
+            == "40 m HF band"
+        )
+        assert (
+            session.scalar(select(ModeCatalogItem.description).where(ModeCatalogItem.key == "FT4"))
+            == "Fast weak-signal digital mode"
+        )
     engine.dispose()
 
 

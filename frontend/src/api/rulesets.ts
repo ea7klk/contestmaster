@@ -117,6 +117,13 @@ export async function listRulesetVersions(
   return request('/rulesets/versions', { method: 'GET', signal })
 }
 
+export async function getSavedRulesetVersion(
+  id: number,
+  signal?: AbortSignal,
+): Promise<{ id: number; configuration: RulesetDraft }> {
+  return request(`/rulesets/versions/${id}`, { method: 'GET', signal })
+}
+
 export async function saveRulesetVersion(
   draft: RulesetDraft,
   signal?: AbortSignal,

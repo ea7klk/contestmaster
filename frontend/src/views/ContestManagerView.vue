@@ -4,11 +4,13 @@ import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
   createContest,
+  importContest,
   listContests,
   selectRuleset,
   updateContest,
   type Contest,
   type ContestDraft,
+  type ContestImportPackage,
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import { listRulesetVersions, type SavedRulesetVersion } from '../api/rulesets'
@@ -34,6 +36,7 @@ const editingId = ref<number | null>(null)
 const statusMessage = ref('')
 const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
+const importing = ref(false)
 
 function emptyForm(): ContestForm {
   return {
@@ -182,6 +185,62 @@ async function saveRuleset(contest: Contest) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+async function importContestFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  errorMessage.value = ''
+  statusMessage.value = ''
+  if (file.size > 1_000_000) {
+    errorMessage.value = 'Contest import files must be smaller than 1 MB.'
+    input.value = ''
+    return
+  }
+  importing.value = true
+  try {
+    const parsed: unknown = JSON.parse(await file.text())
+    if (
+      !isRecord(parsed) ||
+      !isRecord(parsed.contest) ||
+      !isRecord(parsed.ruleset)
+    ) {
+      throw new Error(
+        'Expected a contest package with contest and ruleset objects.',
+      )
+    }
+    if (
+      parsed.ruleset.schema_version !== 1 ||
+      typeof parsed.ruleset.ruleset_key !== 'string' ||
+      !Array.isArray(parsed.ruleset.rules)
+    ) {
+      throw new Error(
+        'The package ruleset must be a schema-version-1 ruleset draft.',
+      )
+    }
+    const result = await importContest(
+      parsed as unknown as ContestImportPackage,
+    )
+    await refreshData()
+    statusMessage.value = `Imported ${result.contest.name} as a draft with its ruleset assigned.`
+  } catch (error) {
+    errorMessage.value =
+      error instanceof ApiError
+        ? error.message
+        : error instanceof SyntaxError
+          ? 'The selected file is not valid JSON.'
+          : error instanceof Error
+            ? error.message
+            : 'The contest package could not be imported.'
+  } finally {
+    importing.value = false
+    input.value = ''
+  }
+}
+
 onMounted(refreshData)
 </script>
 
@@ -197,9 +256,21 @@ onMounted(refreshData)
           }}).
         </p>
       </div>
-      <RouterLink class="secondary-button" to="/rulesets/compose">
-        Create a ruleset
-      </RouterLink>
+      <div class="manager-actions">
+        <label class="file-button">
+          {{ importing ? 'Importing…' : 'Import contest' }}
+          <input
+            class="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            :disabled="importing"
+            @change="importContestFile"
+          />
+        </label>
+        <RouterLink class="secondary-button" to="/rulesets/compose">
+          Create a ruleset
+        </RouterLink>
+      </div>
     </div>
 
     <p v-if="loading" role="status" class="notice">Loading your contests…</p>
@@ -222,6 +293,11 @@ onMounted(refreshData)
     </p>
     <p v-if="statusMessage" class="success-panel" role="status">
       {{ statusMessage }}
+    </p>
+
+    <p v-if="!loading && !forbidden" class="field-help">
+      Import a JSON package with contest metadata and a schema-version-1 ruleset
+      draft. The imported contest starts as a draft.
     </p>
 
     <form
@@ -392,6 +468,13 @@ onMounted(refreshData)
               rulesetSavingId === contest.id ? 'Assigning…' : 'Assign ruleset'
             }}
           </button>
+          <RouterLink
+            v-if="contest.ruleset_version_id !== null"
+            class="secondary-button"
+            :to="`/rulesets/compose/${contest.ruleset_version_id}`"
+          >
+            Edit ruleset
+          </RouterLink>
         </div>
         <p v-if="contest.ruleset_version_id === null" class="field-help">
           This draft needs a validated ruleset before it can be opened.
@@ -414,6 +497,40 @@ onMounted(refreshData)
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+.manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-weight: 650;
+}
+.file-button:focus-within {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .manager-heading h1,
 .contest-card h3 {

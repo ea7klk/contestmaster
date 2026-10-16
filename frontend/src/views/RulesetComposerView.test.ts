@@ -325,4 +325,95 @@ describe('RulesetComposerView', () => {
       'Saved my-contest version 1',
     )
   })
+
+  it('loads a saved version for editing and saves a separate version', async () => {
+    const originalConfiguration = {
+      schema_version: 1,
+      ruleset_key: 'field-day',
+      version: '2026',
+      rules: requiredRules.map((kind) => ({ id: kind, rule: { kind } })),
+    }
+    const savedDrafts: Record<string, unknown>[] = []
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        if (path.endsWith('/rulesets/versions/21'))
+          return new Response(
+            JSON.stringify({ id: 21, configuration: originalConfiguration }),
+            { status: 200 },
+          )
+        if (path.endsWith('/rulesets/validate'))
+          return new Response(
+            JSON.stringify({
+              valid: true,
+              ruleset_key: 'field-day',
+              version: '2026-revised',
+              rule_types: requiredRules,
+              summary: 'field-day version 2026-revised.',
+              worked_score_example: { final_score: 120, steps: [] },
+            }),
+            { status: 200 },
+          )
+        if (path.endsWith('/rulesets/versions') && init?.method === 'POST') {
+          const draft = JSON.parse(String(init.body)) as Record<string, unknown>
+          savedDrafts.push(draft)
+          return new Response(
+            JSON.stringify({
+              id: 22,
+              ruleset_key: 'field-day',
+              version: '2026-revised',
+              rule_type_keys: requiredRules,
+              created: true,
+              created_at: '2026-01-01T00:00:00Z',
+            }),
+            { status: 201 },
+          )
+        }
+        throw new Error(`Unexpected request ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(RulesetComposerView, {
+      props: { editVersionId: '21' },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Editing field-day version 2026')
+    expect(
+      (wrapper.get('.metadata-panel input').element as HTMLInputElement).value,
+    ).toBe('field-day')
+    await wrapper.findAll('button.primary-button')[0]?.trigger('click')
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'Enter a new version identifier',
+    )
+    expect(
+      fetchMock.mock.calls.some(([path]) =>
+        String(path).endsWith('/rulesets/validate'),
+      ),
+    ).toBe(false)
+    await wrapper.findAll('.metadata-panel input')[1]?.setValue('2026-revised')
+    await wrapper.findAll('button.primary-button')[0]?.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button.primary-button')[1]?.trigger('click')
+    await flushPromises()
+
+    expect(savedDrafts).toHaveLength(1)
+    expect(savedDrafts[0]?.ruleset_key).toBe('field-day')
+    expect(savedDrafts[0]?.version).toBe('2026-revised')
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'field-day version 2026 remains unchanged',
+    )
+  })
 })
