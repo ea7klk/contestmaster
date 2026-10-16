@@ -6,8 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import mimetypes
-import sys
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,7 @@ CONTESTS = {
 }
 DEFAULT_DELAY_SECONDS = 3.1
 MAX_ATTEMPTS = 5
+LOGGER = logging.getLogger("contestmaster.test_upload")
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,8 @@ class UploadResult:
     accepted: bool
     entry_id: int | None = None
     detail: str | None = None
+    retries: int = 0
+    elapsed_seconds: float = 0.0
 
 
 def _base_url(value: str) -> str:
@@ -40,6 +44,17 @@ def _base_url(value: str) -> str:
     if path.endswith("/api/v1"):
         path = path[: -len("/api/v1")]
     return urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
+
+
+def _display_url(value: str) -> str:
+    """Display the endpoint without URL userinfo, query parameters, or fragments."""
+    parts = urlsplit(value)
+    host = parts.hostname or "unknown-host"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
 def _multipart(filename: str, content: bytes) -> tuple[bytes, str]:
@@ -62,7 +77,43 @@ def _retry_after(error: HTTPError) -> float:
         return DEFAULT_DELAY_SECONDS
 
 
+def _safe_server_detail(error: HTTPError) -> str:
+    """Return a short allowlisted error detail without exposing arbitrary response data."""
+    try:
+        payload = json.loads(error.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, OSError):
+        return f"HTTP {error.code}"
+
+    details: list[str] = []
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if isinstance(detail, str):
+            details.append(detail)
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            for item in errors[:3]:
+                if not isinstance(item, dict):
+                    continue
+                line = item.get("line")
+                message = item.get("message")
+                if isinstance(message, str):
+                    prefix = f"line {line}: " if isinstance(line, int) and line > 0 else ""
+                    details.append(prefix + message)
+    cleaned = " ".join(_redact(detail) for detail in details if detail.strip())
+    return f"HTTP {error.code}: {cleaned[:400]}" if cleaned else f"HTTP {error.code}"
+
+
+def _redact(value: str) -> str:
+    value = re.sub(
+        r"(?i)(receipt[ _-]?token|authorization|secret|password)\s*[:=]\s*\S+",
+        r"\1=[redacted]",
+        value,
+    )
+    return " ".join(value.split())[:240]
+
+
 def upload_one(base_url: str, contest_slug: str, path: Path) -> UploadResult:
+    started = time.monotonic()
     content = path.read_bytes()
     digest = hashlib.sha256(content).hexdigest()
     idempotency_key = f"test-{contest_slug}-{digest[:48]}"
@@ -80,33 +131,114 @@ def upload_one(base_url: str, contest_slug: str, path: Path) -> UploadResult:
         },
     )
     for attempt in range(MAX_ATTEMPTS):
+        retries = attempt
         try:
             with urlopen(request, timeout=30) as response:
                 result = json.loads(response.read().decode("utf-8"))
-                if response.status not in {200, 201} or result.get("status") != "accepted":
+                if (
+                    response.status not in {200, 201}
+                    or not isinstance(result, dict)
+                    or result.get("status") != "accepted"
+                ):
                     return UploadResult(
                         path.name,
                         False,
                         detail=f"unexpected API response ({response.status})",
+                        retries=retries,
+                        elapsed_seconds=time.monotonic() - started,
                     )
-                return UploadResult(path.name, True, entry_id=result.get("entry_id"))
+                return UploadResult(
+                    path.name,
+                    True,
+                    entry_id=result.get("entry_id"),
+                    retries=retries,
+                    elapsed_seconds=time.monotonic() - started,
+                )
         except HTTPError as error:
             if error.code == 429 and attempt + 1 < MAX_ATTEMPTS:
-                time.sleep(_retry_after(error))
+                delay = _retry_after(error)
+                LOGGER.warning(
+                    "%s: API rate limit (HTTP 429); retry %d/%d in %.1f seconds",
+                    path.name,
+                    attempt + 1,
+                    MAX_ATTEMPTS - 1,
+                    delay,
+                )
+                time.sleep(delay)
                 continue
             if error.code >= 500 and attempt + 1 < MAX_ATTEMPTS:
-                time.sleep(DEFAULT_DELAY_SECONDS * (attempt + 1))
+                delay = DEFAULT_DELAY_SECONDS * (attempt + 1)
+                LOGGER.warning(
+                    "%s: server error (HTTP %d); retry %d/%d in %.1f seconds",
+                    path.name,
+                    error.code,
+                    attempt + 1,
+                    MAX_ATTEMPTS - 1,
+                    delay,
+                )
+                time.sleep(delay)
                 continue
-            # Deliberately avoid printing the response body; it can include receipt tokens.
-            return UploadResult(path.name, False, detail=f"HTTP {error.code}")
+            return UploadResult(
+                path.name,
+                False,
+                detail=_safe_server_detail(error),
+                retries=retries,
+                elapsed_seconds=time.monotonic() - started,
+            )
         except (TimeoutError, URLError, OSError) as error:
             if attempt + 1 < MAX_ATTEMPTS:
-                time.sleep(DEFAULT_DELAY_SECONDS * (attempt + 1))
+                delay = DEFAULT_DELAY_SECONDS * (attempt + 1)
+                reason = getattr(error, "reason", None)
+                reason_text = _redact(str(reason or error))
+                LOGGER.warning(
+                    "%s: network error (%s); retry %d/%d in %.1f seconds",
+                    path.name,
+                    reason_text,
+                    attempt + 1,
+                    MAX_ATTEMPTS - 1,
+                    delay,
+                )
+                time.sleep(delay)
                 continue
-            return UploadResult(path.name, False, detail=type(error).__name__)
+            return UploadResult(
+                path.name,
+                False,
+                detail=f"Network error: {_redact(str(getattr(error, 'reason', None) or error))}",
+                retries=retries,
+                elapsed_seconds=time.monotonic() - started,
+            )
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return UploadResult(path.name, False, detail="invalid JSON response")
-    return UploadResult(path.name, False, detail="retry limit reached")
+            return UploadResult(
+                path.name,
+                False,
+                detail="The API returned an invalid JSON response.",
+                retries=retries,
+                elapsed_seconds=time.monotonic() - started,
+            )
+    return UploadResult(
+        path.name,
+        False,
+        detail="Retry limit reached.",
+        retries=MAX_ATTEMPTS - 1,
+        elapsed_seconds=time.monotonic() - started,
+    )
+
+
+def _log_summary(label: str, results: list[UploadResult], elapsed_seconds: float) -> None:
+    accepted = sum(result.accepted for result in results)
+    failed = len(results) - accepted
+    retries = sum(result.retries for result in results)
+    throughput = len(results) * 60 / elapsed_seconds if elapsed_seconds > 0 else 0.0
+    LOGGER.info(
+        "%s summary: total=%d accepted=%d failed=%d retries=%d elapsed=%.1fs rate=%.1f logs/min",
+        label,
+        len(results),
+        accepted,
+        failed,
+        retries,
+        elapsed_seconds,
+        throughput,
+    )
 
 
 def upload_set(base_url: str, name: str, delay: float) -> list[UploadResult]:
@@ -117,16 +249,49 @@ def upload_set(base_url: str, name: str, delay: float) -> list[UploadResult]:
         raise FileNotFoundError(
             f"No {extension} files found in {directory / 'logs'}; run its generate_logs.py first."
         )
+    LOGGER.info(
+        "Starting %s batch: contest=%s files=%d delay=%.1fs",
+        name,
+        contest_slug,
+        len(files),
+        delay,
+    )
     results = []
+    started = time.monotonic()
     for index, path in enumerate(files):
         if index:
             time.sleep(delay)
-        result = upload_one(base_url, contest_slug, path)
+        LOGGER.info("Uploading %s [%d/%d]", path.name, index + 1, len(files))
+        try:
+            result = upload_one(base_url, contest_slug, path)
+        except OSError as error:
+            result = UploadResult(
+                path.name,
+                False,
+                detail=f"Cannot read file: {_redact(str(error))}",
+            )
         results.append(result)
         if result.accepted:
-            print(f"{name}: accepted {path.name} (entry {result.entry_id})")
+            LOGGER.info(
+                "Accepted %s [%d/%d] (entry=%s, retries=%d, request=%.2fs)",
+                path.name,
+                index + 1,
+                len(files),
+                result.entry_id,
+                result.retries,
+                result.elapsed_seconds,
+            )
         else:
-            print(f"{name}: failed {path.name} ({result.detail})", file=sys.stderr)
+            LOGGER.error(
+                "Failed %s [%d/%d]: %s (retries=%d, request=%.2fs)",
+                path.name,
+                index + 1,
+                len(files),
+                result.detail,
+                result.retries,
+                result.elapsed_seconds,
+            )
+    _log_summary(name, results, time.monotonic() - started)
     return results
 
 
@@ -156,18 +321,24 @@ def main() -> int:
     if args.delay < DEFAULT_DELAY_SECONDS:
         parser.error(f"--delay must be at least {DEFAULT_DELAY_SECONDS:g} seconds")
     selections = ("cabrillo", "adif") if args.contest == "all" else (args.contest,)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
     all_results: list[UploadResult] = []
+    started = time.monotonic()
     try:
         for index, selection in enumerate(selections):
             if index:
                 time.sleep(args.delay)
-            print(f"Uploading {selection} fixture logs to {args.url}")
+            LOGGER.info("Using app endpoint %s", _display_url(args.url))
             all_results.extend(upload_set(args.url, selection, args.delay))
     except (FileNotFoundError, OSError) as error:
-        print(str(error), file=sys.stderr)
+        LOGGER.error("Cannot start upload batch: %s", error)
         return 2
     failed = sum(not result.accepted for result in all_results)
-    print(f"Finished: {len(all_results) - failed} accepted, {failed} failed.")
+    _log_summary("Overall", all_results, time.monotonic() - started)
     return 1 if failed else 0
 
 
