@@ -3,7 +3,7 @@ from hashlib import sha256
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -33,6 +33,13 @@ from backend.app.models import (
     SystemRole,
     SystemUser,
 )
+from backend.app.models.enums import MasterDataAuthorityRole, MasterDataVersionStatus
+from backend.app.models.master_data import (
+    ContestMasterDataVersion,
+    MasterDataSource,
+    MasterDataSyncRun,
+    MasterDataVersion,
+)
 
 
 @pytest.fixture
@@ -42,6 +49,13 @@ def deletion_database(monkeypatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(engine, "connect")
+    def enable_sqlite_foreign_keys(connection, _record):
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(
@@ -57,6 +71,9 @@ def deletion_database(monkeypatch):
         yield factory
     finally:
         app.dependency_overrides.clear()
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
         Base.metadata.drop_all(engine)
         engine.dispose()
 
@@ -121,6 +138,34 @@ def deletion_fixture(deletion_database):
         )
         participant = Participant(callsign_submitted="N0TEST", callsign_normalized="N0TEST")
         session.add_all([contest, other_contest, participant])
+        session.flush()
+        source = MasterDataSource(
+            source_key="delete-test-source",
+            name="Delete Test Source",
+            canonical_url="https://example.test/cty.dat",
+            authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
+        )
+        session.add(source)
+        session.flush()
+        sync_run = MasterDataSyncRun(source_id=source.id, dataset_key="cty")
+        session.add(sync_run)
+        session.flush()
+        master_data_version = MasterDataVersion(
+            sync_run_id=sync_run.id,
+            dataset_key="cty",
+            retrieved_at=now,
+            checksum="a" * 64,
+            status=MasterDataVersionStatus.ACTIVE,
+        )
+        session.add(master_data_version)
+        session.flush()
+        session.add(
+            ContestMasterDataVersion(
+                contest_id=contest.id,
+                dataset_key="cty",
+                master_data_version_id=master_data_version.id,
+            )
+        )
         session.flush()
         entry = Entry(
             contest_id=contest.id,
@@ -274,6 +319,7 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
     assert response.status_code == 204
 
     with deletion_database() as session:
+        assert session.connection().exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert session.get(Contest, deletion_fixture["contest_id"]) is None
         assert session.get(Contest, deletion_fixture["keep_contest_id"]) is not None
         assert session.get(Participant, deletion_fixture["participant_id"]) is not None
@@ -297,6 +343,7 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
             ResultPublicationEntry,
             AdminNote,
             RulesetActivation,
+            ContestMasterDataVersion,
         ):
             assert session.scalar(select(func.count()).select_from(model)) == 0
         event = session.scalar(
@@ -347,7 +394,9 @@ def test_contest_delete_is_owner_scoped_and_ruleset_in_use_is_protected(
     assert "referenced" in protected.json()["error"]["message"]
 
 
-def test_contest_delete_conflict_rolls_back_all_changes(deletion_database, deletion_fixture):
+def test_contest_delete_conflict_rolls_back_all_changes(
+    deletion_database, deletion_fixture, caplog
+):
     now = datetime.now(UTC)
     with deletion_database.begin() as session:
         kept_entry = session.scalar(
@@ -401,6 +450,14 @@ def test_contest_delete_conflict_rolls_back_all_changes(deletion_database, delet
     )
 
     assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "A contest adjudication decision is referenced by a decision for another log."
+    )
+    delete_conflict = next(
+        record for record in caplog.records if record.getMessage() == "contest_delete_blocked"
+    )
+    assert delete_conflict.contest_id == deletion_fixture["contest_id"]
+    assert delete_conflict.failure_kind == "retained_cross_contest_reference"
     with deletion_database() as session:
         assert session.get(Contest, deletion_fixture["contest_id"]) is not None
         assert session.scalar(select(func.count()).select_from(Entry)) == 2

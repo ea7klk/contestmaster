@@ -32,6 +32,7 @@ class JsonFormatter(logging.Formatter):
             "entry_id",
             "revision_id",
             "score_run_id",
+            "failure_kind",
             "status",
             "changed",
         ):

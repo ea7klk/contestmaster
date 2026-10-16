@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -51,6 +52,7 @@ from backend.app.scheduling import (
 
 router = APIRouter(tags=["contests"])
 public_router = APIRouter(tags=["public contests"])
+logger = logging.getLogger("contestmaster.contests")
 
 
 @router.post("/schedule-preview")
@@ -422,9 +424,23 @@ def delete_contest(
         session.commit()
     except DeletionConflictError as exc:
         session.rollback()
+        logger.warning(
+            "contest_delete_blocked",
+            extra={"contest_id": contest_id, "failure_kind": "retained_cross_contest_reference"},
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError as exc:
         session.rollback()
+        error_text = str(exc.orig).casefold()
+        failure_kind = (
+            "foreign_key"
+            if "foreign key" in error_text
+            else "integrity_constraint"
+        )
+        logger.warning(
+            "contest_delete_blocked",
+            extra={"contest_id": contest_id, "failure_kind": failure_kind},
+        )
         raise HTTPException(
             status_code=409,
             detail="The contest has retained references that prevent safe deletion.",
