@@ -70,7 +70,7 @@ function toggle(key: string, checked: boolean, selected: string[]) {
 .eligibility-catalog {
   margin: 0.8rem 0;
   padding: 0.8rem;
-  border: 1px solid #c8d5dc;
+  border: 1px solid var(--color-border);
   border-radius: 0.55rem;
 }
 .eligibility-options {
@@ -89,16 +89,16 @@ function toggle(key: string, checked: boolean, selected: string[]) {
   width: 1.1rem;
   min-height: 1.1rem;
   margin-top: 0.15rem;
-  accent-color: #075a83;
+  accent-color: var(--color-brand-700);
 }
 .eligibility-options small {
   display: block;
-  color: #617581;
+  color: var(--color-muted);
 }
 .contest-free-band {
-  color: #a11414;
-  background: #fff0f0;
-  outline: 1px solid #c53030;
+  color: var(--color-error-ink);
+  background: var(--color-error-surface);
+  outline: 1px solid var(--color-error-ink);
 }
 .contest-free-label {
   font-size: 0.75rem;

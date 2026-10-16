@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/client'
+import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import {
   createOperatingCatalogItem,
@@ -177,17 +178,18 @@ onMounted(refresh)
         >
         <div class="catalog-actions">
           <button class="primary-button" type="submit" :disabled="saving">
-            {{
-              saving ? 'Saving…' : editId === null ? 'Add item' : 'Save item'
-            }}
-</button
-          ><button class="secondary-button" type="button" @click="clearForm">
+            {{ saving ? 'Saving…' : editId === null ? 'Add item' : 'Save item' }}
+          </button>
+          <button class="secondary-button" type="button" @click="clearForm">
             Clear
           </button>
         </div>
       </form>
       <h2>Configured values</h2>
-      <div class="master-data-table-wrap">
+      <KeyboardScrollRegion
+        class="master-data-table-wrap"
+        label="Configured operating catalog values"
+      >
         <table>
           <thead>
             <tr>
@@ -235,7 +237,7 @@ onMounted(refresh)
             </tr>
           </tbody>
         </table>
-      </div>
+      </KeyboardScrollRegion>
     </template>
   </section>
 </template>
@@ -247,13 +249,34 @@ onMounted(refresh)
   gap: 0.8rem;
   padding: 1rem;
   margin: 1.2rem 0;
-  border: 1px solid #c8d5dc;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
 }
 .catalog-editor-form h2,
 .catalog-actions {
   grid-column: 1 / -1;
   margin: 0;
+}
+.master-data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+}
+.master-data-table-wrap table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+.master-data-table-wrap th,
+.master-data-table-wrap td {
+  padding: 0.7rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+.master-data-table-wrap th {
+  background: var(--color-surface-muted);
 }
 .catalog-editor-form label {
   display: grid;
@@ -264,7 +287,7 @@ onMounted(refresh)
 .catalog-editor-form textarea {
   width: 100%;
   padding: 0.55rem;
-  border: 1px solid #aebfc8;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.35rem;
 }
 .catalog-editor-form .catalog-check {
@@ -281,11 +304,11 @@ onMounted(refresh)
   gap: 0.5rem;
 }
 .catalog-contest-free {
-  color: #a11414;
-  background: #fff0f0;
+  color: var(--color-error-ink);
+  background: var(--color-error-surface);
 }
 .contest-free-label {
-  color: #a11414;
+  color: var(--color-error-ink);
   font-weight: 700;
 }
 </style>

@@ -421,10 +421,10 @@ onMounted(refreshData)
 }
 .panel {
   padding: clamp(1rem, 3vw, 1.5rem);
-  border: 1px solid #d4e0e5;
+  border: 1px solid var(--color-border);
   border-radius: 0.8rem;
-  background: #fff;
-  box-shadow: 0 10px 28px #18394e08;
+  background: var(--color-surface);
+  box-shadow: 0 10px 28px var(--color-card-shadow);
 }
 .contest-form,
 .form-grid,
@@ -446,7 +446,7 @@ onMounted(refreshData)
   width: 100%;
   min-height: 2.65rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid #9dafb9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
   font: inherit;
 }
@@ -466,7 +466,7 @@ onMounted(refreshData)
 }
 .field-help {
   margin: 0;
-  color: #536a78;
+  color: var(--color-muted);
   font-size: 0.9rem;
 }
 .contest-meta {
@@ -479,7 +479,7 @@ onMounted(refreshData)
   min-width: 0;
 }
 .contest-meta dt {
-  color: #536a78;
+  color: var(--color-muted);
   font-size: 0.85rem;
 }
 .contest-meta dd {
@@ -505,17 +505,17 @@ onMounted(refreshData)
 .primary-button,
 .primary-link {
   width: fit-content;
-  color: white;
-  background: #075a83;
+  color: var(--color-surface);
+  background: var(--color-brand-700);
 }
 .secondary-button {
-  color: #075a83;
-  background: white;
-  border-color: #8ba8b5;
+  color: var(--color-brand-700);
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
 }
 .quiet-button {
-  color: #314b5a;
-  background: #eef3f5;
+  color: var(--color-brand-900);
+  background: var(--color-surface-muted);
 }
 .primary-button:disabled,
 .secondary-button:disabled {
@@ -529,15 +529,15 @@ onMounted(refreshData)
   border-radius: 0.45rem;
 }
 .notice {
-  background: #edf5f8;
+  background: var(--color-surface-muted);
 }
 .success-panel {
-  color: #23573d;
-  background: #e8f5ed;
+  color: var(--color-success-ink);
+  background: var(--color-success-surface);
 }
 .error-panel {
-  color: #7a1d1d;
-  background: #fff0f0;
+  color: var(--color-error-ink);
+  background: var(--color-error-surface);
 }
 @media (max-width: 700px) {
   .manager-heading,

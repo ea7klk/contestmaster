@@ -627,7 +627,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 .controlled-rule-fields p {
   max-width: 62rem;
   line-height: 1.55;
-  color: #425965;
+  color: var(--color-muted);
 }
 .controlled-row {
   display: grid;
@@ -635,7 +635,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   gap: 0.65rem;
   padding: 0.8rem;
   margin: 0.7rem 0;
-  border: 1px solid #d4dfe4;
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
 }
 .controlled-row > label,
@@ -647,7 +647,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
 .controlled-row select {
   min-height: 2.5rem;
   padding: 0.45rem;
-  border: 1px solid #aebfc8;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.35rem;
 }
 .controlled-choice-list {

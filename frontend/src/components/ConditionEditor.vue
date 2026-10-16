@@ -300,9 +300,9 @@ function updateNegated(condition: Record<string, unknown>) {
   min-width: 0;
   margin: 0;
   padding: 0.9rem;
-  border: 1px solid #cddbe2;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
-  background: #f8fbfc;
+  background: var(--color-surface-muted);
 }
 legend {
   padding: 0 0.3rem;
@@ -312,7 +312,7 @@ label {
   display: grid;
   gap: 0.35rem;
   max-width: 40rem;
-  color: #314b5a;
+  color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -320,16 +320,16 @@ input,
 select {
   min-height: 2.55rem;
   padding: 0.5rem 0.65rem;
-  border: 1px solid #b9c8d0;
+  border: 1px solid var(--color-border);
   border-radius: 0.45rem;
-  color: #192a3a;
-  background: #fff;
+  color: var(--color-ink);
+  background: var(--color-surface);
   font: inherit;
 }
 input[type='checkbox'] {
   width: 1.1rem;
   min-height: 1.1rem;
-  accent-color: #075a83;
+  accent-color: var(--color-brand-700);
 }
 .check-control {
   display: flex;
@@ -337,7 +337,7 @@ input[type='checkbox'] {
 }
 .condition-group > p {
   margin: 0.1rem 0 0.6rem;
-  color: #536a78;
+  color: var(--color-muted);
 }
 .condition-child {
   margin: 0.7rem 0;
@@ -346,16 +346,16 @@ input[type='checkbox'] {
 .quiet-button {
   min-height: 2.3rem;
   padding: 0.4rem 0.7rem;
-  border: 1px solid #aabdc7;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
-  color: #16435b;
-  background: white;
+  color: var(--color-brand-900);
+  background: var(--color-surface);
   font: inherit;
   cursor: pointer;
 }
 .quiet-button {
   margin-top: 0.5rem;
-  color: #596d79;
+  color: var(--color-muted);
   font-size: 0.85rem;
 }
 </style>

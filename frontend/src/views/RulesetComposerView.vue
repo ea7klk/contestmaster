@@ -684,8 +684,8 @@ onMounted(async () => {
                     (configured.rule.recurrence as Record<string, unknown>)
                       ?.frequency === 'nth_weekday'
                   "
-                  >
-<label
+                >
+                  <label
                     >Weekday<select
                       :value="
                         Number(
@@ -761,8 +761,7 @@ onMounted(async () => {
                       <option :value="-1">Last</option>
                     </select></label
                   >
-</template
-                >
+                </template>
                 <label
                   >Start time UTC<input
                     type="time"
@@ -1035,10 +1034,10 @@ onMounted(async () => {
 .rule-card,
 .validation-panel {
   padding: clamp(1rem, 3vw, 1.5rem);
-  border: 1px solid #d4e0e5;
+  border: 1px solid var(--color-border);
   border-radius: 0.8rem;
-  background: #fff;
-  box-shadow: 0 10px 28px #18394e08;
+  background: var(--color-surface);
+  box-shadow: 0 10px 28px var(--color-card-shadow);
 }
 .panel legend {
   padding: 0 0.4rem;
@@ -1054,7 +1053,7 @@ onMounted(async () => {
 .add-rule-control label {
   display: grid;
   gap: 0.35rem;
-  color: #314b5a;
+  color: var(--color-brand-900);
   font-weight: 600;
 }
 .metadata-grid input,
@@ -1062,14 +1061,14 @@ onMounted(async () => {
 .add-rule-control select {
   min-height: 2.7rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid #b9c8d0;
+  border: 1px solid var(--color-border);
   border-radius: 0.45rem;
-  color: #192a3a;
-  background: #fff;
+  color: var(--color-ink);
+  background: var(--color-surface);
   font: inherit;
 }
 .optional-label {
-  color: #647a86;
+  color: var(--color-muted);
   font-size: 0.8rem;
   font-weight: 400;
 }
@@ -1091,7 +1090,7 @@ onMounted(async () => {
 .section-heading p,
 .rule-card-heading p {
   margin: 0.3rem 0 0;
-  color: #596f7b;
+  color: var(--color-muted);
 }
 .add-rule-control {
   display: flex;
@@ -1114,8 +1113,8 @@ onMounted(async () => {
 .required-badge {
   padding: 0.3rem 0.55rem;
   border-radius: 999px;
-  color: #23573d;
-  background: #e8f5ed;
+  color: var(--color-success-ink);
+  background: var(--color-success-surface);
   font-size: 0.8rem;
 }
 .condition-toggle {
@@ -1126,12 +1125,12 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  color: #344e5d;
+  color: var(--color-brand-900);
 }
 .condition-toggle input[type='checkbox'] {
   width: 1.1rem;
   height: 1.1rem;
-  accent-color: #075a83;
+  accent-color: var(--color-brand-700);
 }
 .composer-actions {
   display: flex;
@@ -1147,18 +1146,18 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 0.55rem 0.85rem;
-  border: 1px solid #aabdc7;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #16435b;
-  background: #fff;
+  color: var(--color-brand-900);
+  background: var(--color-surface);
   font: inherit;
   font-weight: 650;
   cursor: pointer;
 }
 .primary-button {
-  border-color: #075a83;
-  color: #fff;
-  background: #075a83;
+  border-color: var(--color-brand-700);
+  color: var(--color-surface);
+  background: var(--color-brand-700);
 }
 .primary-button:disabled {
   cursor: wait;
@@ -1175,22 +1174,22 @@ onMounted(async () => {
 }
 .validation-panel h2 {
   margin-top: 0;
-  color: #23573d;
+  color: var(--color-success-ink);
 }
 .rules-summary {
   overflow-x: auto;
   padding: 1rem;
   border-radius: 0.55rem;
-  color: #213946;
-  background: #f3f7f9;
+  color: var(--color-brand-900);
+  background: var(--color-surface-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   line-height: 1.55;
   white-space: pre-wrap;
 }
 .example-card {
   padding: 0.8rem 1rem;
-  border-left: 4px solid #11718f;
-  background: #f5fafc;
+  border-left: 4px solid var(--color-brand-600);
+  background: var(--color-surface-muted);
 }
 .example-card h3 {
   margin-top: 0;
@@ -1200,7 +1199,7 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 .draft-note {
-  color: #596f7b;
+  color: var(--color-muted);
   font-size: 0.9rem;
 }
 .notice,
@@ -1208,12 +1207,12 @@ onMounted(async () => {
 .error-list {
   padding: 0.85rem 1rem;
   border-radius: 0.55rem;
-  background: #f3f7f9;
+  background: var(--color-surface-muted);
 }
 .error-panel,
 .error-list {
-  color: #842b2b;
-  background: #fff1f1;
+  color: var(--color-error-ink);
+  background: var(--color-error-surface);
 }
 .error-list li + li {
   margin-top: 0.35rem;

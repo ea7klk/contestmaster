@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ApiError } from '../api/client'
+import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import {
   activateMasterDataVersion,
@@ -127,7 +128,11 @@ onMounted(refresh)
         </button>
       </div>
       <p v-if="versions.length === 0">No master data versions are available.</p>
-      <div v-else class="master-data-table-wrap">
+      <KeyboardScrollRegion
+        v-else
+        class="master-data-table-wrap"
+        label="Master data versions table"
+      >
         <table>
           <thead>
             <tr>
@@ -204,11 +209,15 @@ onMounted(refresh)
             </tr>
           </tbody>
         </table>
-      </div>
+      </KeyboardScrollRegion>
 
       <h2>Recent sync runs</h2>
       <p v-if="runs.length === 0">No sync runs have been recorded.</p>
-      <div v-else class="master-data-table-wrap">
+      <KeyboardScrollRegion
+        v-else
+        class="master-data-table-wrap"
+        label="Master data sync history table"
+      >
         <table>
           <thead>
             <tr>
@@ -247,7 +256,7 @@ onMounted(refresh)
             </tr>
           </tbody>
         </table>
-      </div>
+      </KeyboardScrollRegion>
     </template>
   </section>
 </template>
@@ -268,9 +277,9 @@ onMounted(refresh)
 }
 .master-data-table-wrap {
   overflow-x: auto;
-  border: 1px solid #dbe3e8;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
-  background: white;
+  background: var(--color-surface);
 }
 table {
   width: 100%;
@@ -280,12 +289,12 @@ table {
 th,
 td {
   padding: 0.7rem;
-  border-bottom: 1px solid #e3e9ed;
+  border-bottom: 1px solid var(--color-border);
   text-align: left;
   vertical-align: top;
 }
 th {
-  background: #f4f7f9;
+  background: var(--color-surface-muted);
 }
 td div {
   margin-top: 0.25rem;
@@ -301,15 +310,15 @@ button {
   padding: 0.45rem 0.65rem;
 }
 .master-data-secondary {
-  border: 1px solid #8195a2;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.35rem;
-  background: white;
+  background: var(--color-surface);
 }
 .master-data-danger {
   margin-left: 0.35rem;
-  color: #8d2424;
+  color: var(--color-error-ink);
 }
 .master-data-error {
-  color: #8d2424;
+  color: var(--color-error-ink);
 }
 </style>

@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ApiError } from '../api/client'
+import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import {
   addEntryContact,
   downloadEntryRevision,
@@ -213,7 +214,9 @@ async function downloadCurrentRevision() {
     URL.revokeObjectURL(url)
   } catch (cause) {
     error.value =
-      cause instanceof ApiError ? cause.message : 'The submitted log could not be downloaded.'
+      cause instanceof ApiError
+        ? cause.message
+        : 'The submitted log could not be downloaded.'
   } finally {
     downloading.value = false
   }
@@ -261,9 +264,16 @@ onMounted(() => {
         :disabled="downloading"
         @click="downloadCurrentRevision"
       >
-        {{ downloading ? 'Preparing download…' : 'Download original Cabrillo log (source v1)' }}
+        {{
+          downloading
+            ? 'Preparing download…'
+            : 'Download original Cabrillo log (source v1)'
+        }}
       </button>
-      <div class="table-scroll">
+      <KeyboardScrollRegion
+        class="table-scroll"
+        label="Contacts in the current entry revision"
+      >
         <table>
           <caption class="visually-hidden">
             Contacts in the current entry revision
@@ -307,7 +317,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
-      </div>
+      </KeyboardScrollRegion>
 
       <form class="stacked-form" @submit.prevent="saveContact">
         <h2>{{ editingContactId ? 'Edit contact' : 'Add contact' }}</h2>

@@ -93,7 +93,7 @@ async function submit() {
 .stacked-form input {
   min-height: 2.75rem;
   padding: 0.6rem 0.7rem;
-  border: 1px solid #9dafb9;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
   font: inherit;
 }
@@ -101,16 +101,16 @@ async function submit() {
   margin: 0;
   padding: 0.75rem;
   border-radius: 0.45rem;
-  color: #7a1d1d;
-  background: #fff0f0;
+  color: var(--color-error-ink);
+  background: var(--color-error-surface);
 }
 .primary-button {
   min-height: 2.75rem;
   padding: 0.6rem 0.9rem;
   border: 0;
   border-radius: 0.45rem;
-  color: white;
-  background: #075a83;
+  color: var(--color-surface);
+  background: var(--color-brand-700);
   font: inherit;
   font-weight: 700;
   cursor: pointer;

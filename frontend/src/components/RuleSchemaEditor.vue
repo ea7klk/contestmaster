@@ -433,11 +433,11 @@ function onEnumInput(event: Event) {
   min-width: 0;
   margin: 0;
   padding: 0.9rem;
-  border: 1px solid #d8e2e7;
+  border: 1px solid var(--color-border);
   border-radius: 0.65rem;
 }
 .schema-editor-nested {
-  background: #fbfcfd;
+  background: var(--color-surface);
 }
 legend {
   padding: 0 0.3rem;
@@ -452,14 +452,14 @@ legend {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #425965;
+  color: var(--color-muted);
   font-size: 0.9rem;
 }
 .schema-control {
   display: grid;
   gap: 0.35rem;
   max-width: 42rem;
-  color: #314b5a;
+  color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -469,16 +469,16 @@ textarea {
   width: 100%;
   min-height: 2.65rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid #b9c8d0;
+  border: 1px solid var(--color-border);
   border-radius: 0.45rem;
-  color: #192a3a;
-  background: #fff;
+  color: var(--color-ink);
+  background: var(--color-surface);
   font: inherit;
 }
 input[type='checkbox'] {
   width: 1.1rem;
   min-height: 1.1rem;
-  accent-color: #075a83;
+  accent-color: var(--color-brand-700);
 }
 textarea {
   resize: vertical;
@@ -497,15 +497,15 @@ textarea {
 .schema-map-row > label {
   display: grid;
   gap: 0.3rem;
-  color: #314b5a;
+  color: var(--color-brand-900);
 }
 .fixed-value {
   margin: 0.3rem 0;
-  color: #526875;
+  color: var(--color-muted);
 }
 .schema-description {
   margin: 0.3rem 0 0;
-  color: #627987;
+  color: var(--color-muted);
   font-size: 0.84rem;
   line-height: 1.45;
 }
@@ -513,15 +513,15 @@ textarea {
 .quiet-button {
   min-height: 2.35rem;
   padding: 0.4rem 0.7rem;
-  border: 1px solid #aabdc7;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
-  color: #16435b;
-  background: #fff;
+  color: var(--color-brand-900);
+  background: var(--color-surface);
   font: inherit;
   cursor: pointer;
 }
 .quiet-button {
-  color: #596d79;
+  color: var(--color-muted);
   font-size: 0.85rem;
 }
 .secondary-button:disabled {
