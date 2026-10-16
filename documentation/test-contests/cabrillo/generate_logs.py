@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from contact_graph import build_contact_plan  # noqa: E402
 
 PARTICIPANT_COUNT = 110
-CONTEST = "test-cabrillo-sprint"
+CONTEST = "test-cabrillo-results-sprint"
 QSO_DATE = "2024-09-14"
 STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 

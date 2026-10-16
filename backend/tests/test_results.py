@@ -29,6 +29,7 @@ from backend.app.models import (
     SystemRole,
     SystemUser,
 )
+from backend.app.results.service import publication_policy
 from backend.app.rulesets.persistence import save_ruleset_version
 from backend.app.rulesets.validation import validate_ruleset
 from backend.tests.test_rulesets import valid_payload
@@ -180,6 +181,38 @@ def manager_client(factory, user_id: int) -> TestClient:
     client.cookies.set("contestmaster_session", token)
     client.cookies.set("contestmaster_csrf", csrf)
     return client
+
+
+def test_late_entries_are_included_only_when_ruleset_publication_policy_enables_them(
+    result_db,
+):
+    factory, contest_id, manager_id, _outsider_id = result_db
+    with factory.begin() as session:
+        contest = session.get(Contest, contest_id)
+        assert contest is not None
+        defaults = publication_policy(session, contest)
+        assert defaults["include_late"] is False
+
+        payload = valid_payload()
+        payload["ruleset_key"] = "late-publication-policy-test"
+        payload["version"] = "late-publication-policy-test-1"
+        payload["rules"].append(
+            {
+                "id": "publication-policy",
+                "rule": {
+                    "kind": "workflow_hook",
+                    "stage": "publication",
+                    "key": "synthetic-test-results",
+                    "execution": "automatic",
+                    "parameters": {"include_late": True},
+                },
+            }
+        )
+        version = save_ruleset_version(
+            session, validate_ruleset(payload), created_by_user_id=manager_id
+        ).version
+        contest.ruleset_version_id = version.id
+        assert publication_policy(session, contest)["include_late"] is True
 
 
 def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(result_db):

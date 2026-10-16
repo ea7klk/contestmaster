@@ -48,6 +48,13 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
         assert formats == [expected_format]
         submission = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "submission")
         assert submission.late_policy == "accept_late"
+        publication = [
+            rule.rule
+            for rule in ruleset.rules
+            if rule.rule.kind == "workflow_hook" and rule.rule.stage == "publication"
+        ]
+        assert len(publication) == 1
+        assert publication[0].parameters["include_late"] is True
         if folder == "cabrillo":
             exchange = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "exchange")
             serial = next(field for field in exchange.fields if field.key == "serial")

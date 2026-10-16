@@ -1,7 +1,7 @@
 {
   "contest": {
     "name": "Contestmaster ADIF FT8 Test Sprint",
-    "slug": "test-adif-ft8-sprint",
+    "slug": "test-adif-ft8-results-sprint",
     "description": "Synthetic past-event contest for exercising ADI/ADIF FT8 imports and anonymous log uploads. All participant and contact data is fictional.",
     "starts_at": "2024-09-14T12:00:00Z",
     "ends_at": "2024-09-14T18:00:00Z",
@@ -11,12 +11,13 @@
   },
   "ruleset": {
     "schema_version": 2,
-    "ruleset_key": "test-adif-ft8-sprint",
+    "ruleset_key": "test-adif-ft8-results-sprint",
     "version": "1.0",
     "source_url": null,
     "source_edition": "Contestmaster synthetic upload fixture",
     "rules": [
       {"id": "submission", "rule": {"kind": "submission", "late_policy": "accept_late", "manager_extension_allowed": false}},
+      {"id": "publication-policy", "rule": {"kind": "workflow_hook", "stage": "publication", "key": "synthetic-test-results", "execution": "automatic", "parameters": {"include_late": true}}},
       {"id": "categories", "rule": {"kind": "categories", "dimensions": [{"key": "operator", "label": "Operator class", "required": false, "choices": [{"key": "single", "label": "Single operator"}]}]}},
       {"id": "exchange", "rule": {"kind": "exchange", "fields": [{"key": "report", "label": "Signal report", "value_type": "text", "direction": "both", "required": true, "max_length": 4}]}},
       {"id": "eligibility", "rule": {"kind": "eligibility", "reject_self_contacts": true, "reject_out_of_period": true, "reject_missing_required_exchange": true, "action": "not_credited"}},

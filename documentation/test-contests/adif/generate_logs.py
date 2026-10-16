@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from contact_graph import build_contact_plan  # noqa: E402
 
 PARTICIPANT_COUNT = 56
-CONTEST = "test-adif-ft8-sprint"
+CONTEST = "test-adif-ft8-results-sprint"
 QSO_DATE = "20240914"
 STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 

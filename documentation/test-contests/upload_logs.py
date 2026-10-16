@@ -18,8 +18,8 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 CONTESTS = {
-    "cabrillo": (ROOT / "cabrillo", "test-cabrillo-sprint"),
-    "adif": (ROOT / "adif", "test-adif-ft8-sprint"),
+    "cabrillo": (ROOT / "cabrillo", "test-cabrillo-results-sprint"),
+    "adif": (ROOT / "adif", "test-adif-ft8-results-sprint"),
 }
 DEFAULT_DELAY_SECONDS = 3.1
 MAX_ATTEMPTS = 5

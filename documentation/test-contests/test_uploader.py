@@ -46,12 +46,14 @@ def test_upload_is_anonymous_and_uses_content_stable_idempotency_key(
         return Response()
 
     monkeypatch.setattr(upload_logs, "urlopen", fake_urlopen)
-    first = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-sprint", log)
-    second = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-sprint", log)
+    first = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-results-sprint", log)
+    second = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-results-sprint", log)
 
     assert first.accepted and first.entry_id == 42
     assert second.accepted and second.entry_id == 42
-    assert requests[0].full_url.endswith("/api/v1/public/contests/test-cabrillo-sprint/logs")
+    assert requests[0].full_url.endswith(
+        "/api/v1/public/contests/test-cabrillo-results-sprint/logs"
+    )
     assert requests[0].get_header("Idempotency-key") == requests[1].get_header(
         "Idempotency-key"
     )
@@ -78,7 +80,7 @@ def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypa
     monkeypatch.setitem(
         upload_logs.CONTESTS,
         "cabrillo",
-        (tmp_path / "cabrillo", "test-cabrillo-sprint"),
+        (tmp_path / "cabrillo", "test-cabrillo-results-sprint"),
     )
     monkeypatch.setattr(
         upload_logs,
@@ -134,7 +136,9 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
 
     monkeypatch.setattr(upload_logs, "urlopen", rate_limited_then_accepted)
     monkeypatch.setattr(upload_logs.time, "sleep", lambda _delay: None)
-    result = upload_logs.upload_one("http://127.0.0.1:8000", "test-cabrillo-sprint", log)
+    result = upload_logs.upload_one(
+        "http://127.0.0.1:8000", "test-cabrillo-results-sprint", log
+    )
     assert result.accepted and result.retries == 1
     assert "API rate limit (HTTP 429)" in caplog.text
     assert "retry 1/4" in caplog.text
@@ -162,7 +166,7 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
     monkeypatch.setitem(
         upload_logs.CONTESTS,
         "cabrillo",
-        (failure_dir, "test-cabrillo-sprint"),
+        (failure_dir, "test-cabrillo-results-sprint"),
     )
     batch_results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo", 3.1)
     assert len(batch_results) == 1 and not batch_results[0].accepted

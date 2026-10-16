@@ -15,7 +15,7 @@ Every Cabrillo fixture includes a synthetic `EMAIL: <callsign>@nomail.invalid` h
 
 The generated set contains 1,645 Cabrillo QSOs (1,316 matching and 329 unmatched) and 835 ADIF QSOs (668 matching and 167 unmatched). These counts are reproducible from the checked-in generators.
 
-The contest event windows ended on **2024-09-14**. The separate submission cutoff is **2099-12-31 23:59:59 UTC**, and the rulesets accept late logs. Contest import creates each contest as a draft, so a contest manager must open it before the public upload endpoint will accept logs. The event being in the past does not close the submission window.
+The contest event windows ended on **2024-09-14**. Logs uploaded after the event end are therefore marked late, even though the separate submission cutoff is **2099-12-31 23:59:59 UTC**. By default, Contestmaster withholds late entries from result publication; these synthetic-only rulesets explicitly set `include_late: true` so their completed runs can be selected in **Result list selection**. This override does not change the default policy for any other contest. The packages use new `*-results-sprint` slugs so they can be imported alongside older copies; import creates each as a draft, so a contest manager must open it before the public upload endpoint will accept logs.
 
 ## Import and open the contests
 
@@ -24,6 +24,8 @@ The contest event windows ended on **2024-09-14**. The separate submission cutof
 3. Repeat with `adif/contest.json`.
 4. Edit each imported contest and change its status from **Draft** to **Open**. The event dates and 2099 cutoff are already set.
 5. Start the API and frontend. The upload tool can target either the API directly or the Vite frontend proxy.
+
+These packages use new slugs to avoid conflicting with test contests imported before the late-entry publication override was added. Existing contest/ruleset versions are immutable and are not updated by the files in this repository; import the current packages and upload the logs to the new contests to use the test-only `include_late` policy. Existing entries remain attached to their original contests.
 
 ## Regenerate the logs
 
