@@ -17,6 +17,7 @@ const review = ref<ResultReview | null>(null)
 const selectedRunIds = ref<number[]>([])
 const loading = ref(true)
 const busy = ref(false)
+const generating = ref(false)
 const error = ref('')
 const message = ref('')
 const reviewChoices = ref<
@@ -50,16 +51,19 @@ async function refresh() {
 async function generate() {
   if (busy.value) return
   busy.value = true
+  generating.value = true
   error.value = ''
   message.value = ''
   try {
     const generated = await generateResults(contestId.value)
+    generating.value = false
     message.value = `Generated ${generated.score_runs.length} score runs. ${generated.unresolved_count} item(s) need review.`
     await refresh()
   } catch (cause) {
     error.value =
       cause instanceof ApiError ? cause.message : 'Result generation failed.'
   } finally {
+    generating.value = false
     busy.value = false
   }
 }
@@ -166,6 +170,12 @@ onMounted(refresh)
         >
           Publish selected score runs
         </button>
+      </div>
+      <div v-if="generating" class="generation-progress">
+        <progress aria-label="Calculating contest results"></progress>
+        <p role="status" class="notice">
+          Calculating contest results. This may take a while; keep this page open.
+        </p>
       </div>
 
       <section class="panel" aria-labelledby="review-title">
@@ -308,6 +318,18 @@ onMounted(refresh)
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+.generation-progress {
+  display: grid;
+  gap: 0.35rem;
+}
+.generation-progress progress {
+  width: 100%;
+  min-height: 0.8rem;
+  accent-color: var(--color-primary, #8f3427);
+}
+.generation-progress p {
+  margin: 0;
 }
 .unresolved-list {
   display: grid;

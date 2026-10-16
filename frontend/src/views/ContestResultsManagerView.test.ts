@@ -48,6 +48,7 @@ describe('ContestResultsManagerView', () => {
   it('runs scoring, submits manual QSO decisions, and publishes selected runs', async () => {
     const calls: Array<{ path: string; method: string; body?: string }> = []
     let hasUnresolved = true
+    let finishGeneration: ((response: Response) => void) | undefined
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
       const method = init?.method ?? 'GET'
@@ -56,9 +57,10 @@ describe('ContestResultsManagerView', () => {
         return new Response(JSON.stringify(reviewPayload(hasUnresolved)), { status: 200 })
       }
       if (path.endsWith('/results/generate')) {
-        return new Response(
-          JSON.stringify({ contest_id: 4, score_runs: [{ id: 15, entry_id: 7, status: 'completed' }], unresolved_count: 1, unresolved: [] }),
-          { status: 202 },
+        return new Promise<Response>((resolve) => {
+          finishGeneration = resolve
+        }).then(
+          (response) => response,
         )
       }
       if (path.endsWith('/qsos/22/decisions')) {
@@ -93,11 +95,67 @@ describe('ContestResultsManagerView', () => {
 
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()
+    expect(wrapper.get('progress').attributes('aria-label')).toBe(
+      'Calculating contest results',
+    )
+    expect(wrapper.text()).toContain('This may take a while')
+    await expectAccessible(wrapper.element)
+    finishGeneration?.(
+      new Response(
+        JSON.stringify({ contest_id: 4, score_runs: [{ id: 15, entry_id: 7, status: 'completed' }], unresolved_count: 1, unresolved: [] }),
+        { status: 202 },
+      ),
+    )
+    await flushPromises()
+    expect(wrapper.find('progress').exists()).toBe(false)
     expect(calls.some((call) => call.path.endsWith('/results/generate'))).toBe(true)
     await wrapper.get('button.secondary-button').trigger('click')
     await flushPromises()
     const publication = JSON.parse(calls.find((call) => call.path.endsWith('/results/publish'))?.body ?? '{}') as { score_run_ids: number[] }
     expect(publication.score_run_ids).toEqual([15])
     expect(wrapper.text()).toContain('Publication 1 is live')
+  })
+
+  it('clears the progress bar and reports a generation failure', async () => {
+    let finishGeneration: ((response: Response) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/results/review')) {
+          return new Response(JSON.stringify(reviewPayload(false)), { status: 200 })
+        }
+        if (path.endsWith('/results/generate')) {
+          return new Promise<Response>((resolve) => {
+            finishGeneration = resolve
+          })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    vi.stubGlobal('crypto', { randomUUID: () => 'retry-safe-phase8-key' })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/manage/contests', component: { template: '<div />' } }],
+    })
+    const wrapper = mount(ContestResultsManagerView, {
+      props: { contestId: '4' },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    await wrapper.get('button.primary-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('progress').exists()).toBe(true)
+    finishGeneration?.(
+      new Response(
+        JSON.stringify({ error: { message: 'Scoring could not finish.' } }),
+        { status: 500 },
+      ),
+    )
+    await flushPromises()
+
+    expect(wrapper.find('progress').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Scoring could not finish.')
   })
 })
