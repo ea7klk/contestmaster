@@ -76,6 +76,9 @@ describe('RulesetManagerView', () => {
     expect(wrapper.get('a[href="/manage/rulesets/new"]').text()).toContain(
       'Create ruleset',
     )
+    expect(
+      wrapper.get('a[href="/manage/rulesets/new#import-ruleset"]').text(),
+    ).toContain('Import ruleset')
     await wrapper.findAll('.pagination button')[1]?.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Page 2 of 2')
@@ -124,6 +127,77 @@ describe('RulesetManagerView', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Deleted unused ruleset unused-rules@2026')
     expect(wrapper.text()).toContain('No saved ruleset versions')
+  })
+
+  it('exports a saved ruleset version as JSON and reports export failures', async () => {
+    const configuration = {
+      schema_version: 2,
+      ruleset_key: 'field-day',
+      version: '2026',
+      rules: [],
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path.endsWith('/auth/me')) return ok(user)
+      if (path.includes('/rulesets/versions?'))
+        return ok({
+          items: [saved(12, 'field-day')],
+          meta: { page: 1, page_size: 20, total: 1, pages: 1 },
+        })
+      if (path.endsWith('/rulesets/versions/12'))
+        return ok({ id: 12, configuration })
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const createObjectURL = vi.fn(() => 'blob:test-ruleset')
+    const revokeObjectURL = vi.fn()
+    const NativeURL = URL
+    class TestURL extends NativeURL {
+      static createObjectURL = createObjectURL
+      static revokeObjectURL = revokeObjectURL
+    }
+    vi.stubGlobal('URL', TestURL)
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    const wrapper = mountList()
+    await flushPromises()
+    await wrapper.get('.row-actions button').trigger('click')
+    await flushPromises()
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/rulesets/versions/12'),
+      ),
+    ).toBe(true)
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(click).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-ruleset')
+    expect(wrapper.text()).toContain('Exported field-day version 2026.')
+
+    wrapper.unmount()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.includes('/rulesets/versions?'))
+          return ok({
+            items: [saved(12, 'field-day')],
+            meta: { page: 1, page_size: 20, total: 1, pages: 1 },
+          })
+        return new Response(
+          JSON.stringify({ error: { message: 'Export data unavailable.' } }),
+          { status: 503 },
+        )
+      }),
+    )
+    const failed = mountList()
+    await flushPromises()
+    await failed.get('.row-actions button').trigger('click')
+    await flushPromises()
+    expect(failed.get('[role="alert"]').text()).toContain(
+      'Export data unavailable.',
+    )
   })
 
   it('shows empty and API error states for the ruleset listing', async () => {

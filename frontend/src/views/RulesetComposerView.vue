@@ -884,7 +884,7 @@ function catalogErrorMessage(reason: unknown) {
         <button type="button" class="secondary-button" @click="exportDraft">
           Download JSON draft
         </button>
-        <label class="file-button">
+        <label id="import-ruleset" class="file-button">
           Import JSON draft
           <input
             ref="fileInput"

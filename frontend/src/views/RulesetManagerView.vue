@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
   deleteSavedRulesetVersion,
+  getSavedRulesetVersion,
   listRulesetVersions,
   type SavedRulesetVersion,
 } from '../api/rulesets'
@@ -20,6 +21,7 @@ const forbidden = ref(false)
 const error = ref('')
 const message = ref('')
 const deletingId = ref<number | null>(null)
+const exportingId = ref<number | null>(null)
 const filteredItems = computed(() => items.value)
 
 async function refresh() {
@@ -85,6 +87,33 @@ async function remove(saved: SavedRulesetVersion) {
   }
 }
 
+async function exportRuleset(saved: SavedRulesetVersion) {
+  exportingId.value = saved.id
+  error.value = ''
+  try {
+    const { configuration } = await getSavedRulesetVersion(saved.id)
+    const blob = new Blob([`${JSON.stringify(configuration, null, 2)}\n`], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const filenameKey = saved.ruleset_key.replace(/[^a-z0-9_-]+/gi, '-')
+    const filenameVersion = saved.version.replace(/[^a-z0-9_.-]+/gi, '-')
+    link.href = url
+    link.download = `${filenameKey}-${filenameVersion}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    message.value = `Exported ${saved.ruleset_key} version ${saved.version}.`
+  } catch (cause) {
+    error.value =
+      cause instanceof Error
+        ? cause.message
+        : 'The ruleset version could not be exported.'
+  } finally {
+    exportingId.value = null
+  }
+}
+
 onMounted(refresh)
 </script>
 
@@ -100,6 +129,13 @@ onMounted(refresh)
         </p>
       </div>
       <div class="actions">
+        <span>
+          <RouterLink
+            class="secondary-button"
+            to="/manage/rulesets/new#import-ruleset"
+            >Import ruleset</RouterLink
+          >
+        </span>
         <span>
           <RouterLink class="secondary-button" to="/manage/contests"
             >Manage contests</RouterLink
@@ -158,6 +194,14 @@ onMounted(refresh)
             <p class="rule-types">{{ saved.rule_type_keys.join(', ') }}</p>
           </div>
           <div class="row-actions">
+            <button
+              class="secondary-button"
+              type="button"
+              :disabled="exportingId === saved.id"
+              @click="exportRuleset(saved)"
+            >
+              {{ exportingId === saved.id ? 'Exporting…' : 'Export ruleset' }}
+            </button>
             <span>
               <RouterLink
                 class="secondary-button"
