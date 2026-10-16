@@ -536,6 +536,7 @@ legend {
   color: var(--color-brand-900);
   font-size: 0.9rem;
   font-weight: 600;
+  line-height: 1.35;
 }
 input,
 select,
@@ -567,7 +568,7 @@ textarea {
 }
 .schema-map-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) max-content;
-  align-items: end;
+  align-items: start;
 }
 .schema-map-key {
   display: grid;
@@ -575,12 +576,21 @@ textarea {
   gap: 0.35rem;
 }
 .schema-map-key label {
+  display: grid;
+  gap: 0.35rem;
   color: var(--color-brand-900);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 .schema-map-value {
   min-width: 0;
 }
+.schema-map-value > .schema-editor-nested {
+  padding-top: 0;
+}
 .schema-map-row > .quiet-button {
+  align-self: end;
   justify-self: start;
 }
 .fixed-value {

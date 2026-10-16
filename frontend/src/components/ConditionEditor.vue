@@ -349,10 +349,13 @@ function updateNegated(condition: Record<string, unknown>) {
 }
 .condition-controls-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 0.7rem;
   min-width: 0;
+}
+.condition-structure-control {
+  grid-column: 1 / -1;
 }
 legend {
   grid-column: 1 / -1;
@@ -407,7 +410,7 @@ input[type='checkbox'] {
 }
 .condition-value-control,
 .condition-boolean-control {
-  grid-column: span 2;
+  grid-column: auto;
 }
 .condition-group > p {
   grid-column: 1 / -1;
@@ -447,10 +450,6 @@ input[type='checkbox'] {
   .condition-controls-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .condition-value-control,
-  .condition-boolean-control {
-    grid-column: span 2;
-  }
 }
 @media (max-width: 36rem) {
   .condition-controls-grid {
@@ -458,6 +457,7 @@ input[type='checkbox'] {
   }
   .condition-value-control,
   .condition-boolean-control,
+  .condition-structure-control,
   .condition-group,
   .condition-child {
     grid-column: 1;

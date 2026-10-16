@@ -93,7 +93,14 @@ describe('RuleSchemaEditor', () => {
     const schema: JsonSchema = {
       type: 'object',
       patternProperties: {
-        '^[a-z][a-z0-9_.-]*$': { type: 'string' },
+        '^[a-z][a-z0-9_.-]*$': {
+          anyOf: [
+            { type: 'string' },
+            { type: 'integer' },
+            { type: 'boolean' },
+            { type: 'null' },
+          ],
+        },
       },
     }
     const wrapper = mount(RuleSchemaEditor, {
@@ -106,13 +113,17 @@ describe('RuleSchemaEditor', () => {
     })
 
     const row = wrapper.get('.schema-map-row')
+    expect(row.find('.schema-map-value > .schema-editor-nested').exists()).toBe(
+      true,
+    )
     expect(row.find('.schema-map-key label').text()).toBe('Key')
     expect(
       (row.find('.schema-map-key input').element as HTMLInputElement).value,
     ).toBe('mode')
     expect(row.find('.schema-map-value .schema-control').text()).toContain(
-      'Value for mode',
+      'Value type',
     )
+    expect(row.find('.schema-map-value select').exists()).toBe(true)
     expect(row.findAll('input')).toHaveLength(2)
   })
 
