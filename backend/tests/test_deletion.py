@@ -4,10 +4,12 @@ from hashlib import sha256
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.app.api.auth import hash_password
+from backend.app.api.contests import _integrity_failure_kind
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
@@ -81,6 +83,28 @@ def deletion_database(monkeypatch):
 def _session_generator(factory):
     with factory() as session:
         yield session
+
+
+@pytest.mark.parametrize(
+    ("sqlite_errorname", "expected"),
+    [
+        ("SQLITE_CONSTRAINT_FOREIGNKEY", "foreign_key"),
+        ("SQLITE_CONSTRAINT_UNIQUE", "unique"),
+        ("SQLITE_CONSTRAINT_CHECK", "check"),
+        ("SQLITE_CONSTRAINT_NOTNULL", "not_null"),
+    ],
+)
+def test_integrity_failure_kind_classifies_sqlite_constraint(
+    sqlite_errorname, expected
+):
+    driver_error = type(
+        "SQLiteConstraintError",
+        (Exception,),
+        {"sqlite_errorname": sqlite_errorname},
+    )()
+    error = IntegrityError("statement", {}, driver_error)
+
+    assert _integrity_failure_kind(error) == expected
 
 
 @pytest.fixture

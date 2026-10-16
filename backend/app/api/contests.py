@@ -55,6 +55,29 @@ public_router = APIRouter(tags=["public contests"])
 logger = logging.getLogger("contestmaster.contests")
 
 
+def _integrity_failure_kind(exc: IntegrityError) -> str:
+    """Return a safe database-constraint category without exposing SQL parameters."""
+    driver_name = getattr(exc.orig, "sqlite_errorname", None)
+    if isinstance(driver_name, str) and driver_name.startswith("SQLITE_CONSTRAINT_"):
+        constraint_kind = driver_name.removeprefix("SQLITE_CONSTRAINT_").casefold()
+        return {
+            "foreignkey": "foreign_key",
+            "notnull": "not_null",
+            "primarykey": "primary_key",
+        }.get(constraint_kind, constraint_kind)
+
+    error_text = str(exc.orig).casefold()
+    if "foreign key" in error_text:
+        return "foreign_key"
+    if "unique constraint" in error_text:
+        return "unique"
+    if "check constraint" in error_text:
+        return "check"
+    if "not null constraint" in error_text:
+        return "not_null"
+    return "integrity_constraint"
+
+
 @router.post("/schedule-preview")
 def preview_contest_schedule(payload: ContestSchedulePreviewPayload) -> dict[str, object]:
     try:
@@ -431,12 +454,7 @@ def delete_contest(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError as exc:
         session.rollback()
-        error_text = str(exc.orig).casefold()
-        failure_kind = (
-            "foreign_key"
-            if "foreign key" in error_text
-            else "integrity_constraint"
-        )
+        failure_kind = _integrity_failure_kind(exc)
         logger.warning(
             "contest_delete_blocked",
             extra={"contest_id": contest_id, "failure_kind": failure_kind},
