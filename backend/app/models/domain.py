@@ -183,6 +183,16 @@ class Contest(Base):
     )
 
 
+class ContestDeletionPermit(Base):
+    """Transactional database guard permitting removal of one contest's history."""
+
+    __tablename__ = "contest_deletion_permits"
+
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class RulesetVersion(Base):
     __tablename__ = "ruleset_versions"
     __table_args__ = (

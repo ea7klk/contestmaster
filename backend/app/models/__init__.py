@@ -1,6 +1,7 @@
 from backend.app.models.audit import AdminNote, AuditEvent
 from backend.app.models.domain import (
     Contest,
+    ContestDeletionPermit,
     Entry,
     EntryAccessGrant,
     EntryRevision,
@@ -57,6 +58,7 @@ __all__ = [
     "CQZone",
     "CallsignPrefix",
     "Contest",
+    "ContestDeletionPermit",
     "ContestEntity",
     "ContestMasterDataVersion",
     "ContestStatus",

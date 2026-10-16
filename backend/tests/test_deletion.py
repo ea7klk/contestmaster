@@ -10,12 +10,14 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.api.auth import hash_password
 from backend.app.api.contests import _integrity_failure_kind
+from backend.app.contest_deletion_triggers import install_contest_deletion_guards
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
     AdminNote,
     AuditEvent,
     Contest,
+    ContestDeletionPermit,
     ContestStatus,
     Entry,
     EntryAccessGrant,
@@ -31,6 +33,7 @@ from backend.app.models import (
     RulesetActivation,
     RulesetVersion,
     ScoreRun,
+    ScoreRunStatus,
     Station,
     SystemRole,
     SystemUser,
@@ -59,6 +62,8 @@ def deletion_database(monkeypatch):
         cursor.close()
 
     Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        install_contest_deletion_guards(connection)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(
         "backend.app.api.auth.get_settings",
@@ -278,6 +283,8 @@ def deletion_fixture(deletion_database):
                 explanation="Contact credited",
             )
         )
+        score_run.status = ScoreRunStatus.COMPLETED
+        score_run.completed_at = now
         publication = ResultPublication(
             contest_id=contest.id,
             publication_number=1,
@@ -345,6 +352,7 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
     with deletion_database() as session:
         assert session.connection().exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert session.get(Contest, deletion_fixture["contest_id"]) is None
+        assert session.get(ContestDeletionPermit, deletion_fixture["contest_id"]) is None
         assert session.get(Contest, deletion_fixture["keep_contest_id"]) is not None
         assert session.get(Participant, deletion_fixture["participant_id"]) is not None
         assert session.scalar(select(func.count()).select_from(Entry)) == 1
@@ -388,6 +396,27 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
         headers={"X-CSRF-Token": csrf},
     )
     assert delete_ruleset.status_code == 204
+
+
+def test_protected_log_history_cannot_be_deleted_without_contest_permit(
+    deletion_database, deletion_fixture
+):
+    with deletion_database() as session:
+        entry_id = session.scalar(
+            select(Entry.id).where(Entry.contest_id == deletion_fixture["contest_id"])
+        )
+        revision = session.scalar(
+            select(EntryRevision).where(EntryRevision.entry_id == entry_id)
+        )
+        assert revision is not None
+        revision_id = revision.id
+        session.delete(revision)
+        with pytest.raises(IntegrityError, match="contest deletion permit"):
+            session.flush()
+        session.rollback()
+
+    with deletion_database() as session:
+        assert session.get(EntryRevision, revision_id) is not None
 
 
 def test_contest_delete_is_owner_scoped_and_ruleset_in_use_is_protected(

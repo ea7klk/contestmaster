@@ -86,7 +86,15 @@ _CONTEST_FREE_BANDS = {"2200m", "630m", "60m", "30m", "17m", "12m"}
 
 def upgrade() -> None:
     bind = op.get_bind()
-    Base.metadata.create_all(bind=bind)
+    # Keep tables introduced by later revisions out of the initial baseline even
+    # though create_all reads current ORM metadata.
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[
+            table for table in Base.metadata.sorted_tables
+            if table.name != "contest_deletion_permits"
+        ],
+    )
     # This baseline predates contest periodicity. Keep its shape stable even
     # though its table definitions are sourced from the current ORM metadata;
     # revision 0019 adds the column for both fresh and existing installations.

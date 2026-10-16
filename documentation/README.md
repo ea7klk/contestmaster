@@ -135,7 +135,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo or ADI/ADIF input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
 
-The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots.
+The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots. Contest-history delete guards remain active except when the authorized deletion service inserts a transaction-scoped permit for the contest being removed.
 
 ```mermaid
 erDiagram
@@ -148,6 +148,7 @@ erDiagram
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_SESSION : signs_in
     CONTEST ||--o{ RULESET_VERSION : selects
     CONTEST ||--o{ RULESET_ACTIVATION : history
+    CONTEST ||--o| CONTEST_DELETION_PERMIT : temporarily_authorizes_removal
     RULESET_VERSION ||--o{ RULESET_ACTIVATION : activated
     SYSTEM_USER o|--o{ RULESET_ACTIVATION : activates
     CONTEST ||--o{ CONTEST_MASTER_DATA_VERSION : pins
@@ -194,6 +195,9 @@ erDiagram
         text status
         integer ruleset_version_id FK
         integer auto_recalculate_on_upload
+    }
+    CONTEST_DELETION_PERMIT {
+        integer contest_id PK "temporary FK to contest"
     }
     CONTEST_MASTER_DATA_VERSION {
         integer id PK
@@ -437,7 +441,7 @@ erDiagram
 - Keep each score run immutable or auditable: a changed log or ruleset should produce a new run, not silently rewrite the prior explanation.
 - A manager publication copies selected latest completed runs into a sealed, immutable snapshot with a numbered publication and source digest. Re-publication appends a snapshot. Withdrawn entries are excluded; late, checklog, and unresolved entries are withheld by default; reclassified and disqualified entries are included with status labels by default. Disqualified entries have zero score and no placement. A `result_publication` ruleset hook may explicitly change these inclusion booleans.
 - Public standings and `results-v1` JSON/CSV exports are generated from publication snapshots, never from mutable current score-run state. Public responses include aggregate score explanations and configured categories only; original logs remain receipt/participant/manager scoped.
-- Keep ruleset versions, accepted entry revisions, station/QSO input, adjudication decisions, and audit events append-only. A completed score run and its per-QSO explanations are immutable at the database level; corrections create a new revision or score run. Private staff notes can be edited, with material administrative actions recorded in the audit trail.
+- Keep ruleset versions, accepted entry revisions, station/QSO input, adjudication decisions, and audit events append-only during ordinary operation. A completed score run and its per-QSO explanations are immutable at the database level; corrections create a new revision or score run. The authorized contest-deletion workflow can remove only the selected contest's dependent history through a transaction-scoped database permit; shared participants and global audit events remain. Private staff notes can be edited, with material administrative actions recorded in the audit trail.
 - Honor the contest's auto_recalculate_on_upload setting after a new log has been accepted and imported. A rejected or malformed upload must not trigger automatic result generation.
 - Treat JSON configuration and exchange payloads as untrusted input. Validate their schema and preserve the original submitted exchange when a normalized interpretation is stored.
 - Add indexes based on actual query needs, especially for contacts by entry, time, band, and callsign. Keep uniqueness rules contest-aware; a duplicate definition can vary by ruleset.

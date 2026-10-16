@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.models import (
     AdminNote,
     Contest,
+    ContestDeletionPermit,
     ContestMasterDataVersion,
     Entry,
     EntryAccessGrant,
@@ -85,6 +86,12 @@ def delete_contest_records(session: Session, contest: Contest) -> dict[str, int]
         )
         or 0,
     }
+
+    # Database triggers protect append-only scoring and adjudication history during normal
+    # operation. This transaction-scoped permit allows those rows to be removed only as part
+    # of this authorized, atomic contest deletion.
+    session.add(ContestDeletionPermit(contest_id=contest_id))
+    session.flush()
 
     # Restrictive FKs make the dependency order explicit and protect against accidental orphans.
     session.execute(
