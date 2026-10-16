@@ -17,6 +17,12 @@ def test_openapi_is_published_under_versioned_api_path():
     assert response.status_code == 200
     assert response.json()["info"]["title"] == "Contestmaster API"
     assert "/api/v1/health/ready" in response.json()["paths"]
+    assert "/api/v1/rulesets/bands" in response.json()["paths"]
+    assert "/api/v1/rulesets/modes" in response.json()["paths"]
+    assert "/api/v1/rulesets/admin/bands" in response.json()["paths"]
+    assert "/api/v1/rulesets/admin/modes" in response.json()["paths"]
+    assert "post" in response.json()["paths"]["/api/v1/rulesets/admin/bands"]
+    assert "post" in response.json()["paths"]["/api/v1/rulesets/admin/modes"]
     assert "ErrorEnvelope" in response.json()["components"]["schemas"]
     assert "422" in response.json()["paths"]["/api/v1/health/ready"]["get"]["responses"]
 
