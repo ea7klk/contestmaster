@@ -4,7 +4,7 @@ The Vue composer exposes the same typed ruleset definition that the API validate
 
 ## Import contests and edit saved rulesets
 
-From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and a `ruleset` object. The contest object uses the regular contest fields (including offset-aware start, end, and submission-cutoff timestamps); the ruleset object uses the schema-version-1 draft format described in [ruleset drafts](../ruleset-drafts/README.md). The API validates both together, creates a manager-owned draft, saves and assigns its immutable ruleset version, and commits the operation atomically. If the file is malformed, the contest is invalid, an operating-catalog key is unavailable, or either record conflicts, no partial import is retained.
+From **Contest manager**, choose **Import contest** and select a JSON package containing a `contest` object and a `ruleset` object. The contest object uses UTC start, end, and submission-cutoff timestamps plus optional periodicity; the ruleset object uses schema version 2 described in [ruleset drafts](../ruleset-drafts/README.md). The API validates both together, creates a manager-owned draft, saves and assigns its immutable ruleset version, and commits the operation atomically. If the file is malformed, the contest is invalid, an operating-catalog key is unavailable, or either record conflicts, no partial import is retained.
 
 For example, the package shape is:
 
@@ -16,11 +16,12 @@ For example, the package shape is:
     "description": null,
     "starts_at": "2026-05-01T00:00:00Z",
     "ends_at": "2026-05-01T06:00:00Z",
+    "periodicity": null,
     "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
     "auto_recalculate_on_upload": false
   },
   "ruleset": {
-    "schema_version": 1,
+    "schema_version": 2,
     "ruleset_key": "example-sprint",
     "version": "2026",
     "rules": []
@@ -32,7 +33,7 @@ The example's empty `rules` array is a shape illustration only; a real ruleset m
 
 ## Schedule and submissions
 
-Contest schedules use UTC only. Fixed editions use an ISO 8601 UTC instant such as `2026-01-01T00:00:00Z`; recurring editions use a UTC calendar date, a UTC time, and a positive duration in minutes. A local start-time control has no useful meaning for a UTC event instant. Daylight-saving “fold” means the repeated local wall-clock hour when clocks move backward. Since schedule rules are UTC, a fold cannot occur and the composer/schema no longer asks for a fold value.
+The contest manager owns UTC start and end instants and optional periodicity. Configure one-time or recurring schedule details in the contest form; schedule settings are not part of a reusable ruleset. Enter actual event instants in UTC. For recurring contests, choose annual date, nth weekday, or first full weekend, and preview a selected UTC year. A local start-time control adds no information to a UTC event instant. Daylight-saving “fold” means the repeated local wall-clock hour when clocks move backward; UTC scheduling has no fold.
 
 Supported recurrence selectors are:
 
@@ -40,9 +41,9 @@ Supported recurrence selectors are:
 - **Nth weekday:** occurrence 1–5 or last (`-1`) of a chosen weekday within a month.
 - **First full weekend:** the first Saturday and Sunday pair entirely within the chosen month; the schedule starts Saturday at its configured UTC time.
 
-The API's `POST /api/v1/rulesets/schedule-preview` resolves a recurrence for a requested year. An annual date that does not exist in a year and a fifth weekday that does not exist are rejected with a useful error.
+The API's `POST /api/v1/contests/schedule-preview` previews the contest's recurrence for a requested year. An annual date that does not exist in a year and a fifth weekday that does not exist are rejected with a useful error.
 
-The log submission rule is separate from schedule end. A fixed cutoff must include a UTC offset; a relative cutoff is a signed whole-minute offset after contest end. The late policy is reject, accept as late, or classify as checklog. Manager extensions are possible only when explicitly enabled.
+Contest configuration owns the separate UTC log submission cutoff. The ruleset's log-submission policy only determines whether uploads beyond that cutoff are rejected, accepted as late, or classified as checklog. Manager extensions are possible only when explicitly enabled by the ruleset.
 
 ## Categories and exchanges
 
@@ -54,7 +55,7 @@ An exchange schema is the ordered set of values sent, received, exchanged in bot
 
 Band and mode catalogs are separate shared reference values, managed by global administrators in distinct Bands and Modes sections, each with its own “Add catalog item” form. Contest managers select allowed values with checkboxes. Each Configure checkbox appears directly above its matching eligible-band or allowed-mode choices. An empty selection means that dimension is unrestricted. Inactive catalog entries cannot be selected in new drafts. Existing ruleset snapshots remain unchanged; an entry referenced by a saved ruleset may be deactivated but cannot be deleted or renamed.
 
-Boolean rule settings use one checkbox each; they do not have a separate “Configure” switch. For a bonus rule, setting `evidence_key` enables the evidence requirement and names the required declaration. The redundant `evidence_required` boolean has been removed. Existing schema-version-1 drafts containing that field remain importable only when it agrees with `evidence_key`; the composer removes it during import and omits it from exports. The schema version remains 1 for this compatible normalization.
+Boolean rule settings use one checkbox each; they do not have a separate “Configure” switch. Schema version 2 removes the schedule rule and cutoff timestamps from reusable rulesets. The bonus rule uses the presence of `evidence_key` to indicate that an evidence declaration is required. Legacy version 1 drafts can be imported in the composer; it removes the old schedule and cutoff fields, displays a migration notice, and exports version 2. An old `evidence_required` field is accepted only when it agrees with `evidence_key`, then removed.
 
 The initial built-in band catalog includes named amateur bands from 2200 m through 3 cm (10 GHz), plus common modes (including CW, SSB, RTTY, FT8, and FT4). It does not seed bands above 10 GHz. Frequency text is a reference label, not a universal allocation: national authorizations, license privileges, and the published contest rules determine permitted use.
 

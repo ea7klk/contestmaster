@@ -9,22 +9,19 @@ from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.engine import RuleExecutionError, ScoringEntry, score_entry
 from backend.app.rulesets.operating import evaluate_operating_constraints
-from backend.app.rulesets.schedules import (
-    classify_submission,
-    resolve_schedule,
-    resolve_submission,
-)
 from backend.app.rulesets.schema import (
     BonusRule,
     CategoryRule,
     Condition,
     ExchangeRule,
     OperatingConstraintRule,
-    Recurrence,
-    ScheduleRule,
     SubmissionRule,
 )
+from backend.app.rulesets.submission import (
+    classify_submission,
+)
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
+from backend.app.scheduling import Recurrence, resolve_contest_schedule
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 END = datetime(2026, 1, 1, 2, tzinfo=UTC)
@@ -38,21 +35,9 @@ def valid_payload() -> dict[str, object]:
         "source_edition": "2026 edition",
         "rules": [
             {
-                "id": "schedule",
-                "rule": {
-                    "kind": "schedule",
-                    "timezone": "UTC",
-                    "start_time_utc": "00:00:00",
-                    "duration_minutes": 120,
-                    "fixed_start_utc": "2026-01-01T00:00:00Z",
-                },
-            },
-            {
                 "id": "submission",
                 "rule": {
                     "kind": "submission",
-                    "cutoff_mode": "at_utc",
-                    "cutoff_utc": "2026-01-02T00:00:00Z",
                     "late_policy": "checklog",
                     "manager_extension_allowed": True,
                 },
@@ -178,7 +163,6 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
     assert response.status_code == 200
     catalog = response.json()["rule_types"]
     assert {item["key"] for item in catalog} >= {
-        "schedule",
         "submission",
         "categories",
         "exchange",
@@ -194,11 +178,7 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
         "workflow_hook",
     }
     assert "eval" not in str(catalog)
-    schedule = next(item for item in catalog if item["key"] == "schedule")["schema"]
-    assert schedule["properties"]["timezone"]["const"] == "UTC"
-    assert "start_local_time" not in schedule["properties"]
-    assert "ambiguous_time_fold" not in schedule["properties"]
-    assert "description" in schedule["properties"]["start_time_utc"]
+    assert "schedule" not in {item["key"] for item in catalog}
 
 
 def test_validation_endpoint_returns_summary_and_integer_worked_example():
@@ -208,7 +188,7 @@ def test_validation_endpoint_returns_summary_and_integer_worked_example():
     result = response.json()
     assert result["valid"] is True
     assert result["ruleset_key"] == "sample-sprint"
-    assert "Fixed schedule" in result["summary"]
+    assert "schedule" not in result["summary"].lower()
     assert result["worked_score_example"]["final_score"] == 965
     assert all(type(step["result"]) is int for step in result["worked_score_example"]["steps"])
 
@@ -411,64 +391,35 @@ def test_scoring_emits_structured_pending_workflow_actions():
     assert result.outcome == "needs_review"
 
 
-def test_schedule_recurrence_is_resolved_in_utc_without_local_time_or_dst_fold():
-    rule = ScheduleRule.model_validate(
-        {
-            "kind": "schedule",
-            "timezone": "UTC",
-            "start_time_utc": "08:00:00",
-            "duration_minutes": 90,
-            "recurrence": {"frequency": "first_full_weekend", "month": 1},
-        }
+def test_contest_recurrence_is_resolved_in_utc_from_configured_duration():
+    recurrence = Recurrence.model_validate({"frequency": "first_full_weekend", "month": 1})
+    resolved = resolve_contest_schedule(
+        recurrence,
+        2025,
+        datetime(2026, 1, 1, 8, tzinfo=UTC),
+        datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
     )
-    resolved = resolve_schedule(rule, 2025)
     assert resolved.starts_at == datetime(2025, 1, 4, 8, tzinfo=UTC)
     assert resolved.ends_at == datetime(2025, 1, 4, 9, 30, tzinfo=UTC)
 
-    annual = ScheduleRule.model_validate(
-        {
-            "kind": "schedule",
-            "timezone": "UTC",
-            "start_time_utc": "02:30:00",
-            "duration_minutes": 60,
-            "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
-        }
+    annual = Recurrence.model_validate({"frequency": "annual_date", "month": 10, "day": 26})
+    resolved = resolve_contest_schedule(
+        annual,
+        2025,
+        datetime(2026, 1, 1, 2, 30, tzinfo=UTC),
+        datetime(2026, 1, 1, 3, 30, tzinfo=UTC),
     )
-    assert resolve_schedule(annual, 2025).starts_at == datetime(2025, 10, 26, 2, 30, tzinfo=UTC)
-    with pytest.raises(ValidationError, match="UTC"):
-        ScheduleRule.model_validate(
-            {
-                "kind": "schedule",
-                "timezone": "Europe/Berlin",
-                "start_time_utc": "02:30:00",
-                "duration_minutes": 60,
-                "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
-            }
-        )
-    with pytest.raises(ValidationError, match="extra_forbidden"):
-        ScheduleRule.model_validate(
-            {
-                "kind": "schedule",
-                "start_local_time": "02:30:00",
-                "ambiguous_time_fold": 1,
-                "duration_minutes": 60,
-                "recurrence": {"frequency": "annual_date", "month": 10, "day": 26},
-            }
-        )
+    assert resolved.starts_at == datetime(2025, 10, 26, 2, 30, tzinfo=UTC)
 
 
-def test_schedule_preview_api_returns_utc_instants_for_selected_recurrence():
+def test_contest_schedule_preview_api_uses_contest_configuration():
     response = TestClient(app).post(
-        "/api/v1/rulesets/schedule-preview",
+        "/api/v1/contests/schedule-preview",
         json={
             "year": 2026,
-            "schedule": {
-                "kind": "schedule",
-                "timezone": "UTC",
-                "start_time_utc": "08:00:00",
-                "duration_minutes": 90,
-                "recurrence": {"frequency": "first_full_weekend", "month": 1},
-            },
+            "starts_at": "2026-01-01T08:00:00Z",
+            "ends_at": "2026-01-01T09:30:00Z",
+            "periodicity": {"frequency": "first_full_weekend", "month": 1},
         },
     )
     assert response.status_code == 200
@@ -477,16 +428,12 @@ def test_schedule_preview_api_returns_utc_instants_for_selected_recurrence():
         "ends_at": "2026-01-03T09:30:00Z",
     }
     invalid = TestClient(app).post(
-        "/api/v1/rulesets/schedule-preview",
+        "/api/v1/contests/schedule-preview",
         json={
             "year": 2026,
-            "schedule": {
-                "kind": "schedule",
-                "timezone": "UTC+1",
-                "start_time_utc": "08:00:00",
-                "duration_minutes": 90,
-                "recurrence": {"frequency": "annual_date", "month": 1, "day": 3},
-            },
+            "starts_at": "2026-01-01T08:00:00Z",
+            "ends_at": "2026-01-01T09:30:00Z",
+            "periodicity": {"frequency": "annual_date", "month": 2, "day": 30},
         },
     )
     assert invalid.status_code == 422
@@ -511,38 +458,20 @@ def test_common_exchange_keys_reject_incompatible_value_types():
         )
 
 
-def test_cutoff_is_separate_and_extensions_follow_manager_policy():
-    schedule = resolve_schedule(
-        ScheduleRule.model_validate(
-            {
-                "kind": "schedule",
-                "timezone": "UTC",
-                "start_time_utc": "00:00:00",
-                "duration_minutes": 60,
-                "fixed_start_utc": "2026-01-01T00:00:00Z",
-            }
-        )
+def test_submission_rule_owns_late_policy_while_cutoff_is_contest_configuration():
+    submission = SubmissionRule.model_validate(
+        {
+            "kind": "submission",
+            "late_policy": "accept_late",
+            "manager_extension_allowed": True,
+        }
     )
-    submission = resolve_submission(
-        SubmissionRule.model_validate(
-            {
-                "kind": "submission",
-                "cutoff_mode": "at_utc",
-                "cutoff_utc": "2026-01-05T00:00:00Z",
-                "late_policy": "accept_late",
-                "manager_extension_allowed": True,
-            }
-        ),
-        schedule,
-    )
-    assert submission.cutoff_at == datetime(2026, 1, 5, tzinfo=UTC)
-    assert (
-        classify_submission(submission.cutoff_at, submission.cutoff_at, "accept_late") == "on_time"
-    )
+    cutoff = datetime(2026, 1, 5, tzinfo=UTC)
+    assert classify_submission(cutoff, cutoff, submission.late_policy) == "on_time"
     assert (
         classify_submission(
             datetime(2026, 1, 6, tzinfo=UTC),
-            submission.cutoff_at,
+            cutoff,
             submission.late_policy,
             manager_extension_until=datetime(2026, 1, 7, tzinfo=UTC),
             manager_extension_allowed=submission.manager_extension_allowed,
@@ -552,7 +481,7 @@ def test_cutoff_is_separate_and_extensions_follow_manager_policy():
     with pytest.raises(ValueError, match="does not allow"):
         classify_submission(
             datetime(2026, 1, 6, tzinfo=UTC),
-            submission.cutoff_at,
+            cutoff,
             "reject",
             manager_extension_until=datetime(2026, 1, 7, tzinfo=UTC),
         )

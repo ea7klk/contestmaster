@@ -1,12 +1,13 @@
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
-from backend.app.models import BandCatalogItem, SystemRole, SystemUser
+from backend.app.models import BandCatalogItem, Contest, RulesetVersion, SystemRole, SystemUser
 
 
 def _alembic(database_url: str, *arguments: str) -> None:
@@ -74,7 +75,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "operating_catalog_items" not in tables
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0018_remove_unscored_country_data"
+            "0019_contest_periodicity"
         )
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
@@ -146,7 +147,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     engine.dispose()
 
 
-def test_migration_history_is_one_baseline_revision() -> None:
+def test_migration_history_has_one_baseline_and_forward_migration() -> None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
@@ -155,9 +156,80 @@ def test_migration_history_is_one_baseline_revision() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 1
-    assert revisions[0].down_revision is None
-    assert revisions[0].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 2
+    assert revisions[0].revision == "0019_contest_periodicity"
+    assert revisions[0].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[1].down_revision is None
+    assert revisions[1].revision == "0018_remove_unscored_country_data"
+
+
+def test_periodicity_migration_copies_legacy_ruleset_recurrence(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'periodicity.sqlite3'}"
+    _alembic(database_url, "upgrade", "head")
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        actor = SystemUser(
+            username="migration-manager",
+            email_normalized="migration-manager@example.test",
+            display_name="Migration Manager",
+            role=SystemRole.CONTEST_MANAGER,
+            password_hash="test-hash",
+        )
+        session.add(actor)
+        session.flush()
+        ruleset = RulesetVersion(
+            ruleset_key="legacy-scheduled",
+            version="2025",
+            rule_type_keys=["schedule", "submission"],
+            configuration={
+                "schema_version": 1,
+                "rules": [
+                    {
+                        "id": "schedule",
+                        "rule": {
+                            "kind": "schedule",
+                            "recurrence": {
+                                "frequency": "nth_weekday",
+                                "month": 6,
+                                "weekday": 5,
+                                "occurrence": 3,
+                            },
+                        },
+                    }
+                ],
+            },
+            created_by_user_id=actor.id,
+        )
+        session.add(ruleset)
+        session.flush()
+        contest = Contest(
+            owner_user_id=actor.id,
+            ruleset_version_id=ruleset.id,
+            name="Legacy Scheduled Contest",
+            slug="legacy-scheduled-contest",
+            starts_at=datetime(2025, 6, 21, tzinfo=UTC),
+            ends_at=datetime(2025, 6, 21, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2025, 6, 28, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.commit()
+        contest_id = contest.id
+    engine.dispose()
+
+    _alembic(database_url, "downgrade", "0018_remove_unscored_country_data")
+    _alembic(database_url, "upgrade", "head")
+
+    engine = build_engine(database_url)
+    with Session(engine) as session:
+        migrated = session.get(Contest, contest_id)
+        assert migrated is not None
+        assert migrated.periodicity == {
+            "frequency": "nth_weekday",
+            "month": 6,
+            "weekday": 5,
+            "occurrence": 3,
+        }
+    engine.dispose()
 
 
 def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -> None:
@@ -193,7 +265,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0018_remove_unscored_country_data"
+            "0019_contest_periodicity"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1

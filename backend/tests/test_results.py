@@ -311,10 +311,7 @@ def test_staging_guest_upload_scoring_publication_and_privacy_workflow(result_db
         payload = valid_payload()
         payload["ruleset_key"] = "phase9-staging"
         payload["version"] = "2026-live-staging"
-        schedule = next(rule["rule"] for rule in payload["rules"] if rule["id"] == "schedule")
-        schedule["fixed_start_utc"] = starts_at.isoformat().replace("+00:00", "Z")
         submission = next(rule["rule"] for rule in payload["rules"] if rule["id"] == "submission")
-        submission["cutoff_utc"] = (now + timedelta(days=2)).isoformat().replace("+00:00", "Z")
         submission["late_policy"] = "accept_late"
         payload["rules"] = [rule for rule in payload["rules"] if rule["id"] != "entity-multiplier"]
         format_rule = next(rule["rule"] for rule in payload["rules"] if rule["id"] == "format")

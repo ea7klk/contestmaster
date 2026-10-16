@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -73,95 +72,8 @@ AnyCondition.model_rebuild(_types_namespace={"Condition": Condition})
 NotCondition.model_rebuild(_types_namespace={"Condition": Condition})
 
 
-class Recurrence(StrictModel):
-    frequency: Literal["annual_date", "nth_weekday", "first_full_weekend"] = Field(
-        description=(
-            "Choose an annual date, an occurrence of a weekday, or the first complete "
-            "Saturday–Sunday weekend."
-        )
-    )
-    month: Annotated[int, Field(strict=True, ge=1, le=12)] = Field(
-        description="UTC calendar month in which this edition starts."
-    )
-    day: Annotated[int, Field(strict=True, ge=1, le=31)] | None = Field(
-        default=None,
-        description="Day of month for annual_date; not used by other recurrence types.",
-    )
-    weekday: Annotated[int, Field(strict=True, ge=0, le=6)] | None = Field(
-        default=None, description="Weekday for nth_weekday, Monday=0 through Sunday=6."
-    )
-    occurrence: Annotated[int, Field(strict=True, ge=-1, le=5)] | None = Field(
-        default=None,
-        description="Occurrence 1–5, or -1 for the last matching weekday in the month.",
-    )
-
-    @model_validator(mode="after")
-    def validate_shape(self) -> Recurrence:
-        if self.frequency == "annual_date" and (self.day is None or self.weekday is not None):
-            raise ValueError("annual_date requires day and does not accept weekday")
-        if self.frequency == "nth_weekday" and (
-            self.weekday is None or self.occurrence is None or self.day is not None
-        ):
-            raise ValueError("nth_weekday requires weekday and occurrence, and not day")
-        if self.frequency == "nth_weekday" and self.occurrence == 0:
-            raise ValueError("occurrence must be 1 through 5 or -1 for the last weekday")
-        if self.frequency == "first_full_weekend" and any(
-            value is not None for value in (self.day, self.weekday, self.occurrence)
-        ):
-            raise ValueError("first_full_weekend derives its calendar date")
-        return self
-
-
-class ScheduleRule(StrictModel):
-    kind: Literal["schedule"] = Field(description="Contest schedule definition.")
-    timezone: Literal["UTC"] = Field(
-        default="UTC", description="All contest schedules are UTC; this value cannot be changed."
-    )
-    start_time_utc: time = Field(
-        default=time(0, 0),
-        description=(
-            "Start time of recurring editions, expressed in UTC. Fixed schedules use "
-            "fixed_start_utc."
-        ),
-    )
-    duration_minutes: PositiveInteger = Field(
-        description="Contest duration in whole minutes, measured from the resolved UTC start."
-    )
-    fixed_start_utc: datetime | None = Field(
-        default=None,
-        description="One specific timezone-aware instant. Use this or recurrence, never both.",
-    )
-    recurrence: Recurrence | None = Field(
-        default=None, description="Rule for deriving an edition's UTC calendar date."
-    )
-
-    @model_validator(mode="after")
-    def require_one_schedule_source(self) -> ScheduleRule:
-        if (self.fixed_start_utc is None) == (self.recurrence is None):
-            raise ValueError("provide exactly one of fixed_start_utc or recurrence")
-        if self.fixed_start_utc is not None and (
-            self.fixed_start_utc.tzinfo is None or self.fixed_start_utc.utcoffset() is None
-        ):
-            raise ValueError("fixed_start_utc must be timezone-aware")
-        return self
-
-
 class SubmissionRule(StrictModel):
     kind: Literal["submission"]
-    cutoff_mode: Literal["at_utc", "minutes_after_contest"] = Field(
-        description="Choose a fixed UTC deadline or a whole-minute offset after contest end."
-    )
-    cutoff_utc: datetime | None = Field(
-        default=None,
-        description="Absolute timezone-aware UTC submission cutoff; distinct from contest end.",
-    )
-    minutes_after_contest: Integer | None = Field(
-        default=None,
-        description=(
-            "Whole minutes after contest end when relative cutoff is selected. Negative "
-            "values close submission before contest end."
-        ),
-    )
     late_policy: Literal["reject", "accept_late", "checklog"] = Field(
         description=(
             "How a submission after the cutoff is classified. A manager extension is "
@@ -172,17 +84,6 @@ class SubmissionRule(StrictModel):
         default=False,
         description="Whether a contest manager may explicitly extend the configured cutoff.",
     )
-
-    @model_validator(mode="after")
-    def validate_cutoff(self) -> SubmissionRule:
-        if self.cutoff_mode == "at_utc":
-            if self.cutoff_utc is None or self.cutoff_utc.tzinfo is None:
-                raise ValueError("at_utc cutoff requires a timezone-aware cutoff_utc")
-            if self.minutes_after_contest is not None:
-                raise ValueError("at_utc cutoff cannot specify minutes_after_contest")
-        elif self.minutes_after_contest is None or self.cutoff_utc is not None:
-            raise ValueError("relative cutoff requires minutes_after_contest only")
-        return self
 
 
 class CategoryChoice(StrictModel):
@@ -565,8 +466,7 @@ class WorkflowHookRule(StrictModel):
 
 
 RuleDefinition = Annotated[
-    ScheduleRule
-    | SubmissionRule
+    SubmissionRule
     | CategoryRule
     | ExchangeRule
     | EligibilityRule
@@ -590,7 +490,7 @@ class ConfiguredRule(StrictModel):
 
 
 class RulesetDefinition(StrictModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     ruleset_key: Annotated[
         str,
         StringConstraints(min_length=1, max_length=120, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"),

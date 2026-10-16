@@ -79,7 +79,7 @@ def save_ruleset_version(
 def load_ruleset_version(version: RulesetVersion) -> RulesetDefinition:
     """Revalidate stored JSON before execution; persisted configuration is untrusted input."""
     try:
-        definition = validate_ruleset(version.configuration)
+        definition = validate_ruleset(_normalize_stored_configuration(version.configuration))
     except RulesetValidationError as exc:
         raise RulesetPersistenceError("Stored ruleset configuration is invalid.") from exc
     if definition.ruleset_key != version.ruleset_key or definition.version != version.version:
@@ -89,9 +89,38 @@ def load_ruleset_version(version: RulesetVersion) -> RulesetDefinition:
     stored_source_url = str(definition.source_url) if definition.source_url else None
     if stored_source_url != version.source_url:
         raise RulesetPersistenceError("Stored ruleset source URL does not match its version row.")
-    if rule_types_in(definition) != version.rule_type_keys:
+    legacy_types = [kind for kind in version.rule_type_keys if kind != "schedule"]
+    if rule_types_in(definition) != legacy_types:
         raise RulesetPersistenceError("Stored ruleset types do not match its version row.")
     return definition
+
+
+def _normalize_stored_configuration(configuration: dict[str, object]) -> dict[str, object]:
+    """Read old immutable rows after schedule ownership moved to contest configuration."""
+    normalized = dict(configuration)
+    normalized["schema_version"] = 2
+    raw_rules = normalized.get("rules")
+    if not isinstance(raw_rules, list):
+        return normalized
+    rules: list[object] = []
+    for item in raw_rules:
+        if not isinstance(item, dict):
+            rules.append(item)
+            continue
+        rule = item.get("rule")
+        if isinstance(rule, dict) and rule.get("kind") == "schedule":
+            continue
+        if isinstance(rule, dict) and rule.get("kind") == "submission":
+            clean_rule = {
+                key: value
+                for key, value in rule.items()
+                if key not in {"cutoff_mode", "cutoff_utc", "minutes_after_contest"}
+            }
+            rules.append({**item, "rule": clean_rule})
+        else:
+            rules.append(item)
+    normalized["rules"] = rules
+    return normalized
 
 
 def activate_ruleset(

@@ -14,7 +14,6 @@ import {
   getSavedRulesetVersion,
   RulesetApiError,
   saveRulesetVersion,
-  previewSchedule,
   validateRuleset,
   type JsonSchema,
   type RulesetDraft,
@@ -45,9 +44,6 @@ const validation = ref<RulesetValidationResponse | null>(null)
 const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
-const previewYear = ref(new Date().getUTCFullYear())
-const schedulePreview = ref('')
-const schedulePreviewError = ref('')
 const editingSource = ref('')
 const props = defineProps<{ editVersionId?: string }>()
 
@@ -125,13 +121,9 @@ function seedRequiredRules() {
 function addSelectedRule() {
   if (!selectedType.value) return
   if (
-    [
-      'schedule',
-      'submission',
-      'categories',
-      'format_mapping',
-      'score_formula',
-    ].includes(selectedType.value) &&
+    ['submission', 'categories', 'format_mapping', 'score_formula'].includes(
+      selectedType.value,
+    ) &&
     usedSingletonKinds.value.has(selectedType.value)
   ) {
     return
@@ -154,7 +146,6 @@ function removeRule(index: number) {
 
 function supportsConditions(rule: ConfiguredRuleDraft) {
   return ![
-    'schedule',
     'submission',
     'categories',
     'format_mapping',
@@ -187,16 +178,6 @@ function updateRule(rule: ConfiguredRuleDraft, value: unknown) {
   clearValidation()
 }
 
-function updateSchedule(
-  rule: ConfiguredRuleDraft,
-  value: Record<string, unknown>,
-) {
-  rule.rule = { ...rule.rule, ...value }
-  clearValidation()
-  schedulePreview.value = ''
-  schedulePreviewError.value = ''
-}
-
 function selectedValues(
   rule: ConfiguredRuleDraft,
   key: 'allowed_bands' | 'allowed_modes',
@@ -216,23 +197,9 @@ function setSelectedValues(
   clearValidation()
 }
 
-async function loadSchedulePreview(rule: ConfiguredRuleDraft) {
-  schedulePreview.value = ''
-  schedulePreviewError.value = ''
-  try {
-    const preview = await previewSchedule(rule.rule, previewYear.value)
-    schedulePreview.value = `${preview.starts_at} – ${preview.ends_at}`
-  } catch (error) {
-    schedulePreviewError.value =
-      error instanceof Error
-        ? error.message
-        : 'Schedule date could not be previewed.'
-  }
-}
-
 const helpText: Record<string, string> = {
   submission:
-    'The log deadline is a separate UTC instant or a whole-minute offset after contest end. Late policy controls submissions beyond that cutoff; a manager extension is available only when enabled.',
+    'The contest configuration owns the UTC log submission cutoff. This rule chooses whether uploads received after that cutoff are rejected, accepted as late, or classified as checklog; a manager extension is available only when enabled.',
   duplicates:
     'The scope combines the worked callsign with any selected band, mode, grid, or transmitter values. A wider scope permits repeat contacts when one of those selected values differs. The effect says whether a repeat is ignored, uncredited, penalized, or held for review.',
   points:
@@ -245,7 +212,7 @@ const helpText: Record<string, string> = {
 
 function buildDraft(): RulesetDraft {
   const draft: RulesetDraft = {
-    schema_version: 1,
+    schema_version: 2,
     ruleset_key: rulesetKey.value.trim(),
     version: version.value.trim(),
     rules: rules.value.map((item) => ({
@@ -357,10 +324,18 @@ async function importDraft(event: Event) {
   clearValidation()
   generalError.value = ''
   try {
-    const parsed = JSON.parse(await file.text()) as RulesetDraft
+    const parsed = JSON.parse(await file.text()) as {
+      schema_version: number
+      ruleset_key: string
+      version: string
+      source_url?: string
+      source_edition?: string
+      rules: RulesetDraft['rules']
+    }
     if (
       !Array.isArray(parsed.rules) ||
-      typeof parsed.ruleset_key !== 'string'
+      typeof parsed.ruleset_key !== 'string' ||
+      ![1, 2].includes(parsed.schema_version)
     ) {
       throw new Error('This file does not look like a ruleset draft.')
     }
@@ -368,8 +343,25 @@ async function importDraft(event: Event) {
     version.value = parsed.version
     sourceUrl.value = parsed.source_url ?? ''
     sourceEdition.value = parsed.source_edition ?? ''
-    const normalizedRules = parsed.rules.map(normalizeImportedRule)
+    const removedSchedule = parsed.rules.some(
+      (item) => item.rule.kind === 'schedule',
+    )
+    const normalizedRules = parsed.rules
+      .filter((item) => item.rule.kind !== 'schedule')
+      .map((item) => {
+        if (item.rule.kind !== 'submission') return item
+        const rule = { ...item.rule }
+        delete rule.cutoff_mode
+        delete rule.cutoff_utc
+        delete rule.minutes_after_contest
+        return { ...item, rule }
+      })
+      .map(normalizeImportedRule)
     rules.value = normalizedRules.map((item) => ({ ...item }))
+    if (parsed.schema_version === 1 || removedSchedule) {
+      savedMessage.value =
+        'Imported a legacy draft. Configure contest dates, periodicity, and submission cutoff in contest configuration.'
+    }
   } catch (error) {
     generalError.value =
       error instanceof Error
@@ -460,6 +452,9 @@ function catalogErrorMessage(reason: unknown) {
     <p v-if="generalError" role="alert" class="error-panel">
       {{ generalError }}
     </p>
+    <p v-if="savedMessage" role="status" class="notice">
+      {{ savedMessage }}
+    </p>
     <p v-if="catalogLoading" role="status" class="notice">
       Loading the built-in rule catalog…
     </p>
@@ -527,7 +522,6 @@ function catalogErrorMessage(reason: unknown) {
                 :value="type.key"
                 :disabled="
                   [
-                    'schedule',
                     'submission',
                     'categories',
                     'format_mapping',
@@ -586,9 +580,7 @@ function catalogErrorMessage(reason: unknown) {
           </label>
           <RuleSchemaEditor
             v-if="
-              !['categories', 'exchange', 'schedule'].includes(
-                String(configured.rule.kind),
-              )
+              !['categories', 'exchange'].includes(String(configured.rule.kind))
             "
             :schema="descriptorFor(String(configured.rule.kind))?.schema ?? {}"
             :root-schema="
@@ -613,290 +605,6 @@ function catalogErrorMessage(reason: unknown) {
             :model-value="configured.rule"
             @update:model-value="updateRule(configured, $event)"
           />
-          <template v-if="configured.rule.kind === 'schedule'">
-            <p class="rule-explanation">
-              All contest times use UTC. A local start time adds no information
-              because the contest start instant is stored and compared in UTC.
-              Daylight-saving clock folds happen only in local civil time, so
-              this UTC schedule has no ambiguous-time fold setting.
-            </p>
-            <fieldset class="schedule-controls">
-              <legend>UTC schedule</legend>
-              <p>
-                Choose a single exact start instant or a recurring UTC calendar
-                date and UTC time. Recurrence types: annual date (for example
-                January 15), nth weekday (for example the third Saturday or last
-                Sunday), or first full weekend (the first Saturday–Sunday pair
-                entirely within the month).
-              </p>
-              <label
-                >Schedule type<select
-                  :value="configured.rule.recurrence ? 'recurring' : 'fixed'"
-                  @change="
-                    updateSchedule(
-                      configured,
-                      ($event.target as HTMLSelectElement).value === 'recurring'
-                        ? {
-                            fixed_start_utc: null,
-                            recurrence: {
-                              frequency: 'annual_date',
-                              month: 1,
-                              day: 1,
-                            },
-                            start_time_utc: '00:00:00',
-                          }
-                        : {
-                            fixed_start_utc: '2026-01-01T00:00:00Z',
-                            recurrence: null,
-                          },
-                    )
-                  "
-                >
-                  <option value="fixed">One fixed UTC start</option>
-                  <option value="recurring">Recurring UTC schedule</option>
-                </select></label
-              >
-              <label v-if="!configured.rule.recurrence"
-                >Fixed start UTC (ISO 8601)<input
-                  :value="String(configured.rule.fixed_start_utc ?? '')"
-                  placeholder="2026-01-01T00:00:00Z"
-                  @input="
-                    updateSchedule(configured, {
-                      fixed_start_utc: ($event.target as HTMLInputElement)
-                        .value,
-                    })
-                  "
-              /></label>
-              <template v-else>
-                <label
-                  >Recurrence<select
-                    :value="
-                      String(
-                        (configured.rule.recurrence as Record<string, unknown>)
-                          ?.frequency ?? 'annual_date',
-                      )
-                    "
-                    @change="
-                      updateSchedule(configured, {
-                        recurrence: {
-                          frequency: ($event.target as HTMLSelectElement).value,
-                          month: 1,
-                          ...(($event.target as HTMLSelectElement).value ===
-                          'annual_date'
-                            ? { day: 1 }
-                            : ($event.target as HTMLSelectElement).value ===
-                                'nth_weekday'
-                              ? { weekday: 5, occurrence: 1 }
-                              : {}),
-                        },
-                      })
-                    "
-                  >
-                    <option value="annual_date">
-                      Annual date — same UTC month/day each year
-                    </option>
-                    <option value="nth_weekday">
-                      Nth weekday — for example third Saturday or last Sunday
-                    </option>
-                    <option value="first_full_weekend">
-                      First full weekend — first complete Saturday–Sunday pair
-                    </option>
-                  </select></label
-                >
-                <label
-                  >UTC month<select
-                    :value="
-                      Number(
-                        (configured.rule.recurrence as Record<string, unknown>)
-                          ?.month ?? 1,
-                      )
-                    "
-                    @change="
-                      updateSchedule(configured, {
-                        recurrence: {
-                          ...(configured.rule.recurrence as Record<
-                            string,
-                            unknown
-                          >),
-                          month: Number(
-                            ($event.target as HTMLSelectElement).value,
-                          ),
-                        },
-                      })
-                    "
-                  >
-                    <option v-for="month in 12" :key="month" :value="month">
-                      {{
-                        new Date(Date.UTC(2020, month - 1, 1)).toLocaleString(
-                          'en',
-                          { month: 'long', timeZone: 'UTC' },
-                        )
-                      }}
-                    </option>
-                  </select></label
-                >
-                <label
-                  v-if="
-                    (configured.rule.recurrence as Record<string, unknown>)
-                      ?.frequency === 'annual_date'
-                  "
-                  >UTC day of month<input
-                    type="number"
-                    min="1"
-                    max="31"
-                    :value="
-                      Number(
-                        (configured.rule.recurrence as Record<string, unknown>)
-                          ?.day ?? 1,
-                      )
-                    "
-                    @input="
-                      updateSchedule(configured, {
-                        recurrence: {
-                          ...(configured.rule.recurrence as Record<
-                            string,
-                            unknown
-                          >),
-                          day: Number(
-                            ($event.target as HTMLInputElement).value,
-                          ),
-                        },
-                      })
-                    "
-                /></label>
-                <template
-                  v-if="
-                    (configured.rule.recurrence as Record<string, unknown>)
-                      ?.frequency === 'nth_weekday'
-                  "
-                >
-                  <label
-                    >Weekday<select
-                      :value="
-                        Number(
-                          (
-                            configured.rule.recurrence as Record<
-                              string,
-                              unknown
-                            >
-                          )?.weekday ?? 5,
-                        )
-                      "
-                      @change="
-                        updateSchedule(configured, {
-                          recurrence: {
-                            ...(configured.rule.recurrence as Record<
-                              string,
-                              unknown
-                            >),
-                            weekday: Number(
-                              ($event.target as HTMLSelectElement).value,
-                            ),
-                          },
-                        })
-                      "
-                    >
-                      <option
-                        v-for="(weekday, weekdayIndex) in [
-                          'Monday',
-                          'Tuesday',
-                          'Wednesday',
-                          'Thursday',
-                          'Friday',
-                          'Saturday',
-                          'Sunday',
-                        ]"
-                        :key="weekday"
-                        :value="weekdayIndex"
-                      >
-                        {{ weekday }}
-                      </option>
-                    </select></label
-                  ><label
-                    >Occurrence<select
-                      :value="
-                        Number(
-                          (
-                            configured.rule.recurrence as Record<
-                              string,
-                              unknown
-                            >
-                          )?.occurrence ?? 1,
-                        )
-                      "
-                      @change="
-                        updateSchedule(configured, {
-                          recurrence: {
-                            ...(configured.rule.recurrence as Record<
-                              string,
-                              unknown
-                            >),
-                            occurrence: Number(
-                              ($event.target as HTMLSelectElement).value,
-                            ),
-                          },
-                        })
-                      "
-                    >
-                      <option v-for="n in [1, 2, 3, 4, 5]" :key="n" :value="n">
-                        {{
-                          ['first', 'second', 'third', 'fourth', 'fifth'][n - 1]
-                        }}
-                      </option>
-                      <option :value="-1">Last</option>
-                    </select></label
-                  >
-                </template>
-                <label
-                  >Start time UTC<input
-                    type="time"
-                    :value="
-                      String(
-                        configured.rule.start_time_utc ?? '00:00:00',
-                      ).slice(0, 5)
-                    "
-                    @input="
-                      updateSchedule(configured, {
-                        start_time_utc: `${($event.target as HTMLInputElement).value}:00`,
-                      })
-                    "
-                /></label>
-                <label
-                  >Preview year<input
-                    v-model.number="previewYear"
-                    type="number"
-                    min="1900"
-                    max="2200"
-                /></label>
-                <button
-                  type="button"
-                  class="secondary-button"
-                  @click="loadSchedulePreview(configured)"
-                >
-                  Preview resolved UTC dates
-                </button>
-                <p v-if="schedulePreview" role="status">
-                  {{ schedulePreview }}
-                </p>
-                <p v-if="schedulePreviewError" role="alert">
-                  {{ schedulePreviewError }}
-                </p>
-              </template>
-              <label
-                >Duration (whole minutes)<input
-                  type="number"
-                  min="1"
-                  :value="Number(configured.rule.duration_minutes ?? 1)"
-                  @input="
-                    updateSchedule(configured, {
-                      duration_minutes: Number(
-                        ($event.target as HTMLInputElement).value,
-                      ),
-                    })
-                  "
-              /></label>
-            </fieldset>
-          </template>
           <p
             v-if="helpText[String(configured.rule.kind)]"
             class="rule-explanation"
@@ -1097,9 +805,6 @@ function catalogErrorMessage(reason: unknown) {
         >
           {{ savingVersion ? 'Saving…' : 'Save validated ruleset version' }}
         </button>
-        <p v-if="savedMessage" role="status" class="notice">
-          {{ savedMessage }}
-        </p>
       </section>
     </template>
   </section>

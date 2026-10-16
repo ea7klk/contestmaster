@@ -38,9 +38,29 @@ from backend.app.rulesets.persistence import (
 )
 from backend.app.rulesets.schema import RulesetDefinition
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
+from backend.app.scheduling import (
+    Recurrence,
+    ScheduleResolutionError,
+    recurrence_date,
+    resolve_contest_schedule,
+)
 
 router = APIRouter(tags=["contests"])
 public_router = APIRouter(tags=["public contests"])
+
+
+@router.post("/schedule-preview")
+def preview_contest_schedule(payload: ContestSchedulePreviewPayload) -> dict[str, object]:
+    try:
+        resolved = resolve_contest_schedule(
+            payload.periodicity, payload.year, payload.starts_at, payload.ends_at
+        )
+    except ScheduleResolutionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "starts_at": resolved.starts_at.isoformat().replace("+00:00", "Z"),
+        "ends_at": resolved.ends_at.isoformat().replace("+00:00", "Z"),
+    }
 
 
 class ContestWrite(BaseModel):
@@ -51,6 +71,7 @@ class ContestWrite(BaseModel):
     description: str | None = Field(default=None, max_length=10000)
     starts_at: datetime
     ends_at: datetime
+    periodicity: Recurrence | None = None
     log_submission_cutoff_at: datetime
     auto_recalculate_on_upload: bool = False
     audit_reason: str | None = Field(default=None, max_length=2000)
@@ -62,6 +83,10 @@ class ContestWrite(BaseModel):
             raise ValueError("Contest times must include an explicit timezone offset")
         if self.starts_at >= self.ends_at:
             raise ValueError("Contest start must precede contest end")
+        if self.periodicity is not None:
+            starts_at_utc = self.starts_at.astimezone(UTC)
+            if recurrence_date(self.periodicity, starts_at_utc.year) != starts_at_utc.date():
+                raise ValueError("Contest start date must match its configured UTC periodicity")
         return self
 
 
@@ -70,6 +95,26 @@ class ContestImportPayload(BaseModel):
 
     contest: ContestWrite
     ruleset: RulesetDefinition
+
+
+class ContestSchedulePreviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    periodicity: Recurrence
+    year: int = Field(ge=1900, le=2200)
+    starts_at: datetime
+    ends_at: datetime
+
+    @model_validator(mode="after")
+    def validate_instants(self) -> ContestSchedulePreviewPayload:
+        if any(
+            value.tzinfo is None or value.utcoffset() is None
+            for value in (self.starts_at, self.ends_at)
+        ):
+            raise ValueError("Contest schedule preview times must be timezone-aware")
+        if self.starts_at >= self.ends_at:
+            raise ValueError("Contest end must follow its start")
+        return self
 
 
 class RulesetSelection(BaseModel):
@@ -121,6 +166,7 @@ def contest_output(contest: Contest) -> dict[str, object]:
         "description": contest.description,
         "starts_at": contest.starts_at,
         "ends_at": contest.ends_at,
+        "periodicity": contest.periodicity,
         "log_submission_cutoff_at": contest.log_submission_cutoff_at,
         "status": contest.status.value,
         "auto_recalculate_on_upload": contest.auto_recalculate_on_upload,
@@ -188,6 +234,11 @@ def create_contest(
         description=payload.description,
         starts_at=payload.starts_at,
         ends_at=payload.ends_at,
+        periodicity=(
+            payload.periodicity.model_dump(mode="json", exclude_none=True)
+            if payload.periodicity is not None
+            else None
+        ),
         log_submission_cutoff_at=payload.log_submission_cutoff_at,
         status=ContestStatus.DRAFT,
         auto_recalculate_on_upload=payload.auto_recalculate_on_upload,
@@ -253,6 +304,11 @@ def import_contest(
         description=contest_payload.description,
         starts_at=contest_payload.starts_at,
         ends_at=contest_payload.ends_at,
+        periodicity=(
+            contest_payload.periodicity.model_dump(mode="json", exclude_none=True)
+            if contest_payload.periodicity is not None
+            else None
+        ),
         log_submission_cutoff_at=contest_payload.log_submission_cutoff_at,
         status=ContestStatus.DRAFT,
         auto_recalculate_on_upload=contest_payload.auto_recalculate_on_upload,
@@ -343,16 +399,23 @@ def update_contest(
         "description",
         "starts_at",
         "ends_at",
+        "periodicity",
         "log_submission_cutoff_at",
         "auto_recalculate_on_upload",
+    )
+    values = payload.model_dump(exclude={"audit_reason"}, mode="python")
+    values["periodicity"] = (
+        payload.periodicity.model_dump(mode="json", exclude_none=True)
+        if payload.periodicity is not None
+        else None
     )
     changed_fields = [
         field_name
         for field_name in editable_fields
-        if getattr(contest, field_name) != getattr(payload, field_name)
+        if getattr(contest, field_name) != values[field_name]
     ]
     for field_name in editable_fields:
-        setattr(contest, field_name, getattr(payload, field_name))
+        setattr(contest, field_name, values[field_name])
     try:
         if changed_fields:
             record_audit_event(

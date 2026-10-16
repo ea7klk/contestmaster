@@ -35,7 +35,7 @@ export interface RuleCatalogResponse {
 }
 
 export interface RulesetDraft {
-  schema_version: 1
+  schema_version: 2
   ruleset_key: string
   version: string
   source_url?: string
@@ -135,13 +135,4 @@ export async function saveRulesetVersion(
   })
 }
 
-export function previewSchedule(
-  schedule: Record<string, unknown>,
-  year: number,
-): Promise<{ starts_at: string; ends_at: string }> {
-  return request('/rulesets/schedule-preview', {
-    method: 'POST',
-    body: JSON.stringify({ schedule, year }),
-  })
-}
 import { ApiError, apiRequest, type ApiIssue } from './client'

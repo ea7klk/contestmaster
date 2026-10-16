@@ -93,11 +93,10 @@ describe('ContestManagerView', () => {
     await flushPromises()
 
     expect(saved).toHaveLength(1)
-    expect(saved[0]?.starts_at).toBe(new Date('2026-05-01T00:00').toISOString())
-    expect(saved[0]?.ends_at).toBe(new Date('2026-05-01T06:00').toISOString())
-    expect(saved[0]?.log_submission_cutoff_at).toBe(
-      new Date('2026-05-08T00:00').toISOString(),
-    )
+    expect(saved[0]?.starts_at).toBe('2026-05-01T00:00:00Z')
+    expect(saved[0]?.ends_at).toBe('2026-05-01T06:00:00Z')
+    expect(saved[0]?.log_submission_cutoff_at).toBe('2026-05-08T00:00:00Z')
+    expect(saved[0]?.periodicity).toBeNull()
     expect(saved[0]?.auto_recalculate_on_upload).toBe(true)
     expect(wrapper.get('[role="status"]').text()).toContain(
       'Contest created as a draft',
@@ -137,6 +136,7 @@ describe('ContestManagerView', () => {
       description: null,
       starts_at: '2026-06-20T00:00:00Z',
       ends_at: '2026-06-20T06:00:00Z',
+      periodicity: null,
       log_submission_cutoff_at: '2026-06-27T00:00:00Z',
       status: 'draft',
       auto_recalculate_on_upload: false,
@@ -233,11 +233,20 @@ describe('ContestManagerView', () => {
     expect(
       (wrapper.get('.contest-form input').element as HTMLInputElement).value,
     ).toBe('Summer QSO Party')
+    expect(wrapper.text()).toContain('Contest periodicity')
+    expect(
+      (wrapper.get('.contest-form select').element as HTMLSelectElement).value,
+    ).toBe('annual_date')
     await wrapper.get('.contest-form input').setValue('Updated QSO Party')
     await wrapper.get('.contest-form').trigger('submit')
     await flushPromises()
 
     expect(updateBodies[0]?.name).toBe('Updated QSO Party')
+    expect(updateBodies[0]?.periodicity).toEqual({
+      frequency: 'annual_date',
+      month: 7,
+      day: 4,
+    })
     expect(wrapper.text()).toContain('Updated QSO Party')
     expect(wrapper.get('[role="status"]').text()).toContain(
       'Contest details saved',
@@ -256,7 +265,7 @@ describe('ContestManagerView', () => {
         auto_recalculate_on_upload: false,
       },
       ruleset: {
-        schema_version: 1,
+        schema_version: 2,
         ruleset_key: 'imported-field-day',
         version: '2026',
         rules: [{ id: 'schedule', rule: { kind: 'schedule' } }],
@@ -370,7 +379,7 @@ describe('ContestManagerView', () => {
       jsonFile(
         JSON.stringify({
           contest: { name: 'Collision' },
-          ruleset: { schema_version: 1, ruleset_key: 'collision', rules: [] },
+          ruleset: { schema_version: 2, ruleset_key: 'collision', rules: [] },
         }),
         'collision.json',
       ),
@@ -391,6 +400,7 @@ const editableContest = {
   description: 'Annual contest',
   starts_at: '2026-07-04T12:00:00Z',
   ends_at: '2026-07-04T18:00:00Z',
+  periodicity: { frequency: 'annual_date', month: 7, day: 4 },
   log_submission_cutoff_at: '2026-07-11T12:00:00Z',
   status: 'draft',
   auto_recalculate_on_upload: false,

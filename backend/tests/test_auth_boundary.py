@@ -308,6 +308,7 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
         "description": "Test contest",
         "starts_at": "2026-05-01T00:00:00Z",
         "ends_at": "2026-05-01T06:00:00Z",
+        "periodicity": {"frequency": "annual_date", "month": 5, "day": 1},
         "log_submission_cutoff_at": "2026-05-08T00:00:00Z",
         "auto_recalculate_on_upload": True,
         "audit_reason": "Initial contest setup",
@@ -322,6 +323,21 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     assert contest["owner_user_id"] != admin_id
     assert contest["status"] == "draft"
     assert contest["auto_recalculate_on_upload"] is True
+    assert contest["periodicity"] == {
+        "frequency": "annual_date",
+        "month": 5,
+        "day": 1,
+    }
+    invalid_schedule = first_manager.post(
+        "/api/v1/contests",
+        headers={"X-CSRF-Token": first_manager.cookies.get("contestmaster_csrf")},
+        json={
+            **payload,
+            "slug": "spring-sprint-invalid",
+            "periodicity": {"frequency": "annual_date", "month": 5, "day": 2},
+        },
+    )
+    assert invalid_schedule.status_code == 422
 
     other_manager = sign_in("two@example.test")
     assert other_manager.get("/api/v1/contests").json()["meta"]["total"] == 0
@@ -333,7 +349,12 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     assert listing.json()["meta"]["total"] == 1
     assert admin.get(f"/api/v1/contests/{contest['id']}").status_code == 200
 
-    changed = {**payload, "name": "Updated Sprint", "audit_reason": "Corrected event title"}
+    changed = {
+        **payload,
+        "name": "Updated Sprint",
+        "periodicity": None,
+        "audit_reason": "Corrected event title",
+    }
     forbidden = other_manager.put(
         f"/api/v1/contests/{contest['id']}",
         headers={"X-CSRF-Token": other_manager.cookies.get("contestmaster_csrf")},
@@ -347,6 +368,7 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "Updated Sprint"
+    assert updated.json()["periodicity"] is None
     with identity_database() as session:
         events = session.query(AuditEvent).order_by(AuditEvent.id).all()
         assert [event.action for event in events] == ["contest.created", "contest.updated"]
@@ -356,7 +378,7 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
             "Initial contest setup",
             "Corrected event title",
         ]
-        assert events[1].event_metadata == {"changed_fields": ["name"]}
+        assert events[1].event_metadata == {"changed_fields": ["name", "periodicity"]}
 
 
 def test_contest_mutations_require_session_and_csrf_and_ignore_client_owner(identity_database):
@@ -615,7 +637,7 @@ def test_contest_import_is_atomic_and_ruleset_version_is_readable(identity_datab
 
     ruleset_conflict_package = deepcopy(package)
     ruleset_conflict_package["contest"]["slug"] = "ruleset-conflict"
-    ruleset_conflict_package["ruleset"]["rules"][0]["id"] = "changed-schedule"
+    ruleset_conflict_package["ruleset"]["rules"][0]["id"] = "changed-submission"
     conflict = client.post(
         "/api/v1/contests/import", headers=headers, json=ruleset_conflict_package
     )

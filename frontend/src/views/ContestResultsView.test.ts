@@ -14,6 +14,7 @@ function resultsPage() {
       description: null,
       starts_at: '2026-04-01T00:00:00Z',
       ends_at: '2026-04-01T06:00:00Z',
+      periodicity: null,
       status: 'published',
       publication: {
         number: 2,
@@ -70,7 +71,9 @@ describe('ContestResultsView', () => {
         return new Response(JSON.stringify(resultsPage()), { status: 200 })
       }),
     )
-    const wrapper = mount(ContestResultsView, { props: { slug: 'spring-sprint' } })
+    const wrapper = mount(ContestResultsView, {
+      props: { slug: 'spring-sprint' },
+    })
     await flushPromises()
     await expectAccessible(wrapper.element)
 
@@ -95,14 +98,17 @@ describe('ContestResultsView', () => {
   it('renders a server error without leaving a stale result list visible', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({ error: { message: 'Contest not found.' } }),
-          { status: 404 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { message: 'Contest not found.' } }),
+            { status: 404 },
+          ),
       ),
     )
-    const wrapper = mount(ContestResultsView, { props: { slug: 'private-contest' } })
+    const wrapper = mount(ContestResultsView, {
+      props: { slug: 'private-contest' },
+    })
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('Contest not found.')
     expect(wrapper.find('table').exists()).toBe(false)

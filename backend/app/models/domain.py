@@ -171,6 +171,7 @@ class Contest(Base):
     description: Mapped[str | None] = mapped_column(Text)
     starts_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    periodicity: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     log_submission_cutoff_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     status: Mapped[ContestStatus] = mapped_column(
         enum_column(ContestStatus, "contest_status"), nullable=False, default=ContestStatus.DRAFT

@@ -181,24 +181,14 @@ def test_catalog_key_in_a_saved_ruleset_cannot_be_deleted(catalog_database):
 
 def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_database):
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "ruleset_key": "catalog-test",
         "version": "1",
         "rules": [
             {
-                "id": "schedule",
-                "rule": {
-                    "kind": "schedule",
-                    "duration_minutes": 60,
-                    "fixed_start_utc": "2026-01-01T00:00:00Z",
-                },
-            },
-            {
                 "id": "submission",
                 "rule": {
                     "kind": "submission",
-                    "cutoff_mode": "at_utc",
-                    "cutoff_utc": "2026-01-02T00:00:00Z",
                     "late_policy": "reject",
                 },
             },

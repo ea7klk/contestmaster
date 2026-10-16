@@ -17,7 +17,6 @@ from backend.app.rulesets.schema import (
     OperatingConstraintRule,
     PenaltyRule,
     PointRule,
-    ScheduleRule,
     ScoreFormulaRule,
     SubmissionRule,
     WorkflowHookRule,
@@ -36,16 +35,9 @@ class RuleType:
 
 RULE_TYPES: tuple[RuleType, ...] = (
     RuleType(
-        "schedule",
-        "Schedule",
-        "Resolve fixed or recurring contest times to UTC.",
-        "automatic",
-        ScheduleRule,
-    ),
-    RuleType(
         "submission",
         "Log submission",
-        "Set a separate UTC cutoff and late-log policy.",
+        "Choose how late submissions are classified after the contest-level cutoff.",
         "automatic",
         SubmissionRule,
     ),

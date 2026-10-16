@@ -1,10 +1,10 @@
 # Importable contest ruleset starter drafts
 
-Each JSON file in this folder is a separate schema-version-1 draft. In the Ruleset composer choose **Import JSON draft** and select one file. After import, validate and review the draft before saving it as a version.
+Each JSON file in this folder is a separate schema-version-2 draft. In the Ruleset composer choose **Import JSON draft** and select one file. After import, validate and review the draft before saving it as a version.
 
 These are teaching and configuration starters, not official or complete implementations of the sponsor's rules. Check the linked official rules for the contest edition you intend to run. In particular, confirm dates, submission deadline, categories, exchange variants, mode/band eligibility, multipliers, point values, penalties, and adjudication. Several contests have geographic or participant-specific conditions that the current rules engine cannot yet express. Do not activate or publish a contest from one of these examples without that review. The files summarize no contest rule text; each points to its sponsor's rules page.
 
-The examples use a simple integer score formula as a valid baseline. It does not claim to reproduce each sponsor's official calculation. A source edition is included in every file to make the provenance visible in the composer.
+The examples use a simple integer score formula as a valid baseline. They contain reusable rules only: enter start/end times, periodicity, and the log-submission cutoff in contest configuration. A source edition is included in every file to make the provenance visible in the composer.
 
 ## Drafts
 
@@ -41,7 +41,7 @@ PY
 
 A successful schema check confirms that the current composer/backend can load the draft structure; it does not verify that the values implement the sponsor's full rulebook.
 
-The schema-version-1 bonus rule uses the presence of `evidence_key` to indicate that an evidence declaration is required. Older drafts that also include `evidence_required` are accepted only when the boolean agrees with the key's presence; import removes that redundant field and exports omit it. The supplied starter drafts have been checked against the current backend schema and do not need content changes for this normalization.
+The schema-version-2 bonus rule uses the presence of `evidence_key` to indicate that an evidence declaration is required. Older drafts that also include `evidence_required` are accepted only when the boolean agrees with the key's presence; import removes that redundant field and exports omit it. The supplied starter drafts are schema version 2: event dates, recurrence, and cutoff timestamps belong to contest configuration and are absent from reusable rulesets. Legacy version 1 drafts can be imported in the composer, which removes those legacy settings before export.
 
 The Vue import flow is covered by a test that loads every draft through the file-input workflow:
 

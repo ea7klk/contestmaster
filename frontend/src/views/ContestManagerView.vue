@@ -6,11 +6,13 @@ import {
   createContest,
   importContest,
   listContests,
+  previewContestSchedule,
   selectRuleset,
   updateContest,
   type Contest,
   type ContestDraft,
   type ContestImportPackage,
+  type ContestPeriodicity,
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import { listRulesetVersions, type SavedRulesetVersion } from '../api/rulesets'
@@ -21,6 +23,11 @@ interface ContestForm {
   description: string
   starts_at: string
   ends_at: string
+  periodicity_frequency: 'fixed' | ContestPeriodicity['frequency']
+  periodicity_month: number
+  periodicity_day: number
+  periodicity_weekday: number
+  periodicity_occurrence: number
   log_submission_cutoff_at: string
   auto_recalculate_on_upload: boolean
 }
@@ -37,6 +44,9 @@ const statusMessage = ref('')
 const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
 const importing = ref(false)
+const previewYear = ref(new Date().getUTCFullYear())
+const schedulePreview = ref('')
+const schedulePreviewError = ref('')
 
 function emptyForm(): ContestForm {
   return {
@@ -45,6 +55,11 @@ function emptyForm(): ContestForm {
     description: '',
     starts_at: '',
     ends_at: '',
+    periodicity_frequency: 'fixed',
+    periodicity_month: 1,
+    periodicity_day: 1,
+    periodicity_weekday: 5,
+    periodicity_occurrence: 1,
     log_submission_cutoff_at: '',
     auto_recalculate_on_upload: false,
   }
@@ -55,15 +70,14 @@ const formTitle = computed(() =>
   editingId.value === null ? 'Create a contest' : 'Edit contest',
 )
 
-function localInputValue(instant: string): string {
+function utcInputValue(instant: string): string {
   const date = new Date(instant)
   if (Number.isNaN(date.valueOf())) return ''
-  const local = new Date(date.valueOf() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
+  return date.toISOString().slice(0, 16)
 }
 
 function toUtcInstant(value: string): string {
-  return new Date(value).toISOString()
+  return `${value}:00Z`
 }
 
 function contestForm(contest: Contest): ContestForm {
@@ -71,11 +85,36 @@ function contestForm(contest: Contest): ContestForm {
     name: contest.name,
     slug: contest.slug,
     description: contest.description ?? '',
-    starts_at: localInputValue(contest.starts_at),
-    ends_at: localInputValue(contest.ends_at),
-    log_submission_cutoff_at: localInputValue(contest.log_submission_cutoff_at),
+    starts_at: utcInputValue(contest.starts_at),
+    ends_at: utcInputValue(contest.ends_at),
+    periodicity_frequency: contest.periodicity?.frequency ?? 'fixed',
+    periodicity_month: contest.periodicity?.month ?? 1,
+    periodicity_day: contest.periodicity?.day ?? 1,
+    periodicity_weekday: contest.periodicity?.weekday ?? 5,
+    periodicity_occurrence: contest.periodicity?.occurrence ?? 1,
+    log_submission_cutoff_at: utcInputValue(contest.log_submission_cutoff_at),
     auto_recalculate_on_upload: contest.auto_recalculate_on_upload,
   }
+}
+
+function configuredPeriodicity(source: ContestForm): ContestPeriodicity | null {
+  if (source.periodicity_frequency === 'fixed') return null
+  if (source.periodicity_frequency === 'annual_date') {
+    return {
+      frequency: source.periodicity_frequency,
+      month: source.periodicity_month,
+      day: source.periodicity_day,
+    }
+  }
+  if (source.periodicity_frequency === 'nth_weekday') {
+    return {
+      frequency: source.periodicity_frequency,
+      month: source.periodicity_month,
+      weekday: source.periodicity_weekday,
+      occurrence: source.periodicity_occurrence,
+    }
+  }
+  return { frequency: 'first_full_weekend', month: source.periodicity_month }
 }
 
 function toDraft(source: ContestForm): ContestDraft {
@@ -85,8 +124,30 @@ function toDraft(source: ContestForm): ContestDraft {
     description: source.description.trim() || null,
     starts_at: toUtcInstant(source.starts_at),
     ends_at: toUtcInstant(source.ends_at),
+    periodicity: configuredPeriodicity(source),
     log_submission_cutoff_at: toUtcInstant(source.log_submission_cutoff_at),
     auto_recalculate_on_upload: source.auto_recalculate_on_upload,
+  }
+}
+
+async function loadSchedulePreview() {
+  schedulePreview.value = ''
+  schedulePreviewError.value = ''
+  const periodicity = configuredPeriodicity(form)
+  if (!periodicity) return
+  try {
+    const preview = await previewContestSchedule(
+      periodicity,
+      previewYear.value,
+      toUtcInstant(form.starts_at),
+      toUtcInstant(form.ends_at),
+    )
+    schedulePreview.value = `${preview.starts_at} – ${preview.ends_at}`
+  } catch (error) {
+    schedulePreviewError.value =
+      error instanceof Error
+        ? error.message
+        : 'Schedule could not be previewed.'
   }
 }
 
@@ -213,12 +274,12 @@ async function importContestFile(event: Event) {
       )
     }
     if (
-      parsed.ruleset.schema_version !== 1 ||
+      parsed.ruleset.schema_version !== 2 ||
       typeof parsed.ruleset.ruleset_key !== 'string' ||
       !Array.isArray(parsed.ruleset.rules)
     ) {
       throw new Error(
-        'The package ruleset must be a schema-version-1 ruleset draft.',
+        'The package ruleset must be a schema-version-2 ruleset draft.',
       )
     }
     const result = await importContest(
@@ -296,7 +357,7 @@ onMounted(refreshData)
     </p>
 
     <p v-if="!loading && !forbidden" class="field-help">
-      Import a JSON package with contest metadata and a schema-version-1 ruleset
+      Import a JSON package with contest metadata and a schema-version-2 ruleset
       draft. The imported contest starts as a draft.
     </p>
 
@@ -345,15 +406,109 @@ onMounted(refreshData)
           <textarea v-model="form.description" maxlength="10000" rows="3" />
         </label>
         <label>
-          Contest starts (your local time)
+          Contest starts (UTC)
           <input v-model="form.starts_at" required type="datetime-local" />
         </label>
         <label>
-          Contest ends (your local time)
+          Contest ends (UTC)
           <input v-model="form.ends_at" required type="datetime-local" />
         </label>
+        <fieldset class="full-width schedule-controls">
+          <legend>Contest periodicity</legend>
+          <p>
+            Start, end, and recurrence belong to this contest. Times are UTC;
+            the recurrence selector chooses the UTC calendar date for future
+            editions. The dates above are this edition's actual instants.
+          </p>
+          <label>
+            Schedule type
+            <select v-model="form.periodicity_frequency">
+              <option value="fixed">One-time contest</option>
+              <option value="annual_date">Annual date</option>
+              <option value="nth_weekday">Nth weekday</option>
+              <option value="first_full_weekend">First full weekend</option>
+            </select>
+          </label>
+          <label v-if="form.periodicity_frequency !== 'fixed'">
+            UTC month
+            <select v-model.number="form.periodicity_month">
+              <option v-for="month in 12" :key="month" :value="month">
+                {{
+                  new Date(Date.UTC(2020, month - 1, 1)).toLocaleString('en', {
+                    month: 'long',
+                    timeZone: 'UTC',
+                  })
+                }}
+              </option>
+            </select>
+          </label>
+          <label v-if="form.periodicity_frequency === 'annual_date'">
+            UTC day of month
+            <input
+              v-model.number="form.periodicity_day"
+              type="number"
+              min="1"
+              max="31"
+            />
+          </label>
+          <template v-if="form.periodicity_frequency === 'nth_weekday'">
+            <label>
+              Weekday
+              <select v-model.number="form.periodicity_weekday">
+                <option
+                  v-for="(weekday, index) in [
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                    'Sunday',
+                  ]"
+                  :key="weekday"
+                  :value="index"
+                >
+                  {{ weekday }}
+                </option>
+              </select>
+            </label>
+            <label>
+              Occurrence
+              <select v-model.number="form.periodicity_occurrence">
+                <option :value="1">First</option>
+                <option :value="2">Second</option>
+                <option :value="3">Third</option>
+                <option :value="4">Fourth</option>
+                <option :value="5">Fifth</option>
+                <option :value="-1">Last</option>
+              </select>
+            </label>
+          </template>
+          <template v-if="form.periodicity_frequency !== 'fixed'">
+            <label>
+              Preview year
+              <input
+                v-model.number="previewYear"
+                type="number"
+                min="1900"
+                max="2200"
+              />
+            </label>
+            <button
+              type="button"
+              class="secondary-button"
+              @click="loadSchedulePreview"
+            >
+              Preview UTC dates
+            </button>
+            <p v-if="schedulePreview" role="status">{{ schedulePreview }}</p>
+            <p v-if="schedulePreviewError" role="alert">
+              {{ schedulePreviewError }}
+            </p>
+          </template>
+        </fieldset>
         <label>
-          Log submission cutoff (your local time)
+          Log submission cutoff (UTC)
           <input
             v-model="form.log_submission_cutoff_at"
             required
@@ -366,9 +521,9 @@ onMounted(refreshData)
         Recalculate results after an accepted log upload
       </label>
       <p class="field-help">
-        Times are converted to UTC before submission. Cutoff is stored
-        separately from contest end. Category and exchange setup is part of the
-        selected ruleset.
+        These values are entered and stored as UTC instants. The submission
+        cutoff is independent of contest end. Category and exchange setup is
+        part of the selected ruleset.
       </p>
       <button class="primary-button" type="submit" :disabled="saving">
         {{

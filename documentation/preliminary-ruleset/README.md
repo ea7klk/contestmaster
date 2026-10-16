@@ -22,7 +22,7 @@
 - [x] Separate log submission cutoff in UTC, including late-log handling and any explicitly allowed extension process.
 - [x] Operating-time limits independent of the contest's wall-clock period.
 - [x] Off-time rules: minimum continuous off period, total permitted operating time, number of required breaks, and whether listening counts as operating.
-- [x] Recurring schedules such as “first full weekend,” with the resolved UTC instants saved for each edition.
+- [x] Contest-level periodicity such as “first full weekend,” with each edition's actual UTC start/end instants saved in contest configuration.
 - [x] Accepted bands and band segments, with restrictions that may depend on mode, region, license, or category.
 - [x] Accepted modes and mode families, including mixed-mode entries and whether the same station may be credited again on another mode.
 - [x] Geographic or entity tables used by scoring, with an identified source and version: CQ/ITU zones, DXCC entities, ARRL/RAC sections, Maidenhead grids, continents, states, provinces, or contest-specific regions.
@@ -121,9 +121,9 @@ Official judging policies vary even where the event calculation is similar: CQ a
 
 ## Initial reusable rule catalog of the system
 
-The checked items below are adopted as the system's initial reusable ruleset catalog. They define the rule types Contestmaster must support in its rule composer and backend ruleset interface. They are not a single contest's configured rule values: each contest manager supplies and versions the parameters, and each contest's published rules determine which types and values apply. The detailed survey sections above provide the supporting requirements and examples for this initial catalog.
+The checked items below are adopted as the system's initial reusable ruleset catalog. They define the rule types Contestmaster must support in its rule composer and backend ruleset interface. Contest dates, recurrence, and the absolute submission cutoff belong to contest configuration, not reusable rulesets. The submission rule covers late-log handling policy. The detailed survey sections above provide the supporting requirements and examples for this initial catalog.
 
-- [x] Schedule and UTC submission cutoff.
+- [x] Late-submission handling policy; contest configuration owns the UTC cutoff.
 - [x] Category dimensions and compatibility constraints.
 - [x] Declarative exchange schema and field validators.
 - [x] QSO eligibility predicates and configurable duplicate scope.

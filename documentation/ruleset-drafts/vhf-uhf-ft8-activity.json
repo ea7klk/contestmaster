@@ -1,26 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "ruleset_key": "vhf-uhf-ft8-activity",
   "version": "2026-draft",
   "source_url": "https://ft8activity.eu/rules/",
   "source_edition": "2026 example draft (October 144 MHz round); starter only, compare with linked official rules before use",
   "rules": [
     {
-      "id": "schedule",
-      "rule": {
-        "kind": "schedule",
-        "timezone": "UTC",
-        "duration_minutes": 240,
-        "fixed_start_utc": "2026-10-07T17:00:00Z",
-        "start_time_utc": "00:00:00"
-      }
-    },
-    {
       "id": "submission",
       "rule": {
         "kind": "submission",
-        "cutoff_mode": "minutes_after_contest",
-        "minutes_after_contest": 10080,
         "late_policy": "checklog",
         "manager_extension_allowed": false
       }

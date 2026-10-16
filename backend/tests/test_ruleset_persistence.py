@@ -8,6 +8,7 @@ from backend.app.db import Base, build_engine
 from backend.app.models import (
     Contest,
     RulesetActivation,
+    RulesetVersion,
     SystemRole,
     SystemUser,
 )
@@ -71,6 +72,47 @@ def test_ruleset_version_is_immutable_and_idempotent_by_key_and_version(session:
     changed = definition.model_copy(update={"source_edition": "different edition"})
     with pytest.raises(RulesetConflictError, match="different content"):
         save_ruleset_version(session, changed, created_by_user_id=actor.id)
+
+
+def test_loading_legacy_ruleset_moves_schedule_and_cutoff_out_of_rule_config(session: Session):
+    actor, _ = create_actor_and_contest(session)
+    configuration = validate_ruleset(valid_payload()).model_dump(mode="json")
+    configuration["schema_version"] = 1
+    configuration["ruleset_key"] = "legacy-schedule"
+    configuration["version"] = "2025"
+    configuration["source_url"] = "https://example.test/rules/2025"
+    configuration["source_edition"] = "2025 edition"
+    configuration["rules"].insert(
+        0,
+        {
+            "id": "schedule",
+            "rule": {
+                "kind": "schedule",
+                "timezone": "UTC",
+                "recurrence": {"frequency": "annual_date", "month": 1, "day": 1},
+            },
+        },
+    )
+    submission = next(item["rule"] for item in configuration["rules"] if item["id"] == "submission")
+    submission.update({"cutoff_mode": "at_utc", "cutoff_utc": "2026-01-02T00:00:00Z"})
+    stored = RulesetVersion(
+        ruleset_key="legacy-schedule",
+        version="2025",
+        source_url="https://example.test/rules/2025",
+        source_edition="2025 edition",
+        rule_type_keys=[*sorted({item["rule"]["kind"] for item in configuration["rules"]})],
+        configuration=configuration,
+        created_by_user_id=actor.id,
+    )
+    session.add(stored)
+    session.flush()
+
+    loaded = load_ruleset_version(stored)
+
+    assert loaded.schema_version == 2
+    assert all(item.rule.kind != "schedule" for item in loaded.rules)
+    loaded_submission = next(item.rule for item in loaded.rules if item.rule.kind == "submission")
+    assert not hasattr(loaded_submission, "cutoff_utc")
 
 
 def test_activation_history_is_append_only_and_contest_keeps_selected_version(session: Session):

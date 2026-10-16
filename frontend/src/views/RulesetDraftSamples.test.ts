@@ -19,7 +19,6 @@ const drafts = import.meta.glob(
 >
 
 const requiredKinds = [
-  'schedule',
   'submission',
   'categories',
   'exchange',

@@ -11,6 +11,7 @@ const details = {
   description: 'A public contest.',
   starts_at: '2026-10-20T00:00:00Z',
   ends_at: '2026-10-20T06:00:00Z',
+  periodicity: null,
   log_submission_cutoff_at: '2026-10-21T00:00:00Z',
   status: 'open',
 }

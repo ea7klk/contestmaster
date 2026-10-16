@@ -6,7 +6,7 @@ This roadmap turns the product and architecture decisions in [the system overvie
 
 Deliver a deployable web application in which a contest manager can create and configure a contest, a participant can upload a log without registering, the backend can validate and score it using a versioned ruleset, and anyone can view published results without signing in. Global administrators can administer the whole system. All persistent application data uses the Python ORM with SQLite; all score values are integers.
 
-The initial release includes every checked rule type in the system catalog: schedule/cutoff, categories, exchange schema, QSO eligibility and duplicates, points and integer score composition, multipliers, bonuses and penalties, operating limits, log format mapping, cross-log checks and review/publication eligibility, and ruleset provenance with explainable immutable score runs.
+The initial release includes every checked rule type in the system catalog: late-submission policy, categories, exchange schema, QSO eligibility and duplicates, points and integer score composition, multipliers, bonuses and penalties, operating limits, log format mapping, cross-log checks and review/publication eligibility, and ruleset provenance with explainable immutable score runs. UTC event dates, recurrence, and submission cutoffs are contest configuration.
 
 IARU organizational-region master data and built-in IARU-region contest conditions are deferred; they are not a Phase 3 or Phase 4 dependency. Amateur-radio ITU-zone support remains separate. See the [standalone backlog issue](https://github.com/ea7klk/contestmaster/issues/77) for later reconsideration.
 
@@ -76,7 +76,7 @@ None. All current Phase 0 decisions have been recorded.
 **Depends on:** Phase 2 domain model; use Phase 3 reference-data identifiers for geographic and prefix rules.
 
 1. Define a declarative, schema-validated ruleset format and a typed registry for the initial reusable rule types. Expose the schemas to the Vue composer and support conditional rule groups without arbitrary user-supplied code or `eval`.
-2. Implement schedule resolution (including recurrence to saved UTC instants), UTC log cutoff and late-log policy, category dimensions/compatibility, and exchange schemas/validators.
+2. Implement contest-level schedule resolution (including periodicity to saved UTC instants) and cutoff validation; implement late-log policy, category dimensions/compatibility, and exchange schemas/validators in the ruleset engine.
 3. Implement QSO eligibility predicates over contact geography and configured entry/station facts, duplicate-key scopes, integer point rules, multiplier definitions/scopes/eligibility, integer bonuses/penalties, and an integer-only score expression with explicit operation order and rounding.
 4. Model operating-time/off-time, band-change, and transmitter constraints, clearly identifying which checks are automatic and which need entrant declarations or human review.
 5. Define import/export format mappings and category mappings as configuration separate from parser code. Emit structured pending hook requests for cross-log checks, adjudication decisions, result publication, and award eligibility; trusted downstream services consume these requests.
@@ -92,7 +92,7 @@ None. All current Phase 0 decisions have been recorded.
 1. Implement the two privileged roles: global administrator and contest manager. Provision the first global administrator through a documented secure operation.
 2. Enforce authorization in the API: administrators have all system privileges; contest managers can create/manage their own contests and edit their rules. Establish and test a shared contest-ownership dependency for all contest-scoped operations. Result generation and result-list actions are implemented in Phase 8 and must use this dependency.
 3. Implement email magic-link verification and sign-in for registered contest participants, scoped only to that participant's entries and profile. Do not map participant identities to either privileged role.
-4. Build Vue privileged sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, schedule/cutoff, category setup, ruleset selection, and automatic recalculation setting.
+4. Build Vue privileged sign-in and contest-manager workflows, including contest list/detail, contest creation/editing, UTC schedule/periodicity/cutoff, category setup, ruleset selection, and automatic recalculation setting.
 5. Implement contest status/publication transitions and validation before a contest/ruleset is made available. Let managers set guest access expiry and close/revoke or rotate entry grants.
 6. Record administrative changes with actor, time, target, and an audit reason where appropriate.
 7. Build a global-administrator-only master-data version section in the Vue application and matching protected API operations. Show dataset versions, effective intervals, provenance, sync results, and references; allow activation of validated candidates and deletion only for old non-current versions with no contest, score-run, QSO-resolution, or other retained-record references. Enforce the role check in the API and reference checks in the API/database, not only in the UI.

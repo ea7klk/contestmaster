@@ -26,15 +26,8 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
     for configured in definition.rules:
         rule = configured.rule
         condition = " [conditional]" if configured.when is not None else ""
-        if rule.kind == "schedule":
-            summary = (
-                f"Recurring UTC schedule at {rule.start_time_utc.isoformat()}, "
-                f"duration {rule.duration_minutes} minutes"
-                if rule.recurrence
-                else f"Fixed schedule starting {rule.fixed_start_utc.isoformat()}"
-            )
-        elif rule.kind == "submission":
-            summary = f"Submission cutoff {rule.cutoff_mode}; late policy {rule.late_policy}"
+        if rule.kind == "submission":
+            summary = f"Late submission policy {rule.late_policy}"
         elif rule.kind == "categories":
             dimensions = ", ".join(
                 f"{dimension.label}: {', '.join(choice.label for choice in dimension.choices)}"

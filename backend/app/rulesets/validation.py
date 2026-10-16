@@ -20,7 +20,6 @@ from backend.app.rulesets.schema import (
 
 REQUIRED_RULE_TYPES = frozenset(
     {
-        "schedule",
         "submission",
         "categories",
         "exchange",
@@ -107,11 +106,11 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
         errors.append(
             {"path": "rules", "message": "A ruleset must define exactly one score_formula."}
         )
-    if kinds.count("schedule") > 1 or kinds.count("submission") > 1:
+    if kinds.count("submission") > 1:
         errors.append(
             {
                 "path": "rules",
-                "message": "A ruleset may define only one schedule and one submission rule.",
+                "message": "A ruleset may define only one submission rule.",
             }
         )
     for singleton in ("categories", "format_mapping"):
@@ -121,8 +120,7 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
             )
     for index, configured in enumerate(definition.rules):
         if (
-            configured.rule.kind
-            in {"schedule", "submission", "categories", "format_mapping", "score_formula"}
+            configured.rule.kind in {"submission", "categories", "format_mapping", "score_formula"}
             and configured.when is not None
         ):
             errors.append(
@@ -142,15 +140,7 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
         field.key: field for rule in rules if rule.kind == "exchange" for field in rule.fields
     }
     for index, rule in enumerate(rules):
-        if rule.kind == "schedule":
-            if rule.timezone != "UTC":
-                errors.append(
-                    {
-                        "path": f"rules[{index}].timezone",
-                        "message": "Contest schedules must use UTC.",
-                    }
-                )
-        elif (
+        if (
             rule.kind == "points"
             and rule.fact == "exchange"
             and rule.exchange_field not in exchange_fields

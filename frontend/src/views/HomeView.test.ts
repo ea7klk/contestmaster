@@ -13,6 +13,7 @@ const contest = {
   description: 'Six hours on the air.',
   starts_at: '2026-04-01T00:00:00Z',
   ends_at: '2026-04-01T06:00:00Z',
+  periodicity: null,
   status: 'published',
   log_submission_cutoff_at: '2026-04-02T00:00:00Z',
 }
@@ -24,6 +25,7 @@ const upcomingContest = {
   slug: 'autumn-test',
   starts_at: '2027-10-16T00:00:00Z',
   ends_at: '2027-10-16T06:00:00Z',
+  periodicity: null,
   log_submission_cutoff_at: '2027-10-17T00:00:00Z',
   status: 'open',
 }

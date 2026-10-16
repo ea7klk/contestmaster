@@ -4,7 +4,6 @@ import { expectAccessible } from '../test/a11y'
 import RulesetComposerView from './RulesetComposerView.vue'
 
 const requiredRules = [
-  'schedule',
   'submission',
   'categories',
   'exchange',
@@ -124,7 +123,7 @@ describe('RulesetComposerView', () => {
     }
   })
 
-  it('normalizes legacy bonus evidence flags and exports only the evidence key', async () => {
+  it('moves legacy event timing out of rulesets during import and exports version 2', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -163,6 +162,22 @@ describe('RulesetComposerView', () => {
       version: '1',
       rules: [
         {
+          id: 'schedule',
+          rule: {
+            kind: 'schedule',
+            recurrence: { frequency: 'annual_date', month: 4, day: 2 },
+          },
+        },
+        {
+          id: 'submission',
+          rule: {
+            kind: 'submission',
+            late_policy: 'checklog',
+            cutoff_mode: 'at_utc',
+            cutoff_utc: '2026-04-09T00:00:00Z',
+          },
+        },
+        {
           id: 'completion-bonus',
           rule: {
             kind: 'bonus',
@@ -187,6 +202,9 @@ describe('RulesetComposerView', () => {
     })
     await input.trigger('change')
     await flushPromises()
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Configure contest dates, periodicity, and submission cutoff in contest configuration',
+    )
     const downloadButton = wrapper
       .findAll('button')
       .find((button) => button.text() === 'Download JSON draft')
@@ -201,7 +219,15 @@ describe('RulesetComposerView', () => {
       reader.readAsText(downloaded!)
     })
     const exported = JSON.parse(exportedText)
+    expect(exported.schema_version).toBe(2)
+    expect(
+      exported.rules.map((item: { rule: { kind: string } }) => item.rule.kind),
+    ).toEqual(['submission', 'bonus'])
     expect(exported.rules[0].rule).toEqual({
+      kind: 'submission',
+      late_policy: 'checklog',
+    })
+    expect(exported.rules[1].rule).toEqual({
       kind: 'bonus',
       basis: 'per_entry',
       points: 5,
@@ -209,7 +235,7 @@ describe('RulesetComposerView', () => {
     })
   })
 
-  it('explains UTC scheduling and the configurable rule sections', async () => {
+  it('explains reusable ruleset sections without contest schedule controls', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -231,8 +257,9 @@ describe('RulesetComposerView', () => {
     await flushPromises()
     await expectAccessible(wrapper.element)
     const text = wrapper.text()
-    expect(text).toContain('All contest times use UTC')
-    expect(text).toContain('Daylight-saving clock folds')
+    expect(text).not.toContain('All contest times use UTC')
+    expect(text).not.toContain('Daylight-saving clock folds')
+    expect(text).not.toContain('Contest schedule')
     expect(text).toContain('classification axes')
     expect(text).toContain('Exchange schema')
     expect(text).toContain('combines the worked callsign')
@@ -260,7 +287,7 @@ describe('RulesetComposerView', () => {
         expect(String(input)).toMatch(/\/rulesets\/validate$/)
         expect(init?.method).toBe('POST')
         const draft = JSON.parse(String(init?.body))
-        expect(draft.schema_version).toBe(1)
+        expect(draft.schema_version).toBe(2)
         expect(draft.ruleset_key).toBe('my-contest')
         expect(
           draft.rules.map((item: { rule: { kind: string } }) => item.rule.kind),
@@ -297,10 +324,10 @@ describe('RulesetComposerView', () => {
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
     expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
-    await wrapper
-      .findAll('.rule-card')[4]
-      .get('.condition-toggle input')
-      .setValue(true)
+    const eligibilityRule = wrapper
+      .findAll('.rule-card')
+      .find((card) => card.get('h3').text() === 'eligibility')
+    await eligibilityRule!.get('.condition-toggle input').setValue(true)
 
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()
@@ -416,7 +443,7 @@ describe('RulesetComposerView', () => {
 
   it('loads a saved version for editing and saves a separate version', async () => {
     const originalConfiguration = {
-      schema_version: 1,
+      schema_version: 2,
       ruleset_key: 'field-day',
       version: '2026',
       rules: requiredRules.map((kind) => ({ id: kind, rule: { kind } })),

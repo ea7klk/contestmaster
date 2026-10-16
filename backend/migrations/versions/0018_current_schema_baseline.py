@@ -87,6 +87,10 @@ _CONTEST_FREE_BANDS = {"2200m", "630m", "60m", "30m", "17m", "12m"}
 def upgrade() -> None:
     bind = op.get_bind()
     Base.metadata.create_all(bind=bind)
+    # This baseline predates contest periodicity. Keep its shape stable even
+    # though its table definitions are sourced from the current ORM metadata;
+    # revision 0019 adds the column for both fresh and existing installations.
+    op.drop_column("contests", "periodicity")
     bind.execute(
         sa.insert(
             sa.table(

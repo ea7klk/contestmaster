@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,19 +23,11 @@ from backend.app.rulesets.persistence import (
     save_ruleset_version,
 )
 from backend.app.rulesets.registry import rule_catalog
-from backend.app.rulesets.schedules import ScheduleResolutionError, resolve_schedule
-from backend.app.rulesets.schema import RulesetDefinition, ScheduleRule
+from backend.app.rulesets.schema import RulesetDefinition
 from backend.app.rulesets.summary import validation_report
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 router = APIRouter(tags=["rulesets"])
-
-
-class SchedulePreviewPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    schedule: ScheduleRule
-    year: int = Field(ge=1900, le=2200)
 
 
 @router.get("/catalog", responses=API_ERROR_RESPONSES)
@@ -74,20 +65,6 @@ def validate_ruleset_payload(
             details,
         )
     return validation_report(definition)
-
-
-@router.post("/schedule-preview")
-def preview_schedule(payload: SchedulePreviewPayload) -> dict[str, object]:
-    try:
-        resolved = resolve_schedule(
-            payload.schedule, payload.year if payload.schedule.recurrence else None
-        )
-    except ScheduleResolutionError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {
-        "starts_at": resolved.starts_at.isoformat().replace("+00:00", "Z"),
-        "ends_at": resolved.ends_at.isoformat().replace("+00:00", "Z"),
-    }
 
 
 @router.get("/versions", responses=API_ERROR_RESPONSES)
