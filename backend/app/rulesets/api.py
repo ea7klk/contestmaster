@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
+from backend.app.api.pagination import Page, page_meta, pagination_parameters
 from backend.app.audit import record_audit_event
 from backend.app.contest_deletion import DeletionConflictError, delete_unused_ruleset_version
 from backend.app.db import get_session
@@ -79,12 +80,29 @@ def validate_ruleset_payload(
 def list_ruleset_versions(
     actor: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
+    page: Annotated[Page, Depends(pagination_parameters)],
+    q: Annotated[str | None, Query(max_length=120)] = None,
 ) -> dict[str, object]:
+    statement = select(RulesetVersion)
+    count_statement = select(func.count()).select_from(RulesetVersion)
+    search = (q or "").strip()
+    if search:
+        pattern = f"%{search}%"
+        search_filter = or_(
+            RulesetVersion.ruleset_key.ilike(pattern),
+            RulesetVersion.version.ilike(pattern),
+            RulesetVersion.source_edition.ilike(pattern),
+        )
+        statement = statement.where(search_filter)
+        count_statement = count_statement.where(search_filter)
+    total = session.scalar(count_statement) or 0
     versions = list(
         session.scalars(
-            select(RulesetVersion).order_by(
+            statement.order_by(
                 RulesetVersion.ruleset_key, RulesetVersion.version, RulesetVersion.id
             )
+            .offset((page.page - 1) * page.page_size)
+            .limit(page.page_size)
         )
     )
     return {
@@ -104,7 +122,8 @@ def list_ruleset_versions(
                 ),
             }
             for version in versions
-        ]
+        ],
+        "meta": page_meta(page, total),
     }
 
 

@@ -101,7 +101,7 @@ watch(
       >
         <RouterLink to="/">Published results</RouterLink>
         <RouterLink to="/manage/contests">Manage contests</RouterLink>
-        <RouterLink to="/rulesets/compose">Ruleset composer</RouterLink>
+        <RouterLink to="/manage/rulesets">Manage rulesets</RouterLink>
         <RouterLink to="/participant/access">Participant access</RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"

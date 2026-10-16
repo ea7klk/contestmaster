@@ -49,9 +49,15 @@ export interface ContestList {
   meta: { page: number; page_size: number; total: number; pages: number }
 }
 
-export function listContests(signal?: AbortSignal) {
+export function listContests(
+  page = 1,
+  pageSize = 20,
+  query = '',
+  signal?: AbortSignal,
+) {
+  const search = query.trim()
   return apiRequest<ContestList>(
-    '/contests?page=1&page_size=100&sort=starts_at&order=desc',
+    `/contests?page=${page}&page_size=${pageSize}&sort=starts_at&order=desc${search ? `&q=${encodeURIComponent(search)}` : ''}`,
     {
       method: 'GET',
       signal,

@@ -8,524 +8,217 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+const manager = {
+  id: 4,
+  username: 'manager',
+  email: 'manager@example.test',
+  display_name: 'Contest Manager',
+  role: 'contest_manager',
+}
+const contest = (id: number, name: string, status = 'draft') => ({
+  id,
+  owner_user_id: 4,
+  name,
+  slug: name.toLowerCase().replaceAll(' ', '-'),
+  description: null,
+  starts_at: '2026-07-04T12:00:00Z',
+  ends_at: '2026-07-04T18:00:00Z',
+  periodicity: null,
+  log_submission_cutoff_at: '2026-07-11T12:00:00Z',
+  status,
+  auto_recalculate_on_upload: false,
+  ruleset_version_id: status === 'draft' ? null : 21,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+})
+const meta = { page: 1, page_size: 20, total: 0, pages: 0 }
+
 function ok(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200 })
 }
 
-function managerUser() {
+function rulesets(items: unknown[] = []) {
   return {
-    id: 4,
-    username: 'manager',
-    email: 'manager@example.test',
-    display_name: 'Contest Manager',
-    role: 'contest_manager',
+    items,
+    meta: { page: 1, page_size: 100, total: items.length, pages: 1 },
   }
 }
 
 function mountManager() {
   return mount(ContestManagerView, {
     global: {
-      stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      stubs: {
+        RouterLink: { template: '<a :href="to"><slot /></a>', props: ['to'] },
+      },
     },
   })
 }
 
-async function selectFile(element: Element, file: File) {
-  const fileInput = element.querySelector('input[type="file"]')
-  if (!(fileInput instanceof HTMLInputElement))
-    throw new Error('File input missing')
-  Object.defineProperty(fileInput, 'files', {
-    configurable: true,
-    value: [file],
+async function selectContestPackage(element: Element, contents: string) {
+  const input = element.querySelector('input[type="file"]')
+  if (!(input instanceof HTMLInputElement))
+    throw new Error('Import input missing')
+  const file = new File([contents], 'contest.json', {
+    type: 'application/json',
   })
-  fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+  Object.defineProperty(file, 'text', { value: async () => contents })
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+  input.dispatchEvent(new Event('change', { bubbles: true }))
   await flushPromises()
 }
 
-function jsonFile(contents: string, name: string) {
-  const file = new File([contents], name, { type: 'application/json' })
-  Object.defineProperty(file, 'text', {
-    value: async () => contents,
-  })
-  return file
-}
-
-describe('ContestManagerView', () => {
-  it('creates a contest with separate cutoff and automatic recalculation settings', async () => {
-    const saved: Record<string, unknown>[] = []
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.includes('/contests') && init?.method === 'POST') {
-          const payload = JSON.parse(String(init.body)) as Record<
-            string,
-            unknown
-          >
-          saved.push(payload)
-          return ok({ id: 5, ...payload, status: 'draft', owner_user_id: 4 })
-        }
-        if (
-          path.endsWith(
-            '/contests?page=1&page_size=100&sort=starts_at&order=desc',
-          )
-        ) {
-          return ok({
-            items: [],
-            meta: { page: 1, page_size: 100, total: 0, pages: 0 },
-          })
-        }
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        throw new Error(`Unexpected request: ${path}`)
-      },
-    )
+describe('ContestManagerView listing', () => {
+  it('lists and filters paged contests, without embedding the editor form', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path.endsWith('/auth/me')) return ok(manager)
+      if (path.includes('/rulesets/versions')) return ok(rulesets())
+      if (path.includes('/contests?')) {
+        const url = new URL(path, 'http://localhost')
+        const q = url.searchParams.get('q')
+        const items =
+          q === 'summer'
+            ? [contest(41, 'Summer QSO Party')]
+            : [
+                contest(41, 'Summer QSO Party'),
+                contest(42, 'Winter Sprint', 'open'),
+              ]
+        return ok({
+          items,
+          meta: {
+            page: Number(url.searchParams.get('page')),
+            page_size: 20,
+            total: items.length,
+            pages: 1,
+          },
+        })
+      }
+      throw new Error(`Unexpected request: ${path}`)
+    })
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountManager()
     await flushPromises()
     await expectAccessible(wrapper.element)
 
-    await wrapper.get('.contest-form input').setValue('Spring Sprint')
-    const textInputs = wrapper.findAll('.contest-form input')
-    await textInputs[1]?.setValue('spring-sprint')
-    const dateInputs = wrapper.findAll('input[type="datetime-local"]')
-    await dateInputs[0]?.setValue('2026-05-01T00:00')
-    await dateInputs[1]?.setValue('2026-05-01T06:00')
-    await dateInputs[2]?.setValue('2026-05-08T00:00')
-    await wrapper.get('input[type="checkbox"]').setValue(true)
-    await wrapper.get('.contest-form').trigger('submit')
-    await flushPromises()
-
-    expect(saved).toHaveLength(1)
-    expect(saved[0]?.starts_at).toBe('2026-05-01T00:00:00Z')
-    expect(saved[0]?.ends_at).toBe('2026-05-01T06:00:00Z')
-    expect(saved[0]?.log_submission_cutoff_at).toBe('2026-05-08T00:00:00Z')
-    expect(saved[0]?.periodicity).toBeNull()
-    expect(saved[0]?.auto_recalculate_on_upload).toBe(true)
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      'Contest created as a draft',
+    expect(wrapper.findAll('.contest-card')).toHaveLength(2)
+    expect(wrapper.find('.contest-form').exists()).toBe(false)
+    expect(wrapper.get('a[href="/manage/contests/new"]').text()).toContain(
+      'Create a contest',
     )
+    expect(wrapper.get('a[href="/manage/rulesets"]').text()).toContain(
+      'Manage rulesets',
+    )
+    await wrapper.get('#contest-filter').setValue('summer')
+    await flushPromises()
+    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Summer QSO Party')
+    expect(wrapper.text()).not.toContain('Winter Sprint')
+    expect(
+      fetchMock.mock.calls.some(([path]) => String(path).includes('q=summer')),
+    ).toBe(true)
   })
 
-  it('shows the contest list before the form with filtering and scroll access', async () => {
-    const contests = [
-      {
-        id: 41,
-        owner_user_id: 4,
-        name: 'Summer QSO Party',
-        slug: 'summer-qso-party',
-        description: null,
-        starts_at: '2026-07-04T12:00:00Z',
-        ends_at: '2026-07-04T18:00:00Z',
-        periodicity: null,
-        log_submission_cutoff_at: '2026-07-11T12:00:00Z',
-        status: 'draft',
-        auto_recalculate_on_upload: false,
-        ruleset_version_id: null,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: '2026-01-01T00:00:00Z',
-      },
-      {
-        id: 42,
-        owner_user_id: 4,
-        name: 'Winter Sprint',
-        slug: 'winter-sprint',
-        description: null,
-        starts_at: '2026-12-04T12:00:00Z',
-        ends_at: '2026-12-04T18:00:00Z',
-        periodicity: null,
-        log_submission_cutoff_at: '2026-12-11T12:00:00Z',
-        status: 'open',
-        auto_recalculate_on_upload: false,
-        ruleset_version_id: null,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: '2026-01-01T00:00:00Z',
-      },
-    ]
+  it('navigates between contest pages through server pagination', async () => {
+    const pages: number[] = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.includes('/contests'))
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
+        if (path.includes('/contests?')) {
+          const url = new URL(path, 'http://localhost')
+          const page = Number(url.searchParams.get('page'))
+          pages.push(page)
           return ok({
-            items: contests,
-            meta: { page: 1, page_size: 100, total: 2, pages: 1 },
+            items: [contest(page, `Contest ${page}`)],
+            meta: { page, page_size: 20, total: 21, pages: 2 },
           })
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        }
         throw new Error(`Unexpected request: ${path}`)
       }),
     )
     const wrapper = mountManager()
     await flushPromises()
-
-    const list = wrapper.get('.contest-list')
-    const form = wrapper.get('.contest-form')
-    expect(list.element.compareDocumentPosition(form.element) & 4).toBe(4)
-    expect(wrapper.get('.contest-list-scroll').attributes()).toMatchObject({
-      tabindex: '0',
-      'aria-label': 'Scrollable contest list',
-    })
-    expect(wrapper.findAll('.contest-card')).toHaveLength(2)
-    expect(
-      wrapper
-        .findAll('.contest-card a')
-        .some((link) => link.text() === 'Submitted logs'),
-    ).toBe(true)
-
-    await wrapper.get('#contest-filter').setValue('SUMMER-QSO')
-    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Summer QSO Party')
-    expect(wrapper.text()).not.toContain('Winter Sprint')
-
-    await wrapper.get('#contest-filter').setValue('open')
-    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Winter Sprint')
-
-    await wrapper.get('#contest-filter').setValue('no-match')
-    expect(wrapper.get('[role="status"]').text()).toContain('No contests match')
-  })
-
-  it('directs unauthenticated users to staff sign-in', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              error: { message: 'Authentication is required.' },
-            }),
-            {
-              status: 401,
-            },
-          ),
-      ),
-    )
-    const wrapper = mountManager()
+    await wrapper.findAll('.pagination button')[1]?.trigger('click')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('Sign-in required')
-    expect(
-      wrapper.findAll('a').find((link) => link.text() === 'Sign in'),
-    ).toBeDefined()
+    expect(pages).toEqual([1, 2])
+    expect(wrapper.text()).toContain('Page 2 of 2')
+    expect(wrapper.text()).toContain('Contest 2')
   })
 
-  it('requires the contest slug before deleting contest data', async () => {
-    const contest = {
-      id: 49,
-      owner_user_id: 4,
-      name: 'Delete Me Sprint',
-      slug: 'delete-me-sprint',
-      description: null,
-      starts_at: '2026-06-20T00:00:00Z',
-      ends_at: '2026-06-20T06:00:00Z',
-      periodicity: null,
-      log_submission_cutoff_at: '2026-06-27T00:00:00Z',
-      status: 'closed',
-      auto_recalculate_on_upload: false,
-      ruleset_version_id: null,
+  it('keeps status, ruleset assignment, logs, and result actions in the list', async () => {
+    let status = 'draft'
+    let assigned = false
+    const savedRuleset = {
+      id: 21,
+      ruleset_key: 'field-day',
+      version: '2026',
+      source_url: null,
+      source_edition: null,
+      rule_type_keys: ['categories'],
+      created_by_user_id: 4,
       created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-    }
-    let exists = true
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        if (path.includes('/contests/') && init?.method === 'DELETE') {
-          expect(JSON.parse(String(init.body))).toEqual({
-            confirm_slug: 'delete-me-sprint',
-          })
-          exists = false
-          return new Response(null, { status: 204 })
-        }
-        if (path.includes('/contests'))
-          return ok({
-            items: exists ? [contest] : [],
-            meta: {
-              page: 1,
-              page_size: 100,
-              total: exists ? 1 : 0,
-              pages: exists ? 1 : 0,
-            },
-          })
-        throw new Error(`Unexpected request: ${path}`)
-      },
-    )
-    vi.stubGlobal('fetch', fetchMock)
-    const prompt = vi
-      .spyOn(window, 'prompt')
-      .mockReturnValue('delete-me-sprint')
-    const wrapper = mountManager()
-    await flushPromises()
-    await wrapper.get('.danger-button').trigger('click')
-    await flushPromises()
-
-    expect(prompt).toHaveBeenCalledWith(
-      expect.stringContaining('all of its uploaded logs'),
-    )
-    expect(wrapper.findAll('.contest-card')).toHaveLength(0)
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      'contest data were deleted',
-    )
-  })
-
-  it('leaves a contest untouched when deletion confirmation is cancelled', async () => {
-    const fetchMock = vi.fn<
-      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-    >(async (input: RequestInfo | URL) => {
-      const path = String(input)
-      if (path.endsWith('/auth/me')) return ok(managerUser())
-      if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-      if (path.includes('/contests'))
-        return ok({
-          items: [
-            {
-              id: 50,
-              owner_user_id: 4,
-              name: 'Keep Me Sprint',
-              slug: 'keep-me-sprint',
-              description: null,
-              starts_at: '2026-06-20T00:00:00Z',
-              ends_at: '2026-06-20T06:00:00Z',
-              periodicity: null,
-              log_submission_cutoff_at: '2026-06-27T00:00:00Z',
-              status: 'closed',
-              auto_recalculate_on_upload: false,
-              ruleset_version_id: null,
-              created_at: '2026-01-01T00:00:00Z',
-              updated_at: '2026-01-01T00:00:00Z',
-            },
-          ],
-          meta: { page: 1, page_size: 100, total: 1, pages: 1 },
-        })
-      throw new Error(`Unexpected request: ${path}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.spyOn(window, 'prompt').mockReturnValue(null)
-    const wrapper = mountManager()
-    await flushPromises()
-    await wrapper.get('.danger-button').trigger('click')
-    await flushPromises()
-
-    expect(
-      fetchMock.mock.calls.some(
-        ([input, init]) =>
-          String(input).includes('/contests/50') && init?.method === 'DELETE',
-      ),
-    ).toBe(false)
-    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
-  })
-
-  it('assigns a saved ruleset to a draft contest through the authenticated API', async () => {
-    let assignedRuleset = false
-    const contest = {
-      id: 12,
-      owner_user_id: 4,
-      name: 'Field Day Sprint',
-      slug: 'field-day-sprint',
-      description: null,
-      starts_at: '2026-06-20T00:00:00Z',
-      ends_at: '2026-06-20T06:00:00Z',
-      periodicity: null,
-      log_submission_cutoff_at: '2026-06-27T00:00:00Z',
-      status: 'draft',
-      auto_recalculate_on_upload: false,
-      ruleset_version_id: null,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
+      can_delete: true,
     }
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.includes('/rulesets/versions')) {
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions'))
+          return ok(rulesets([savedRuleset]))
+        if (path.endsWith('/contests/12/ruleset') && init?.method === 'PUT') {
+          assigned = true
           return ok({
-            items: [
-              {
-                id: 21,
-                ruleset_key: 'field-day',
-                version: '2026',
-                rule_type_keys: ['categories', 'score_formula'],
-                source_url: null,
-                source_edition: null,
-                created_by_user_id: 4,
-                created_at: '2026-01-01T00:00:00Z',
-              },
-            ],
-          })
-        }
-        if (
-          path.includes('/contests') &&
-          init?.method === 'PUT' &&
-          path.endsWith('/ruleset')
-        ) {
-          assignedRuleset = true
-          expect(JSON.parse(String(init.body))).toEqual({
+            ...contest(12, 'Field Day Sprint'),
             ruleset_version_id: 21,
           })
-          return ok({ ...contest, ruleset_version_id: 21 })
         }
-        if (path.includes('/contests')) {
+        if (path.endsWith('/contests/12/status') && init?.method === 'PUT') {
+          status = 'open'
+          return ok({ ...contest(12, 'Field Day Sprint', status) })
+        }
+        if (path.includes('/contests?'))
           return ok({
             items: [
               {
-                ...contest,
-                ruleset_version_id: assignedRuleset ? 21 : null,
+                ...contest(12, 'Field Day Sprint', status),
+                ruleset_version_id: assigned ? 21 : null,
               },
             ],
-            meta: { page: 1, page_size: 100, total: 1, pages: 1 },
+            meta: { ...meta, total: 1, pages: 1 },
           })
-        }
         throw new Error(`Unexpected request: ${path}`)
       },
     )
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountManager()
     await flushPromises()
-    expect(wrapper.text()).not.toContain('Open contest')
-
     await wrapper.get('.ruleset-row select').setValue('21')
     await wrapper.get('.ruleset-row button').trigger('click')
     await flushPromises()
-
-    expect(
-      fetchMock.mock.calls.some(([path]) =>
-        String(path).endsWith('/contests/12/ruleset'),
-      ),
-    ).toBe(true)
     expect(wrapper.text()).toContain('Ruleset assigned to Field Day Sprint')
-    expect(wrapper.text()).toContain('Edit ruleset')
-    expect(wrapper.text()).toContain('Open contest')
-  })
-
-  it('opens a ruleset-ready draft for public discovery', async () => {
-    let status = 'draft'
-    const statusChanges: Array<{ path: string; status: string }> = []
-    const contest = {
-      id: 18,
-      owner_user_id: 4,
-      name: 'Autumn Radio Rally',
-      slug: 'autumn-radio-rally',
-      description: 'A public weekend contest.',
-      starts_at: '2026-11-07T12:00:00Z',
-      ends_at: '2026-11-07T18:00:00Z',
-      periodicity: null,
-      log_submission_cutoff_at: '2026-11-14T12:00:00Z',
-      auto_recalculate_on_upload: false,
-      ruleset_version_id: 21,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-    }
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        if (path.endsWith('/contests/18/status') && init?.method === 'PUT') {
-          const payload = JSON.parse(String(init.body)) as { status: string }
-          statusChanges.push({ path, status: payload.status })
-          status = payload.status
-          return ok({ ...contest, status })
-        }
-        if (path.includes('/contests')) {
-          return ok({
-            items: [{ ...contest, status }],
-            meta: { page: 1, page_size: 100, total: 1, pages: 1 },
-          })
-        }
-        throw new Error(`Unexpected request: ${path}`)
-      },
+    expect(
+      wrapper.get('a[href="/manage/contests/12/results"]').text(),
+    ).toContain('Generate and publish results')
+    expect(
+      wrapper.get('a[href="/manage/contests/12/entries"]').text(),
+    ).toContain('Submitted logs')
+    expect(wrapper.get('a[href="/manage/rulesets/21/edit"]').text()).toContain(
+      'Edit ruleset',
     )
-    vi.stubGlobal('fetch', fetchMock)
-    const wrapper = mountManager()
+    await wrapper.get('.contest-card button.primary-button').trigger('click')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('draft')
-    expect(wrapper.text()).toContain('Open contest')
-    expect(wrapper.text()).toContain('Opening makes this contest public')
-    await wrapper
-      .get('.contest-card')
-      .get('button.primary-button')
-      .trigger('click')
-    await flushPromises()
-
-    expect(statusChanges).toEqual([
-      { path: '/api/v1/contests/18/status', status: 'open' },
-    ])
-    expect(wrapper.text()).toContain('open')
     expect(wrapper.text()).toContain(
-      'Autumn Radio Rally is now open to the public.',
-    )
-    await expectAccessible(wrapper.element)
-  })
-
-  it('loads an existing contest into the edit form and saves its changed details', async () => {
-    let currentName = 'Summer QSO Party'
-    const updateBodies: Record<string, unknown>[] = []
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        if (path.endsWith('/contests/31') && init?.method === 'PUT') {
-          const payload = JSON.parse(String(init.body)) as Record<
-            string,
-            unknown
-          >
-          updateBodies.push(payload)
-          currentName = String(payload.name)
-          return ok({ ...editableContest, name: currentName })
-        }
-        if (path.includes('/contests')) {
-          return ok({
-            items: [{ ...editableContest, name: currentName }],
-            meta: { page: 1, page_size: 100, total: 1, pages: 1 },
-          })
-        }
-        throw new Error(`Unexpected request: ${path}`)
-      },
-    )
-    vi.stubGlobal('fetch', fetchMock)
-    const wrapper = mountManager()
-    await flushPromises()
-    await wrapper.get('.contest-card .secondary-button').trigger('click')
-    expect(wrapper.text()).toContain('Contest description (Markdown)')
-    expect(wrapper.text()).toContain('Supports Markdown such as paragraphs')
-    expect(
-      (wrapper.get('.contest-form input').element as HTMLInputElement).value,
-    ).toBe('Summer QSO Party')
-    expect(wrapper.text()).toContain('Contest periodicity')
-    expect(
-      (wrapper.get('.contest-form select').element as HTMLSelectElement).value,
-    ).toBe('annual_date')
-    const description = wrapper.get('.contest-form textarea')
-    expect((description.element as HTMLTextAreaElement).value).toBe(
-      'Annual **contest**',
-    )
-    await description.setValue('Now _updated_')
-    await wrapper.get('.contest-form input').setValue('Updated QSO Party')
-    await wrapper.get('.contest-form').trigger('submit')
-    await flushPromises()
-
-    expect(updateBodies[0]?.name).toBe('Updated QSO Party')
-    expect(updateBodies[0]?.description).toBe('Now _updated_')
-    expect(updateBodies[0]?.periodicity).toEqual({
-      frequency: 'annual_date',
-      month: 7,
-      day: 4,
-    })
-    expect(wrapper.text()).toContain('Updated QSO Party')
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      'Contest details saved',
+      'Field Day Sprint is now open to the public.',
     )
   })
 
-  it('imports a contest JSON package and refreshes the contest list', async () => {
+  it('imports a contest package from the listing and displays the created draft', async () => {
     const packageDraft = {
       contest: {
-        name: 'Imported Field Day',
-        slug: 'imported-field-day',
+        name: 'Imported Rally',
+        slug: 'imported-rally',
         description: null,
         starts_at: '2026-06-20T00:00:00Z',
         ends_at: '2026-06-20T06:00:00Z',
@@ -534,145 +227,128 @@ describe('ContestManagerView', () => {
       },
       ruleset: {
         schema_version: 2,
-        ruleset_key: 'imported-field-day',
+        ruleset_key: 'imported-rally',
         version: '2026',
-        rules: [{ id: 'schedule', rule: { kind: 'schedule' } }],
+        rules: [],
       },
     }
-    const contest = {
-      id: 82,
-      owner_user_id: 4,
-      ...packageDraft.contest,
-      status: 'draft',
-      ruleset_version_id: 55,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-    }
     let imported = false
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
         if (path.endsWith('/contests/import') && init?.method === 'POST') {
           expect(JSON.parse(String(init.body))).toEqual(packageDraft)
           imported = true
-          return ok({ contest, ruleset_version_id: 55 })
+          return ok({
+            contest: contest(81, 'Imported Rally'),
+            ruleset_version_id: 21,
+          })
         }
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        if (path.includes('/contests')) {
-          const items = imported ? [contest] : []
+        if (path.includes('/contests?')) {
+          const items = imported ? [contest(81, 'Imported Rally')] : []
           return ok({
             items,
-            meta: { page: 1, page_size: 100, total: items.length, pages: 1 },
+            meta: { ...meta, total: items.length, pages: items.length ? 1 : 0 },
           })
         }
         throw new Error(`Unexpected request: ${path}`)
-      },
+      }),
     )
-    vi.stubGlobal('fetch', fetchMock)
     const wrapper = mountManager()
     await flushPromises()
-    await expectAccessible(wrapper.element)
-
-    await selectFile(
-      wrapper.element,
-      jsonFile(JSON.stringify(packageDraft), 'field-day.json'),
-    )
-
-    expect(wrapper.text()).toContain('Imported Field Day')
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      'Imported Imported Field Day as a draft',
-    )
-    expect(
-      fetchMock.mock.calls.some(([path]) =>
-        String(path).endsWith('/contests/import'),
-      ),
-    ).toBe(true)
+    await selectContestPackage(wrapper.element, JSON.stringify(packageDraft))
+    expect(wrapper.text()).toContain('Imported Rally')
+    expect(wrapper.text()).toContain('Imported Imported Rally as a draft')
   })
 
-  it('reports malformed contest package JSON without calling the API', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const path = String(input)
-      if (path.endsWith('/auth/me')) return ok(managerUser())
-      if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-      if (path.includes('/contests')) {
-        return ok({
-          items: [],
-          meta: { page: 1, page_size: 100, total: 0, pages: 0 },
-        })
-      }
-      throw new Error(`Unexpected request: ${path}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    const wrapper = mountManager()
-    await flushPromises()
-    await selectFile(wrapper.element, jsonFile('{broken', 'broken.json'))
-
-    expect(wrapper.get('[role="alert"]').text()).toContain('not valid JSON')
-    expect(
-      fetchMock.mock.calls.some(([path]) =>
-        String(path).endsWith('/contests/import'),
-      ),
-    ).toBe(false)
-  })
-
-  it('shows contest import API errors without hiding the draft form', async () => {
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
+  it('keeps delete confirmation and cascade deletion on the listing page', async () => {
+    let exists = true
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
-        if (path.endsWith('/auth/me')) return ok(managerUser())
-        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
-        if (path.endsWith('/contests/import') && init?.method === 'POST') {
-          return new Response(
-            JSON.stringify({
-              error: { message: 'A contest slug is already in use.' },
-            }),
-            { status: 409 },
-          )
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
+        if (path.endsWith('/contests/49') && init?.method === 'DELETE') {
+          expect(JSON.parse(String(init.body))).toEqual({
+            confirm_slug: 'delete-me',
+          })
+          exists = false
+          return new Response(null, { status: 204 })
         }
-        if (path.includes('/contests')) {
+        if (path.includes('/contests?')) {
+          const items = exists ? [contest(49, 'Delete Me')] : []
           return ok({
-            items: [],
-            meta: { page: 1, page_size: 100, total: 0, pages: 0 },
+            items,
+            meta: { ...meta, total: items.length, pages: items.length ? 1 : 0 },
           })
         }
         throw new Error(`Unexpected request: ${path}`)
-      },
+      }),
     )
-    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(window, 'prompt').mockReturnValue('delete-me')
     const wrapper = mountManager()
     await flushPromises()
-    await selectFile(
-      wrapper.element,
-      jsonFile(
-        JSON.stringify({
-          contest: { name: 'Collision' },
-          ruleset: { schema_version: 2, ruleset_key: 'collision', rules: [] },
-        }),
-        'collision.json',
+    await wrapper.get('.danger-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.contest-card')).toHaveLength(0)
+    expect(wrapper.text()).toContain('contest data were deleted')
+  })
+
+  it('shows an accessible sign-in prompt when unauthenticated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'Authentication is required.' },
+            }),
+            { status: 401 },
+          ),
       ),
     )
+    const wrapper = mountManager()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Sign-in required')
+  })
 
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      'A contest slug is already in use.',
+  it('shows distinct empty and API error states for the contest list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
+        return ok({ items: [], meta: { ...meta, pages: 0 } })
+      }),
     )
-    expect(wrapper.find('.contest-form').exists()).toBe(true)
+    const empty = mountManager()
+    await flushPromises()
+    expect(empty.text()).toContain('You have not created a contest yet.')
+    empty.unmount()
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(manager)
+        if (path.includes('/rulesets/versions')) return ok(rulesets())
+        return new Response(
+          JSON.stringify({
+            error: { message: 'Contest service unavailable.' },
+          }),
+          { status: 503 },
+        )
+      }),
+    )
+    const failed = mountManager()
+    await flushPromises()
+    expect(failed.get('[role="alert"]').text()).toContain(
+      'Contest service unavailable.',
+    )
   })
 })
-
-const editableContest = {
-  id: 31,
-  owner_user_id: 4,
-  name: 'Summer QSO Party',
-  slug: 'summer-qso-party',
-  description: 'Annual **contest**',
-  starts_at: '2026-07-04T12:00:00Z',
-  ends_at: '2026-07-04T18:00:00Z',
-  periodicity: { frequency: 'annual_date', month: 7, day: 4 },
-  log_submission_cutoff_at: '2026-07-11T12:00:00Z',
-  status: 'draft',
-  auto_recalculate_on_upload: false,
-  ruleset_version_id: null,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-}

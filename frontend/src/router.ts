@@ -27,6 +27,17 @@ export const router = createRouter({
       props: true,
     },
     {
+      path: '/manage/contests/new',
+      name: 'contest-create',
+      component: () => import('./views/ContestEditorView.vue'),
+    },
+    {
+      path: '/manage/contests/:contestId/edit',
+      name: 'contest-edit',
+      component: () => import('./views/ContestEditorView.vue'),
+      props: true,
+    },
+    {
       path: '/manage/contests/:contestId/entries/:entryId?',
       name: 'contest-entries',
       component: () => import('./views/ContestEntriesView.vue'),
@@ -78,12 +89,30 @@ export const router = createRouter({
       component: () => import('./views/ContestManagerView.vue'),
     },
     {
-      path: '/rulesets/compose/:editVersionId?',
-      name: 'ruleset-composer',
+      path: '/manage/rulesets',
+      name: 'ruleset-manager',
+      component: () => import('./views/RulesetManagerView.vue'),
+    },
+    {
+      path: '/manage/rulesets/new',
+      name: 'ruleset-create',
+      component: () => import('./views/RulesetComposerView.vue'),
+    },
+    {
+      path: '/manage/rulesets/:editVersionId/edit',
+      name: 'ruleset-edit',
       component: () => import('./views/RulesetComposerView.vue'),
       props: (route) => ({
-        editVersionId: route.params.editVersionId as string | undefined,
+        editVersionId: route.params.editVersionId as string,
       }),
+    },
+    {
+      path: '/rulesets/compose/:editVersionId?',
+      name: 'ruleset-composer',
+      redirect: (route) =>
+        route.params.editVersionId
+          ? `/manage/rulesets/${String(route.params.editVersionId)}/edit`
+          : '/manage/rulesets',
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

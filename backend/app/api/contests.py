@@ -224,6 +224,7 @@ def list_contests(
     session: Annotated[Session, Depends(get_session)],
     page: Annotated[Page, Depends(pagination_parameters)],
     status: Annotated[ContestStatus | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=120)] = None,
 ) -> dict[str, object]:
     count_statement = select(func.count()).select_from(Contest)
     statement = _accessible_contests(principal)
@@ -232,6 +233,23 @@ def list_contests(
     if status is not None:
         count_statement = count_statement.where(Contest.status == status)
         statement = statement.where(Contest.status == status)
+    search = (q or "").strip()
+    if search:
+        pattern = f"%{search}%"
+        search_clauses = [Contest.name.ilike(pattern), Contest.slug.ilike(pattern)]
+        matched_status = next(
+            (
+                contest_status
+                for contest_status in ContestStatus
+                if contest_status.value.casefold() == search.casefold()
+            ),
+            None,
+        )
+        if matched_status is not None:
+            search_clauses.append(Contest.status == matched_status)
+        search_filter = or_(*search_clauses)
+        count_statement = count_statement.where(search_filter)
+        statement = statement.where(search_filter)
     total = session.scalar(count_statement) or 0
     sort_fields = {
         "name": Contest.name,
@@ -619,9 +637,9 @@ def get_contest_entry(
         if revisions
         else {}
     )
-    total = session.scalar(
-        select(func.count(Qso.id)).where(Qso.entry_revision_id == revision.id)
-    ) or 0
+    total = (
+        session.scalar(select(func.count(Qso.id)).where(Qso.entry_revision_id == revision.id)) or 0
+    )
     contacts = session.scalars(
         select(Qso)
         .where(Qso.entry_revision_id == revision.id)
@@ -1031,9 +1049,7 @@ def public_contest_output(contest: Contest) -> dict[str, object]:
     }
 
 
-def public_contest_detail_output(
-    contest: Contest, session: Session
-) -> dict[str, object]:
+def public_contest_detail_output(contest: Contest, session: Session) -> dict[str, object]:
     """Expose public contest metadata and its selected, validated ruleset."""
     output = public_contest_output(contest)
     ruleset = (

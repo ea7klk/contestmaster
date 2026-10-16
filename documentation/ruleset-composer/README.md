@@ -29,7 +29,7 @@ For example, the package shape is:
 }
 ```
 
-The example's empty `rules` array is a shape illustration only; a real ruleset must include and validate all required rule types. The contest manager shows the contest list above the create/edit form; filter it by name, URL slug, or status. The list is keyboard-scrollable when it grows. The **Edit ruleset** action on a contest opens its saved version in the graphic composer. At the top of the composer, **Continue from a saved ruleset** browses any saved version, including versions not assigned to a contest; filter the scrollable list by ruleset key, version, source edition, or rule type, then select a version to load it. A loaded version becomes a new draft: enter a new version identifier and save. Existing versions are immutable, and editing does not change a contest's current assignment. Select the newly saved version from the contest manager when ready.
+The example's empty `rules` array is a shape illustration only; a real ruleset must include and validate all required rule types. Contest and ruleset administration each have a paged listing page. The contest list is at `/manage/contests`; create and edit contests at `/manage/contests/new` and `/manage/contests/{contest_id}/edit`. The ruleset list is at `/manage/rulesets`; create a ruleset at `/manage/rulesets/new`, or start a revised immutable version from a saved version at `/manage/rulesets/{version_id}/edit`. Both listings support server-side filtering and pagination. Existing ruleset versions remain immutable, and editing does not change a contest's current assignment. Select the newly saved version from the contest manager when ready.
 
 ## Schedule and submissions
 

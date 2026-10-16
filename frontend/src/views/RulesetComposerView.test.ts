@@ -323,6 +323,10 @@ describe('RulesetComposerView', () => {
 
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
+    expect(wrapper.find('#browse-saved-rulesets').exists()).toBe(false)
+    expect(wrapper.get('a[href="/manage/rulesets"]').text()).toContain(
+      'Back to rulesets',
+    )
     expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
     const eligibilityRule = wrapper
       .findAll('.rule-card')
@@ -518,23 +522,9 @@ describe('RulesetComposerView', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mount(RulesetComposerView)
-    await flushPromises()
-    await wrapper.get('#browse-saved-rulesets').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.saved-version-list').attributes()).toMatchObject({
-      tabindex: '0',
-      'aria-label': 'Scrollable saved ruleset versions',
+    const wrapper = mount(RulesetComposerView, {
+      props: { editVersionId: '21' },
     })
-    await wrapper.get('#saved-ruleset-filter').setValue('not-present')
-    expect(wrapper.get('[role="status"]').text()).toContain(
-      'No saved rulesets match',
-    )
-    await wrapper.get('#saved-ruleset-filter').setValue('categories')
-    expect(wrapper.findAll('.saved-version-item')).toHaveLength(1)
-    await wrapper.get('#saved-ruleset-filter').setValue('2026')
-    expect(wrapper.findAll('.saved-version-item')).toHaveLength(1)
-    await wrapper.get('#load-saved-version-21').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Editing field-day version 2026')
@@ -605,199 +595,5 @@ describe('RulesetComposerView', () => {
       (wrapper.findAll('.metadata-panel input')[1]?.element as HTMLInputElement)
         .value,
     ).toBe('2026')
-  })
-
-  it('preserves the current draft when a selected saved version cannot load', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const path = String(input)
-        if (path.endsWith('/rulesets/catalog'))
-          return new Response(JSON.stringify(catalogResponse()), {
-            status: 200,
-          })
-        if (
-          path.endsWith('/rulesets/bands') ||
-          path.endsWith('/rulesets/modes')
-        )
-          return new Response(JSON.stringify(operatingCatalogResponse()), {
-            status: 200,
-          })
-        if (path.endsWith('/rulesets/versions'))
-          return new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 21,
-                  ruleset_key: 'field-day',
-                  version: '2026',
-                  source_url: null,
-                  source_edition: null,
-                  rule_type_keys: requiredRules,
-                  created_by_user_id: null,
-                  created_at: '2026-01-01T00:00:00Z',
-                },
-              ],
-            }),
-            { status: 200 },
-          )
-        if (path.endsWith('/rulesets/versions/21'))
-          return new Response(
-            JSON.stringify({
-              error: { message: 'That saved version was removed.' },
-            }),
-            { status: 404 },
-          )
-        throw new Error(`Unexpected request ${path}`)
-      }),
-    )
-    const wrapper = mount(RulesetComposerView)
-    await flushPromises()
-
-    await wrapper.get('#browse-saved-rulesets').trigger('click')
-    await flushPromises()
-    await wrapper.get('#load-saved-version-21').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      'That saved version was removed.',
-    )
-    expect(
-      (wrapper.get('.metadata-panel input').element as HTMLInputElement).value,
-    ).toBe('my-contest')
-    expect(wrapper.text()).not.toContain('Editing field-day version 2026')
-  })
-
-  it('deletes only an eligible saved ruleset after identity confirmation', async () => {
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/rulesets/catalog'))
-          return new Response(JSON.stringify(catalogResponse()), {
-            status: 200,
-          })
-        if (
-          path.endsWith('/rulesets/bands') ||
-          path.endsWith('/rulesets/modes')
-        )
-          return new Response(JSON.stringify(operatingCatalogResponse()), {
-            status: 200,
-          })
-        if (path.endsWith('/rulesets/versions') && init?.method !== 'DELETE')
-          return new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 27,
-                  ruleset_key: 'unused-rules',
-                  version: 'draft-1',
-                  source_url: null,
-                  source_edition: null,
-                  rule_type_keys: ['categories'],
-                  created_by_user_id: 4,
-                  created_at: '2026-01-01T00:00:00Z',
-                  can_delete: true,
-                },
-              ],
-            }),
-            { status: 200 },
-          )
-        if (
-          path.endsWith('/rulesets/versions/27') &&
-          init?.method === 'DELETE'
-        ) {
-          expect(JSON.parse(String(init.body))).toEqual({
-            confirm_identity: 'unused-rules@draft-1',
-          })
-          return new Response(null, { status: 204 })
-        }
-        throw new Error(`Unexpected request ${path}`)
-      },
-    )
-    vi.stubGlobal('fetch', fetchMock)
-    const prompt = vi
-      .spyOn(window, 'prompt')
-      .mockReturnValue('unused-rules@draft-1')
-    const wrapper = mount(RulesetComposerView)
-    await flushPromises()
-    await wrapper.get('#browse-saved-rulesets').trigger('click')
-    await flushPromises()
-    await wrapper
-      .get('[aria-label="Delete unused ruleset unused-rules version draft-1"]')
-      .trigger('click')
-    await flushPromises()
-
-    expect(prompt).toHaveBeenCalledWith(
-      expect.stringContaining('no contest or score history'),
-    )
-    expect(wrapper.text()).toContain(
-      'Deleted unused ruleset unused-rules@draft-1',
-    )
-    expect(wrapper.text()).toContain(
-      'No saved ruleset versions are available yet.',
-    )
-  })
-
-  it('shows the API conflict when a selected ruleset is still in use', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = String(input)
-        if (path.endsWith('/rulesets/catalog'))
-          return new Response(JSON.stringify(catalogResponse()), {
-            status: 200,
-          })
-        if (
-          path.endsWith('/rulesets/bands') ||
-          path.endsWith('/rulesets/modes')
-        )
-          return new Response(JSON.stringify(operatingCatalogResponse()), {
-            status: 200,
-          })
-        if (path.endsWith('/rulesets/versions') && init?.method !== 'DELETE')
-          return new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 28,
-                  ruleset_key: 'assigned-rules',
-                  version: '2026',
-                  source_url: null,
-                  source_edition: null,
-                  rule_type_keys: ['categories'],
-                  created_by_user_id: 4,
-                  created_at: '2026-01-01T00:00:00Z',
-                  can_delete: true,
-                },
-              ],
-            }),
-            { status: 200 },
-          )
-        if (path.endsWith('/rulesets/versions/28'))
-          return new Response(
-            JSON.stringify({
-              error: {
-                message: 'This ruleset version is referenced by a contest.',
-              },
-            }),
-            { status: 409 },
-          )
-        throw new Error(`Unexpected request ${path}`)
-      }),
-    )
-    vi.spyOn(window, 'prompt').mockReturnValue('assigned-rules@2026')
-    const wrapper = mount(RulesetComposerView)
-    await flushPromises()
-    await wrapper.get('#browse-saved-rulesets').trigger('click')
-    await flushPromises()
-    await wrapper
-      .get('[aria-label="Delete unused ruleset assigned-rules version 2026"]')
-      .trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      'This ruleset version is referenced by a contest.',
-    )
-    expect(wrapper.text()).toContain('assigned-rules · version 2026')
   })
 })

@@ -503,9 +503,7 @@ def test_contest_managers_can_browse_entry_logs_only_for_owned_contests(identity
     assert details.json()["meta"]["pages"] == 2
     assert details.json()["contacts"][0]["exchange_sent"] == {"serial": "001"}
     assert "original_content" not in details.json()["entry"]
-    source = manager.get(
-        f"{details_url}/revisions/{latest_revision_id}/download"
-    )
+    source = manager.get(f"{details_url}/revisions/{latest_revision_id}/download")
     assert source.status_code == 200
     assert source.text == "latest source log"
 
@@ -788,6 +786,67 @@ def test_contest_import_is_atomic_and_ruleset_version_is_readable(identity_datab
 def test_contest_import_requires_authentication(identity_database):
     response = TestClient(app).post("/api/v1/contests/import", json={})
     assert response.status_code == 401
+
+
+def test_manager_list_endpoints_filter_and_paginate_contests_and_rulesets(identity_database):
+    from backend.tests.test_rulesets import valid_payload
+
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="list-manager",
+        email="list@example.test",
+    )
+    with identity_database.begin() as session:
+        session.add_all(
+            [
+                Contest(
+                    owner_user_id=manager_id,
+                    name="Pageable Summer Sprint",
+                    slug="pageable-summer",
+                    starts_at=datetime(2026, 6, 1, tzinfo=UTC),
+                    ends_at=datetime(2026, 6, 1, 2, tzinfo=UTC),
+                    log_submission_cutoff_at=datetime(2026, 6, 2, tzinfo=UTC),
+                ),
+                Contest(
+                    owner_user_id=manager_id,
+                    name="Pageable Winter Sprint",
+                    slug="pageable-winter",
+                    starts_at=datetime(2026, 12, 1, tzinfo=UTC),
+                    ends_at=datetime(2026, 12, 1, 2, tzinfo=UTC),
+                    log_submission_cutoff_at=datetime(2026, 12, 2, tzinfo=UTC),
+                ),
+            ]
+        )
+
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "list@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    headers = {"X-CSRF-Token": client.cookies.get("contestmaster_csrf")}
+    for key in ("listed-alpha", "listed-beta"):
+        payload = valid_payload()
+        payload["ruleset_key"] = key
+        saved = client.post("/api/v1/rulesets/versions", headers=headers, json=payload)
+        assert saved.status_code == 201
+
+    contests = client.get("/api/v1/contests?page=1&page_size=1&q=pageable")
+    assert contests.status_code == 200
+    assert contests.json()["meta"] == {"page": 1, "page_size": 1, "total": 2, "pages": 2}
+    assert contests.json()["items"][0]["slug"] == "pageable-summer"
+    contests_page_two = client.get("/api/v1/contests?page=2&page_size=1&q=pageable")
+    assert contests_page_two.json()["items"][0]["slug"] == "pageable-winter"
+
+    rulesets = client.get("/api/v1/rulesets/versions?page=1&page_size=1&q=listed")
+    assert rulesets.status_code == 200
+    assert rulesets.json()["meta"] == {"page": 1, "page_size": 1, "total": 2, "pages": 2}
+    assert rulesets.json()["items"][0]["ruleset_key"] == "listed-alpha"
+    rulesets_page_two = client.get("/api/v1/rulesets/versions?page=2&page_size=1&q=listed")
+    assert rulesets_page_two.json()["items"][0]["ruleset_key"] == "listed-beta"
 
 
 def test_contest_status_requires_ruleset_and_public_routes_only_show_published(

@@ -112,10 +112,36 @@ export interface SavedRulesetVersion {
   can_delete: boolean
 }
 
+export interface RulesetVersionList {
+  items: SavedRulesetVersion[]
+  meta: { page: number; page_size: number; total: number; pages: number }
+}
+
 export async function listRulesetVersions(
+  page = 1,
+  pageSize = 20,
+  query = '',
   signal?: AbortSignal,
-): Promise<{ items: SavedRulesetVersion[] }> {
-  return request('/rulesets/versions', { method: 'GET', signal })
+): Promise<RulesetVersionList> {
+  const search = query.trim()
+  const suffix = search ? `&q=${encodeURIComponent(search)}` : ''
+  return request(
+    `/rulesets/versions?page=${page}&page_size=${pageSize}${suffix}`,
+    { method: 'GET', signal },
+  )
+}
+
+export async function listAllRulesetVersions(
+  signal?: AbortSignal,
+): Promise<SavedRulesetVersion[]> {
+  const pageSize = 100
+  const firstPage = await listRulesetVersions(1, pageSize, '', signal)
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, firstPage.meta.pages - 1) }, (_, index) =>
+      listRulesetVersions(index + 2, pageSize, '', signal),
+    ),
+  )
+  return [...firstPage.items, ...rest.flatMap((page) => page.items)]
 }
 
 export async function getSavedRulesetVersion(

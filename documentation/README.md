@@ -27,7 +27,7 @@ Operational and user guides: [operators](operations/README.md), [participants](p
 
 ### Contest administration
 
-- Create and configure contests with UTC start/end instants, optional periodicity, and a separate log submission cutoff. Use the graphical ruleset composer for reusable categories, bands, modes, exchange definitions, late-submission policy, and scoring rules. Global administrators maintain the shared band/mode catalog; contest managers select eligible values in their rulesets.
+- Create and configure contests on dedicated create/edit pages, separate from the paged contest listing. Configure UTC start/end instants, optional periodicity, and a separate log submission cutoff. Use the graphical ruleset composer on dedicated create/edit pages, separate from the paged ruleset listing, for reusable categories, bands, modes, exchange definitions, late-submission policy, and scoring rules. Both listings support server-side filtering and pagination. Global administrators maintain the shared band/mode catalog; contest managers select eligible values in their rulesets.
 - Review submitted logs, run or rerun adjudication, and publish standings.
 - Keep score runs tied to the exact ruleset version and input data used to produce them.
 - Let contest managers review unresolved scoring items, generate result lists, and publish immutable numbered result snapshots. Public standings expose aggregate score explanations and configured entry categories, not raw QSOs or private review data.

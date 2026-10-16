@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import ConditionEditor from '../components/ConditionEditor.vue'
 import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
 import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
@@ -11,9 +11,7 @@ import {
 } from '../api/operatingCatalog'
 import {
   getRuleCatalog,
-  listRulesetVersions,
   getSavedRulesetVersion,
-  deleteSavedRulesetVersion,
   RulesetApiError,
   saveRulesetVersion,
   validateRuleset,
@@ -22,7 +20,6 @@ import {
   type RuleTypeDescriptor,
   type RulesetIssue,
   type RulesetValidationResponse,
-  type SavedRulesetVersion,
 } from '../api/rulesets'
 
 interface ConfiguredRuleDraft {
@@ -33,7 +30,6 @@ interface ConfiguredRuleDraft {
 
 const catalog = ref<RuleTypeDescriptor[]>([])
 const operatingCatalog = ref<OperatingCatalogItem[]>([])
-const savedVersions = ref<SavedRulesetVersion[]>([])
 const rules = ref<ConfiguredRuleDraft[]>([])
 const rulesetKey = ref('my-contest')
 const version = ref('1')
@@ -49,12 +45,6 @@ const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const editingSource = ref('')
-const savedVersionsLoaded = ref(false)
-const loadingSavedVersions = ref(false)
-const loadingSelectedVersion = ref(false)
-const deletingSavedVersionId = ref<number | null>(null)
-const selectedSavedVersionId = ref('')
-const savedVersionFilter = ref('')
 const props = defineProps<{ editVersionId?: string }>()
 
 const optionalTypes = computed(() =>
@@ -63,22 +53,6 @@ const optionalTypes = computed(() =>
 const usedSingletonKinds = computed(
   () => new Set(rules.value.map((item) => String(item.rule.kind))),
 )
-const filteredSavedVersions = computed(() => {
-  const query = savedVersionFilter.value.trim().toLocaleLowerCase()
-  if (!query) return savedVersions.value
-  return savedVersions.value.filter((saved) =>
-    [
-      saved.ruleset_key,
-      saved.version,
-      saved.source_edition ?? '',
-      ...saved.rule_type_keys,
-    ]
-      .join(' ')
-      .toLocaleLowerCase()
-      .includes(query),
-  )
-})
-
 function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
   if (schema.$ref) {
     const name = schema.$ref.split('/').at(-1) ?? ''
@@ -313,24 +287,6 @@ function clearValidation() {
   savedMessage.value = ''
 }
 
-async function browseSavedVersions() {
-  if (loadingSavedVersions.value) return
-  loadingSavedVersions.value = true
-  generalError.value = ''
-  try {
-    const response = await listRulesetVersions()
-    savedVersions.value = response.items
-    savedVersionsLoaded.value = true
-  } catch (error) {
-    generalError.value =
-      error instanceof Error
-        ? error.message
-        : 'Saved rulesets could not be loaded.'
-  } finally {
-    loadingSavedVersions.value = false
-  }
-}
-
 async function loadSavedVersion(
   versionId: number,
   signal?: Parameters<typeof getSavedRulesetVersion>[1],
@@ -349,62 +305,9 @@ async function loadSavedVersion(
   sourceUrl.value = definition.source_url ?? ''
   sourceEdition.value = definition.source_edition ?? ''
   rules.value = definition.rules.map((item) => ({ ...item }))
-  selectedSavedVersionId.value = String(versionId)
   editingSource.value = `${definition.ruleset_key} version ${definition.version}`
   clearValidation()
   savedMessage.value = `Loaded ${editingSource.value}. Enter a new version identifier to save your changes.`
-}
-
-async function loadSelectedVersion() {
-  const versionId = Number(selectedSavedVersionId.value)
-  if (!Number.isSafeInteger(versionId) || versionId < 1) return
-  loadingSelectedVersion.value = true
-  generalError.value = ''
-  savedMessage.value = ''
-  try {
-    await loadSavedVersion(versionId)
-  } catch (error) {
-    generalError.value =
-      error instanceof Error
-        ? error.message
-        : 'The saved ruleset could not be loaded.'
-  } finally {
-    loadingSelectedVersion.value = false
-  }
-}
-
-async function loadSavedVersionFromList(versionId: number) {
-  selectedSavedVersionId.value = String(versionId)
-  await loadSelectedVersion()
-}
-
-async function removeSavedVersion(saved: SavedRulesetVersion) {
-  if (!saved.can_delete) return
-  const identity = `${saved.ruleset_key}@${saved.version}`
-  const typedIdentity = globalThis.prompt(
-    `Delete saved ruleset ${identity}? This is allowed only when no contest or score history references it. Type ${identity} to confirm.`,
-  )
-  if (typedIdentity === null || typedIdentity !== identity) return
-  deletingSavedVersionId.value = saved.id
-  generalError.value = ''
-  savedMessage.value = ''
-  try {
-    await deleteSavedRulesetVersion(saved.id, typedIdentity)
-    savedVersions.value = savedVersions.value.filter(
-      (item) => item.id !== saved.id,
-    )
-    if (selectedSavedVersionId.value === String(saved.id)) {
-      selectedSavedVersionId.value = ''
-    }
-    savedMessage.value = `Deleted unused ruleset ${identity}.`
-  } catch (error) {
-    generalError.value =
-      error instanceof Error
-        ? error.message
-        : 'The ruleset version could not be deleted.'
-  } finally {
-    deletingSavedVersionId.value = null
-  }
 }
 
 function exportDraft() {
@@ -544,6 +447,33 @@ onMounted(async () => {
   }
 })
 
+watch(
+  () => props.editVersionId,
+  async (versionId) => {
+    if (catalogLoading.value) return
+    generalError.value = ''
+    savedMessage.value = ''
+    editingSource.value = ''
+    if (versionId === undefined) {
+      seedRequiredRules()
+      return
+    }
+    const parsedId = Number(versionId)
+    if (!Number.isSafeInteger(parsedId) || parsedId < 1) {
+      generalError.value = 'The requested saved ruleset version is invalid.'
+      return
+    }
+    try {
+      await loadSavedVersion(parsedId)
+    } catch (error) {
+      generalError.value =
+        error instanceof Error
+          ? error.message
+          : 'The saved ruleset could not be loaded.'
+    }
+  },
+)
+
 function catalogErrorMessage(reason: unknown) {
   return reason instanceof Error
     ? reason.message
@@ -560,6 +490,7 @@ function catalogErrorMessage(reason: unknown) {
       their fields. The API checks the draft and shows a readable summary and
       integer scoring example.
     </p>
+    <a class="secondary-button" href="/manage/rulesets">← Back to rulesets</a>
 
     <p v-if="generalError" role="alert" class="error-panel">
       {{ generalError }}
@@ -571,95 +502,6 @@ function catalogErrorMessage(reason: unknown) {
       Loading the built-in rule catalog…
     </p>
     <template v-else-if="catalog.length">
-      <fieldset class="panel saved-version-panel">
-        <legend>Continue from a saved ruleset</legend>
-        <p class="field-help">
-          Load any saved version into the composer, make changes, then save with
-          a new version identifier. The saved version remains unchanged.
-        </p>
-        <button
-          id="browse-saved-rulesets"
-          type="button"
-          class="secondary-button"
-          :disabled="loadingSavedVersions"
-          @click="browseSavedVersions"
-        >
-          {{
-            loadingSavedVersions
-              ? 'Loading saved versions…'
-              : savedVersionsLoaded
-                ? 'Refresh saved versions'
-                : 'Browse saved versions'
-          }}
-        </button>
-        <template v-if="savedVersionsLoaded">
-          <p v-if="savedVersions.length === 0" class="field-help">
-            No saved ruleset versions are available yet.
-          </p>
-          <div v-else class="saved-version-browser">
-            <label for="saved-ruleset-filter">Filter saved rulesets</label>
-            <input
-              id="saved-ruleset-filter"
-              v-model="savedVersionFilter"
-              type="search"
-              autocomplete="off"
-              placeholder="Key, version, edition, or rule type"
-              aria-describedby="saved-ruleset-filter-help"
-            />
-            <p id="saved-ruleset-filter-help" class="field-help">
-              Filter by ruleset key, version, source edition, or rule type.
-            </p>
-            <p
-              v-if="filteredSavedVersions.length === 0"
-              class="notice"
-              role="status"
-            >
-              No saved rulesets match “{{ savedVersionFilter }}”.
-            </p>
-            <ul
-              v-else
-              class="saved-version-list"
-              tabindex="0"
-              aria-label="Scrollable saved ruleset versions"
-            >
-              <li v-for="saved in filteredSavedVersions" :key="saved.id">
-                <div class="saved-version-row">
-                  <button
-                    :id="`load-saved-version-${saved.id}`"
-                    type="button"
-                    class="saved-version-item"
-                    :disabled="loadingSelectedVersion"
-                    @click="loadSavedVersionFromList(saved.id)"
-                  >
-                    <span class="saved-version-title">
-                      {{ saved.ruleset_key }} · version {{ saved.version }}
-                    </span>
-                    <span class="saved-version-details">
-                      {{ saved.source_edition || 'No source edition' }} ·
-                      {{ saved.rule_type_keys.length }} rule types
-                    </span>
-                  </button>
-                  <button
-                    v-if="saved.can_delete"
-                    type="button"
-                    class="delete-version-button"
-                    :disabled="deletingSavedVersionId === saved.id"
-                    :aria-label="`Delete unused ruleset ${saved.ruleset_key} version ${saved.version}`"
-                    @click="removeSavedVersion(saved)"
-                  >
-                    {{
-                      deletingSavedVersionId === saved.id
-                        ? 'Deleting…'
-                        : 'Delete'
-                    }}
-                  </button>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </template>
-      </fieldset>
-
       <fieldset class="panel metadata-panel">
         <legend>Ruleset identity</legend>
         <div class="metadata-grid">
@@ -1027,85 +869,6 @@ function catalogErrorMessage(reason: unknown) {
   border-radius: 0.8rem;
   background: var(--color-surface);
   box-shadow: 0 10px 28px var(--color-card-shadow);
-}
-.saved-version-panel,
-.saved-version-browser {
-  display: grid;
-  gap: 0.75rem;
-}
-.saved-version-panel p {
-  margin: 0;
-}
-.saved-version-browser label {
-  font-weight: 650;
-}
-.saved-version-browser input {
-  width: min(100%, 36rem);
-  min-height: 2.65rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.45rem;
-  font: inherit;
-}
-.saved-version-list {
-  max-height: 18rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  display: grid;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0.25rem;
-  list-style: none;
-  border: 1px solid var(--color-border);
-  border-radius: 0.55rem;
-}
-.saved-version-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.35rem;
-  align-items: stretch;
-}
-.saved-version-item {
-  display: grid;
-  width: 100%;
-  gap: 0.3rem;
-  padding: 0.75rem;
-  border: 1px solid transparent;
-  border-radius: 0.4rem;
-  color: var(--color-ink);
-  background: var(--color-surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.delete-version-button {
-  align-self: center;
-  min-height: 2.4rem;
-  padding: 0.45rem 0.65rem;
-  border: 1px solid var(--color-error-ink);
-  border-radius: 0.4rem;
-  color: var(--color-error-ink);
-  background: var(--color-surface);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.delete-version-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-.saved-version-item:hover,
-.saved-version-item:focus-visible {
-  border-color: var(--color-brand-700);
-  background: var(--color-surface-muted);
-}
-.saved-version-title {
-  color: var(--color-brand-900);
-  font-weight: 700;
-}
-.saved-version-details {
-  color: var(--color-muted);
-  font-size: 0.9rem;
 }
 .panel legend {
   padding: 0 0.4rem;

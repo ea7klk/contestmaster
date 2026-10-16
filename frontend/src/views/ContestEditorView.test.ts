@@ -1,0 +1,122 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { expectAccessible } from '../test/a11y'
+import ContestEditorView from './ContestEditorView.vue'
+
+afterEach(() => vi.unstubAllGlobals())
+
+const user = {
+  id: 4,
+  username: 'manager',
+  email: 'manager@example.test',
+  display_name: 'Contest Manager',
+  role: 'contest_manager',
+}
+const contest = {
+  id: 31,
+  owner_user_id: 4,
+  name: 'Summer Sprint',
+  slug: 'summer-sprint',
+  description: 'Annual **contest**',
+  starts_at: '2026-07-04T12:00:00Z',
+  ends_at: '2026-07-04T18:00:00Z',
+  periodicity: { frequency: 'annual_date', month: 7, day: 4 },
+  log_submission_cutoff_at: '2026-07-11T12:00:00Z',
+  status: 'draft',
+  auto_recalculate_on_upload: false,
+  ruleset_version_id: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
+function ok(payload: unknown) {
+  return new Response(JSON.stringify(payload), { status: 200 })
+}
+function mountEditor(contestId?: string) {
+  return mount(ContestEditorView, {
+    props: contestId ? { contestId } : {},
+    global: {
+      stubs: {
+        RouterLink: { template: '<a :href="to"><slot /></a>', props: ['to'] },
+      },
+    },
+  })
+}
+
+describe('ContestEditorView', () => {
+  it('creates a contest on the dedicated create page with UTC cutoff settings', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests') && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          bodies.push(body)
+          return ok({ id: 55, ...body, status: 'draft', owner_user_id: 4 })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountEditor()
+    await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('Create a contest')
+    await wrapper.get('input').setValue('Spring Sprint')
+    const inputs = wrapper.findAll('input')
+    await inputs[1]?.setValue('spring-sprint')
+    const datetimes = wrapper.findAll('input[type="datetime-local"]')
+    await datetimes[0]?.setValue('2026-05-01T00:00')
+    await datetimes[1]?.setValue('2026-05-01T06:00')
+    await datetimes[2]?.setValue('2026-05-08T00:00')
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(bodies[0]?.starts_at).toBe('2026-05-01T00:00:00Z')
+    expect(bodies[0]?.log_submission_cutoff_at).toBe('2026-05-08T00:00:00Z')
+    expect(bodies[0]?.auto_recalculate_on_upload).toBe(true)
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'created as a draft',
+    )
+    await expectAccessible(wrapper.element)
+  })
+
+  it('loads and saves a contest on the dedicated edit page', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests/31') && init?.method === 'GET')
+          return ok(contest)
+        if (path.endsWith('/contests/31') && init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          updates.push(body)
+          return ok({ ...contest, ...body })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountEditor('31')
+    await flushPromises()
+    expect(wrapper.get('h1').text()).toBe('Edit contest')
+    expect((wrapper.get('input').element as HTMLInputElement).value).toBe(
+      'Summer Sprint',
+    )
+    expect(wrapper.text()).toContain('Contest periodicity')
+    await wrapper.get('textarea').setValue('Updated _description_')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(updates[0]?.description).toBe('Updated _description_')
+    expect(updates[0]?.periodicity).toEqual({
+      frequency: 'annual_date',
+      month: 7,
+      day: 4,
+    })
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Contest details saved',
+    )
+    await expectAccessible(wrapper.element)
+  })
+})

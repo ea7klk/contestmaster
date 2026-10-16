@@ -3,167 +3,42 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
-  createContest,
   changeContestStatus,
   deleteContest,
   importContest,
   listContests,
-  previewContestSchedule,
   selectRuleset,
-  updateContest,
   type Contest,
-  type ContestDraft,
   type ContestImportPackage,
-  type ContestPeriodicity,
   type ContestStatus,
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
-import { listRulesetVersions, type SavedRulesetVersion } from '../api/rulesets'
+import {
+  listAllRulesetVersions,
+  type SavedRulesetVersion,
+} from '../api/rulesets'
 
-interface ContestForm {
-  name: string
-  slug: string
-  description: string
-  starts_at: string
-  ends_at: string
-  periodicity_frequency: 'fixed' | ContestPeriodicity['frequency']
-  periodicity_month: number
-  periodicity_day: number
-  periodicity_weekday: number
-  periodicity_occurrence: number
-  log_submission_cutoff_at: string
-  auto_recalculate_on_upload: boolean
-}
-
+const pageSize = 20
 const user = ref<PrivilegedUser | null>(null)
 const contests = ref<Contest[]>([])
 const rulesets = ref<SavedRulesetVersion[]>([])
 const loading = ref(true)
-const saving = ref(false)
-const errorMessage = ref('')
 const forbidden = ref(false)
-const editingId = ref<number | null>(null)
+const errorMessage = ref('')
 const statusMessage = ref('')
+const contestFilter = ref('')
+const page = ref(1)
+const total = ref(0)
+const pages = ref(0)
 const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
 const statusSavingId = ref<number | null>(null)
 const importing = ref(false)
 const deletingContestId = ref<number | null>(null)
-const previewYear = ref(new Date().getUTCFullYear())
-const schedulePreview = ref('')
-const schedulePreviewError = ref('')
+const filteredContests = computed(() => contests.value)
 
-function emptyForm(): ContestForm {
-  return {
-    name: '',
-    slug: '',
-    description: '',
-    starts_at: '',
-    ends_at: '',
-    periodicity_frequency: 'fixed',
-    periodicity_month: 1,
-    periodicity_day: 1,
-    periodicity_weekday: 5,
-    periodicity_occurrence: 1,
-    log_submission_cutoff_at: '',
-    auto_recalculate_on_upload: false,
-  }
-}
-
-const form = reactive<ContestForm>(emptyForm())
-const formTitle = computed(() =>
-  editingId.value === null ? 'Create a contest' : 'Edit contest',
-)
-const contestFilter = ref('')
-const filteredContests = computed(() => {
-  const query = contestFilter.value.trim().toLocaleLowerCase()
-  if (!query) return contests.value
-  return contests.value.filter((contest) =>
-    [contest.name, contest.slug, contest.status].some((value) =>
-      value.toLocaleLowerCase().includes(query),
-    ),
-  )
-})
-
-function utcInputValue(instant: string): string {
-  const date = new Date(instant)
-  if (Number.isNaN(date.valueOf())) return ''
-  return date.toISOString().slice(0, 16)
-}
-
-function toUtcInstant(value: string): string {
-  return `${value}:00Z`
-}
-
-function contestForm(contest: Contest): ContestForm {
-  return {
-    name: contest.name,
-    slug: contest.slug,
-    description: contest.description ?? '',
-    starts_at: utcInputValue(contest.starts_at),
-    ends_at: utcInputValue(contest.ends_at),
-    periodicity_frequency: contest.periodicity?.frequency ?? 'fixed',
-    periodicity_month: contest.periodicity?.month ?? 1,
-    periodicity_day: contest.periodicity?.day ?? 1,
-    periodicity_weekday: contest.periodicity?.weekday ?? 5,
-    periodicity_occurrence: contest.periodicity?.occurrence ?? 1,
-    log_submission_cutoff_at: utcInputValue(contest.log_submission_cutoff_at),
-    auto_recalculate_on_upload: contest.auto_recalculate_on_upload,
-  }
-}
-
-function configuredPeriodicity(source: ContestForm): ContestPeriodicity | null {
-  if (source.periodicity_frequency === 'fixed') return null
-  if (source.periodicity_frequency === 'annual_date') {
-    return {
-      frequency: source.periodicity_frequency,
-      month: source.periodicity_month,
-      day: source.periodicity_day,
-    }
-  }
-  if (source.periodicity_frequency === 'nth_weekday') {
-    return {
-      frequency: source.periodicity_frequency,
-      month: source.periodicity_month,
-      weekday: source.periodicity_weekday,
-      occurrence: source.periodicity_occurrence,
-    }
-  }
-  return { frequency: 'first_full_weekend', month: source.periodicity_month }
-}
-
-function toDraft(source: ContestForm): ContestDraft {
-  return {
-    name: source.name.trim(),
-    slug: source.slug.trim(),
-    description: source.description.trim() || null,
-    starts_at: toUtcInstant(source.starts_at),
-    ends_at: toUtcInstant(source.ends_at),
-    periodicity: configuredPeriodicity(source),
-    log_submission_cutoff_at: toUtcInstant(source.log_submission_cutoff_at),
-    auto_recalculate_on_upload: source.auto_recalculate_on_upload,
-  }
-}
-
-async function loadSchedulePreview() {
-  schedulePreview.value = ''
-  schedulePreviewError.value = ''
-  const periodicity = configuredPeriodicity(form)
-  if (!periodicity) return
-  try {
-    const preview = await previewContestSchedule(
-      periodicity,
-      previewYear.value,
-      toUtcInstant(form.starts_at),
-      toUtcInstant(form.ends_at),
-    )
-    schedulePreview.value = `${preview.starts_at} – ${preview.ends_at}`
-  } catch (error) {
-    schedulePreviewError.value =
-      error instanceof Error
-        ? error.message
-        : 'Schedule could not be previewed.'
-  }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function refreshData() {
@@ -171,74 +46,43 @@ async function refreshData() {
   errorMessage.value = ''
   forbidden.value = false
   try {
-    const [currentUser, contestList, rulesetList] = await Promise.all([
+    const [currentUser, contestList, allRulesets] = await Promise.all([
       getCurrentUser(),
-      listContests(),
-      listRulesetVersions(),
+      listContests(page.value, pageSize, contestFilter.value),
+      listAllRulesetVersions(),
     ])
     user.value = currentUser
     contests.value = contestList.items
-    rulesets.value = rulesetList.items
+    total.value = contestList.meta.total
+    pages.value = contestList.meta.pages
+    rulesets.value = allRulesets
     for (const contest of contestList.items) {
       if (contest.ruleset_version_id !== null) {
         rulesetSelections[contest.id] = String(contest.ruleset_version_id)
       }
     }
   } catch (error) {
-    if (error instanceof ApiError && error.statusCode === 401) {
+    if (error instanceof ApiError && error.statusCode === 401)
       forbidden.value = true
-    } else {
+    else
       errorMessage.value =
-        error instanceof ApiError
+        error instanceof Error
           ? error.message
           : 'Contest data could not be loaded.'
-    }
   } finally {
     loading.value = false
   }
 }
 
-function editContest(contest: Contest) {
-  Object.assign(form, contestForm(contest))
-  editingId.value = contest.id
-  statusMessage.value = ''
-  errorMessage.value = ''
+async function applyFilter() {
+  page.value = 1
+  await refreshData()
 }
 
-function cancelEdit() {
-  Object.assign(form, emptyForm())
-  editingId.value = null
-  errorMessage.value = ''
-  statusMessage.value = ''
-}
-
-async function saveContest() {
-  if (saving.value) return
-  saving.value = true
-  errorMessage.value = ''
-  statusMessage.value = ''
-  try {
-    const draft = toDraft(form)
-    const editing = editingId.value
-    if (editingId.value === null) {
-      await createContest(draft)
-    } else {
-      await updateContest(editingId.value, draft)
-    }
-    cancelEdit()
-    await refreshData()
-    statusMessage.value =
-      editing === null
-        ? 'Contest created as a draft.'
-        : 'Contest details saved.'
-  } catch (error) {
-    errorMessage.value =
-      error instanceof ApiError
-        ? error.message
-        : 'Contest details could not be saved.'
-  } finally {
-    saving.value = false
-  }
+async function changePage(nextPage: number) {
+  if (nextPage < 1 || nextPage > pages.value || nextPage === page.value) return
+  page.value = nextPage
+  await refreshData()
 }
 
 async function saveRuleset(contest: Contest) {
@@ -253,7 +97,7 @@ async function saveRuleset(contest: Contest) {
     await refreshData()
   } catch (error) {
     errorMessage.value =
-      error instanceof ApiError
+      error instanceof Error
         ? error.message
         : 'The ruleset could not be assigned.'
   } finally {
@@ -274,7 +118,7 @@ async function setContestStatus(contest: Contest, status: ContestStatus) {
         : `${contest.name} is now closed.`
   } catch (error) {
     errorMessage.value =
-      error instanceof ApiError
+      error instanceof Error
         ? error.message
         : 'The contest status could not be changed.'
   } finally {
@@ -292,21 +136,17 @@ async function removeContest(contest: Contest) {
   statusMessage.value = ''
   try {
     await deleteContest(contest.id, typedSlug)
-    if (editingId.value === contest.id) cancelEdit()
+    if (contests.value.length === 1 && page.value > 1) page.value -= 1
     await refreshData()
     statusMessage.value = `${contest.name} and its contest data were deleted.`
   } catch (error) {
     errorMessage.value =
-      error instanceof ApiError
+      error instanceof Error
         ? error.message
         : 'The contest could not be deleted.'
   } finally {
     deletingContestId.value = null
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function importContestFile(event: Event) {
@@ -344,6 +184,8 @@ async function importContestFile(event: Event) {
     const result = await importContest(
       parsed as unknown as ContestImportPackage,
     )
+    page.value = 1
+    contestFilter.value = ''
     await refreshData()
     statusMessage.value = `Imported ${result.contest.name} as a draft with its ruleset assigned.`
   } catch (error) {
@@ -387,8 +229,11 @@ onMounted(refreshData)
             @change="importContestFile"
           />
         </label>
-        <RouterLink class="secondary-button" to="/rulesets/compose">
-          Create a ruleset
+        <RouterLink class="secondary-button" to="/manage/contests/new">
+          Create a contest
+        </RouterLink>
+        <RouterLink class="secondary-button" to="/manage/rulesets">
+          Manage rulesets
         </RouterLink>
       </div>
     </div>
@@ -408,397 +253,250 @@ onMounted(refreshData)
         Sign in
       </RouterLink>
     </section>
-    <p v-if="errorMessage" class="error-panel" role="alert">
-      {{ errorMessage }}
-    </p>
-    <p v-if="statusMessage" class="success-panel" role="status">
-      {{ statusMessage }}
-    </p>
-
-    <p v-if="!loading && !forbidden" class="field-help">
-      Import a JSON package with contest metadata and a schema-version-2 ruleset
-      draft. The imported contest starts as a draft.
-    </p>
-
-    <section
-      v-if="!loading && !forbidden"
-      class="contest-list"
-      aria-labelledby="contest-list-title"
-    >
-      <div class="contest-list-heading">
-        <h2 id="contest-list-title">Your contests</h2>
-        <label for="contest-filter">
-          Filter contests
-          <input
-            id="contest-filter"
-            v-model="contestFilter"
-            type="search"
-            autocomplete="off"
-            placeholder="Name, slug, or status"
-            aria-describedby="contest-filter-help"
-          />
-          <span id="contest-filter-help" class="field-help">
-            Search by contest name, URL slug, or status.
-          </span>
-        </label>
-      </div>
-      <p v-if="contests.length === 0" class="notice">
-        You have not created a contest yet.
+    <template v-else>
+      <p v-if="errorMessage" class="error-panel" role="alert">
+        {{ errorMessage }}
       </p>
-      <p v-else-if="filteredContests.length === 0" class="notice" role="status">
-        No contests match “{{ contestFilter }}”.
+      <p v-if="statusMessage" class="success-panel" role="status">
+        {{ statusMessage }}
       </p>
-      <div
-        v-else
-        class="contest-list-scroll"
-        tabindex="0"
-        aria-label="Scrollable contest list"
-      >
-        <article
-          v-for="contest in filteredContests"
-          :key="contest.id"
-          class="panel contest-card"
-        >
-          <div class="section-title">
-            <div>
-              <p class="eyebrow">{{ contest.status }}</p>
-              <h3>{{ contest.name }}</h3>
-              <p class="field-help">/{{ contest.slug }}</p>
-            </div>
-            <div class="contest-card-actions">
-              <button
-                v-if="
-                  contest.status === 'draft' &&
-                  contest.ruleset_version_id !== null
-                "
-                class="primary-button"
-                type="button"
-                :disabled="statusSavingId === contest.id"
-                @click="setContestStatus(contest, 'open')"
-              >
-                {{
-                  statusSavingId === contest.id ? 'Opening…' : 'Open contest'
-                }}
-              </button>
-              <button
-                v-else-if="contest.status === 'open'"
-                class="secondary-button"
-                type="button"
-                :disabled="statusSavingId === contest.id"
-                @click="setContestStatus(contest, 'closed')"
-              >
-                {{
-                  statusSavingId === contest.id ? 'Closing…' : 'Close contest'
-                }}
-              </button>
-              <button
-                v-else-if="
-                  contest.status === 'closed' &&
-                  contest.ruleset_version_id !== null
-                "
-                class="primary-button"
-                type="button"
-                :disabled="statusSavingId === contest.id"
-                @click="setContestStatus(contest, 'open')"
-              >
-                {{
-                  statusSavingId === contest.id
-                    ? 'Reopening…'
-                    : 'Reopen contest'
-                }}
-              </button>
-              <button
-                class="secondary-button"
-                type="button"
-                @click="editContest(contest)"
-              >
-                Edit details
-              </button>
-              <button
-                class="danger-button"
-                type="button"
-                :disabled="deletingContestId === contest.id"
-                @click="removeContest(contest)"
-              >
-                {{
-                  deletingContestId === contest.id
-                    ? 'Deleting…'
-                    : 'Delete contest'
-                }}
-              </button>
-            </div>
-          </div>
-          <p
-            v-if="
-              contest.status === 'draft' && contest.ruleset_version_id !== null
-            "
-            class="field-help"
-          >
-            Opening makes this contest public and eligible for log submissions.
-          </p>
-          <RouterLink :to="`/manage/contests/${contest.id}/results`">
-            Generate and publish results
-          </RouterLink>
-          <RouterLink :to="`/manage/contests/${contest.id}/entries`">
-            Submitted logs
-          </RouterLink>
-          <dl class="contest-meta">
-            <div>
-              <dt>Starts</dt>
-              <dd>{{ new Date(contest.starts_at).toLocaleString() }}</dd>
-            </div>
-            <div>
-              <dt>Ends</dt>
-              <dd>{{ new Date(contest.ends_at).toLocaleString() }}</dd>
-            </div>
-            <div>
-              <dt>Log cutoff</dt>
-              <dd>
-                {{
-                  new Date(contest.log_submission_cutoff_at).toLocaleString()
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>Automatic recalculation</dt>
-              <dd>{{ contest.auto_recalculate_on_upload ? 'On' : 'Off' }}</dd>
-            </div>
-          </dl>
-          <div class="ruleset-row">
-            <label :for="`ruleset-${contest.id}`">
-              Ruleset and category definition
-              <select
-                :id="`ruleset-${contest.id}`"
-                v-model="rulesetSelections[contest.id]"
-                :disabled="contest.status !== 'draft' || rulesets.length === 0"
-              >
-                <option value="">Select a saved ruleset</option>
-                <option
-                  v-for="version in rulesets"
-                  :key="version.id"
-                  :value="String(version.id)"
-                >
-                  {{ version.ruleset_key }} · {{ version.version }} ({{
-                    version.rule_type_keys.includes('categories')
-                      ? 'categories configured'
-                      : 'no categories'
-                  }})
-                </option>
-              </select>
-            </label>
-            <button
-              class="secondary-button"
-              type="button"
-              :disabled="
-                contest.status !== 'draft' ||
-                !rulesetSelections[contest.id] ||
-                rulesetSavingId === contest.id
-              "
-              @click="saveRuleset(contest)"
-            >
-              {{
-                rulesetSavingId === contest.id ? 'Assigning…' : 'Assign ruleset'
-              }}
-            </button>
-            <RouterLink
-              v-if="contest.ruleset_version_id !== null"
-              class="secondary-button"
-              :to="`/rulesets/compose/${contest.ruleset_version_id}`"
-            >
-              Edit ruleset
-            </RouterLink>
-          </div>
-          <p v-if="contest.ruleset_version_id === null" class="field-help">
-            This draft needs a validated ruleset before it can be opened.
-          </p>
-        </article>
-      </div>
-    </section>
-
-    <form
-      v-if="!loading && !forbidden"
-      class="panel contest-form"
-      @submit.prevent="saveContest"
-    >
-      <div class="section-title">
-        <h2>{{ formTitle }}</h2>
-        <button
-          v-if="editingId !== null"
-          class="quiet-button"
-          type="button"
-          @click="cancelEdit"
-        >
-          Cancel edit
-        </button>
-      </div>
-      <div class="form-grid">
-        <label>
-          Contest name
-          <input
-            v-model="form.name"
-            required
-            maxlength="200"
-            autocomplete="off"
-          />
-        </label>
-        <label>
-          URL slug
-          <input
-            v-model="form.slug"
-            required
-            maxlength="120"
-            pattern="[A-Za-z0-9][A-Za-z0-9-]*"
-            autocomplete="off"
-            aria-describedby="slug-help"
-          />
-          <span id="slug-help" class="field-help"
-            >Letters, numbers, and hyphens.</span
-          >
-        </label>
-        <label class="full-width">
-          Contest description (Markdown)
-          <textarea
-            v-model="form.description"
-            maxlength="10000"
-            rows="6"
-            aria-describedby="contest-description-help"
-          />
-          <span id="contest-description-help" class="field-help">
-            Supports Markdown such as paragraphs, lists, emphasis, and links.
-            This description is shown to participants above the generated rules
-            summary.
-          </span>
-        </label>
-        <label>
-          Contest starts (UTC)
-          <input v-model="form.starts_at" required type="datetime-local" />
-        </label>
-        <label>
-          Contest ends (UTC)
-          <input v-model="form.ends_at" required type="datetime-local" />
-        </label>
-        <fieldset class="full-width schedule-controls">
-          <legend>Contest periodicity</legend>
-          <p>
-            Start, end, and recurrence belong to this contest. Times are UTC;
-            the recurrence selector chooses the UTC calendar date for future
-            editions. The dates above are this edition's actual instants.
-          </p>
-          <label>
-            Schedule type
-            <select v-model="form.periodicity_frequency">
-              <option value="fixed">One-time contest</option>
-              <option value="annual_date">Annual date</option>
-              <option value="nth_weekday">Nth weekday</option>
-              <option value="first_full_weekend">First full weekend</option>
-            </select>
-          </label>
-          <label v-if="form.periodicity_frequency !== 'fixed'">
-            UTC month
-            <select v-model.number="form.periodicity_month">
-              <option v-for="month in 12" :key="month" :value="month">
-                {{
-                  new Date(Date.UTC(2020, month - 1, 1)).toLocaleString('en', {
-                    month: 'long',
-                    timeZone: 'UTC',
-                  })
-                }}
-              </option>
-            </select>
-          </label>
-          <label v-if="form.periodicity_frequency === 'annual_date'">
-            UTC day of month
-            <input
-              v-model.number="form.periodicity_day"
-              type="number"
-              min="1"
-              max="31"
-            />
-          </label>
-          <template v-if="form.periodicity_frequency === 'nth_weekday'">
-            <label>
-              Weekday
-              <select v-model.number="form.periodicity_weekday">
-                <option
-                  v-for="(weekday, index) in [
-                    'Monday',
-                    'Tuesday',
-                    'Wednesday',
-                    'Thursday',
-                    'Friday',
-                    'Saturday',
-                    'Sunday',
-                  ]"
-                  :key="weekday"
-                  :value="index"
-                >
-                  {{ weekday }}
-                </option>
-              </select>
-            </label>
-            <label>
-              Occurrence
-              <select v-model.number="form.periodicity_occurrence">
-                <option :value="1">First</option>
-                <option :value="2">Second</option>
-                <option :value="3">Third</option>
-                <option :value="4">Fourth</option>
-                <option :value="5">Fifth</option>
-                <option :value="-1">Last</option>
-              </select>
-            </label>
-          </template>
-          <template v-if="form.periodicity_frequency !== 'fixed'">
-            <label>
-              Preview year
-              <input
-                v-model.number="previewYear"
-                type="number"
-                min="1900"
-                max="2200"
-              />
-            </label>
-            <button
-              type="button"
-              class="secondary-button"
-              @click="loadSchedulePreview"
-            >
-              Preview UTC dates
-            </button>
-            <p v-if="schedulePreview" role="status">{{ schedulePreview }}</p>
-            <p v-if="schedulePreviewError" role="alert">
-              {{ schedulePreviewError }}
-            </p>
-          </template>
-        </fieldset>
-        <label>
-          Log submission cutoff (UTC)
-          <input
-            v-model="form.log_submission_cutoff_at"
-            required
-            type="datetime-local"
-          />
-        </label>
-      </div>
-      <label class="checkbox-field">
-        <input v-model="form.auto_recalculate_on_upload" type="checkbox" />
-        Recalculate results after an accepted log upload
-      </label>
       <p class="field-help">
-        These values are entered and stored as UTC instants. The submission
-        cutoff is independent of contest end. Category and exchange setup is
-        part of the selected ruleset.
+        Import a JSON package with contest metadata and a schema-version-2
+        ruleset draft. The imported contest starts as a draft.
       </p>
-      <button class="primary-button" type="submit" :disabled="saving">
-        {{
-          saving
-            ? 'Saving…'
-            : editingId === null
-              ? 'Create draft contest'
-              : 'Save contest'
-        }}
-      </button>
-    </form>
+      <section class="contest-list" aria-labelledby="contest-list-title">
+        <div class="contest-list-heading">
+          <h2 id="contest-list-title">Your contests</h2>
+          <label for="contest-filter"
+            >Filter contests
+            <input
+              id="contest-filter"
+              v-model="contestFilter"
+              type="search"
+              maxlength="120"
+              autocomplete="off"
+              placeholder="Name, slug, or status"
+              aria-describedby="contest-filter-help"
+              @input="applyFilter"
+            />
+            <span id="contest-filter-help" class="field-help"
+              >Search by contest name, URL slug, or exact status.</span
+            >
+          </label>
+        </div>
+        <p v-if="total === 0 && !contestFilter" class="notice">
+          You have not created a contest yet.
+        </p>
+        <p
+          v-else-if="filteredContests.length === 0"
+          class="notice"
+          role="status"
+        >
+          No contests match “{{ contestFilter }}”.
+        </p>
+        <div
+          v-else
+          class="contest-list-scroll"
+          tabindex="0"
+          aria-label="Scrollable contest list"
+        >
+          <article
+            v-for="contest in filteredContests"
+            :key="contest.id"
+            class="panel contest-card"
+          >
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">{{ contest.status }}</p>
+                <h3>{{ contest.name }}</h3>
+                <p class="field-help">/{{ contest.slug }}</p>
+              </div>
+              <div class="contest-card-actions">
+                <button
+                  v-if="
+                    contest.status === 'draft' &&
+                    contest.ruleset_version_id !== null
+                  "
+                  class="primary-button"
+                  type="button"
+                  :disabled="statusSavingId === contest.id"
+                  @click="setContestStatus(contest, 'open')"
+                >
+                  {{
+                    statusSavingId === contest.id ? 'Opening…' : 'Open contest'
+                  }}
+                </button>
+                <button
+                  v-else-if="contest.status === 'open'"
+                  class="secondary-button"
+                  type="button"
+                  :disabled="statusSavingId === contest.id"
+                  @click="setContestStatus(contest, 'closed')"
+                >
+                  {{
+                    statusSavingId === contest.id ? 'Closing…' : 'Close contest'
+                  }}
+                </button>
+                <button
+                  v-else-if="
+                    contest.status === 'closed' &&
+                    contest.ruleset_version_id !== null
+                  "
+                  class="primary-button"
+                  type="button"
+                  :disabled="statusSavingId === contest.id"
+                  @click="setContestStatus(contest, 'open')"
+                >
+                  {{
+                    statusSavingId === contest.id
+                      ? 'Reopening…'
+                      : 'Reopen contest'
+                  }}
+                </button>
+                <RouterLink
+                  class="secondary-button"
+                  :to="`/manage/contests/${contest.id}/edit`"
+                >
+                  Edit details
+                </RouterLink>
+                <button
+                  class="danger-button"
+                  type="button"
+                  :disabled="deletingContestId === contest.id"
+                  @click="removeContest(contest)"
+                >
+                  {{
+                    deletingContestId === contest.id
+                      ? 'Deleting…'
+                      : 'Delete contest'
+                  }}
+                </button>
+              </div>
+            </div>
+            <p
+              v-if="
+                contest.status === 'draft' &&
+                contest.ruleset_version_id !== null
+              "
+              class="field-help"
+            >
+              Opening makes this contest public and eligible for log
+              submissions.
+            </p>
+            <div class="contest-links">
+              <span>
+                <RouterLink :to="`/manage/contests/${contest.id}/results`"
+                  >Generate and publish results</RouterLink
+                >
+              </span>
+              <span>
+                <RouterLink :to="`/manage/contests/${contest.id}/entries`"
+                  >Submitted logs</RouterLink
+                >
+              </span>
+            </div>
+            <dl class="contest-meta">
+              <div>
+                <dt>Starts</dt>
+                <dd>{{ new Date(contest.starts_at).toLocaleString() }}</dd>
+              </div>
+              <div>
+                <dt>Ends</dt>
+                <dd>{{ new Date(contest.ends_at).toLocaleString() }}</dd>
+              </div>
+              <div>
+                <dt>Log cutoff</dt>
+                <dd>
+                  {{
+                    new Date(contest.log_submission_cutoff_at).toLocaleString()
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Automatic recalculation</dt>
+                <dd>{{ contest.auto_recalculate_on_upload ? 'On' : 'Off' }}</dd>
+              </div>
+            </dl>
+            <div class="ruleset-row">
+              <label :for="`ruleset-${contest.id}`"
+                >Ruleset and category definition
+                <select
+                  :id="`ruleset-${contest.id}`"
+                  v-model="rulesetSelections[contest.id]"
+                  :disabled="
+                    contest.status !== 'draft' || rulesets.length === 0
+                  "
+                >
+                  <option value="">Select a saved ruleset</option>
+                  <option
+                    v-for="version in rulesets"
+                    :key="version.id"
+                    :value="String(version.id)"
+                  >
+                    {{ version.ruleset_key }} · {{ version.version }} ({{
+                      version.rule_type_keys.includes('categories')
+                        ? 'categories configured'
+                        : 'no categories'
+                    }})
+                  </option>
+                </select>
+              </label>
+              <button
+                class="secondary-button"
+                type="button"
+                :disabled="
+                  contest.status !== 'draft' ||
+                  !rulesetSelections[contest.id] ||
+                  rulesetSavingId === contest.id
+                "
+                @click="saveRuleset(contest)"
+              >
+                {{
+                  rulesetSavingId === contest.id
+                    ? 'Assigning…'
+                    : 'Assign ruleset'
+                }}
+              </button>
+              <RouterLink
+                v-if="contest.ruleset_version_id !== null"
+                class="secondary-button"
+                :to="`/manage/rulesets/${contest.ruleset_version_id}/edit`"
+              >
+                Edit ruleset
+              </RouterLink>
+            </div>
+            <p v-if="contest.ruleset_version_id === null" class="field-help">
+              This draft needs a validated ruleset before it can be opened.
+            </p>
+          </article>
+        </div>
+        <nav
+          v-if="pages > 1"
+          class="pagination"
+          aria-label="Contest list pages"
+        >
+          <button
+            class="secondary-button"
+            type="button"
+            :disabled="page <= 1 || loading"
+            @click="changePage(page - 1)"
+          >
+            Previous
+          </button>
+          <span aria-live="polite"
+            >Page {{ page }} of {{ pages }} · {{ total }} contests</span
+          >
+          <button
+            class="secondary-button"
+            type="button"
+            :disabled="page >= pages || loading"
+            @click="changePage(page + 1)"
+          >
+            Next
+          </button>
+        </nav>
+      </section>
+    </template>
   </section>
 </template>
 
@@ -807,6 +505,22 @@ onMounted(refreshData)
 .contest-list {
   display: grid;
   gap: 1rem;
+}
+.manager-heading,
+.section-title,
+.ruleset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.manager-actions,
+.contest-card-actions,
+.contest-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 .contest-list-heading {
   display: grid;
@@ -821,7 +535,9 @@ onMounted(refreshData)
   gap: 0.35rem;
   font-weight: 650;
 }
-.contest-list-heading input {
+.contest-list-heading input,
+.ruleset-row select {
+  width: 100%;
   min-height: 2.65rem;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--color-border-strong);
@@ -836,113 +552,23 @@ onMounted(refreshData)
   gap: 0.5rem;
   padding: 0.25rem;
 }
-.contest-list-scroll:focus-visible,
-.saved-version-list:focus-visible {
+.contest-list-scroll:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
-}
-.manager-heading,
-.section-title,
-.ruleset-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-.manager-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-.contest-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.35rem;
-}
-.file-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.75rem;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.55rem;
-  color: var(--color-ink);
-  background: var(--color-surface);
-  cursor: pointer;
-  font-weight: 650;
-}
-.file-button:focus-within {
-  outline: 3px solid var(--color-focus);
-  outline-offset: 2px;
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-.manager-heading h1,
-.contest-card h3 {
-  margin-top: 0.25rem;
 }
 .panel {
-  padding: clamp(1rem, 3vw, 1.5rem);
-  border: 1px solid var(--color-border);
-  border-radius: 0.8rem;
-  background: var(--color-surface);
-  box-shadow: 0 10px 28px var(--color-card-shadow);
-}
-.contest-list-scroll .contest-card {
-  gap: 0.5rem;
   padding: 0.8rem 1rem;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
+  background: var(--color-surface);
   box-shadow: 0 4px 12px var(--color-card-shadow);
 }
-.contest-form,
-.form-grid,
-.contest-card,
-.ruleset-row label {
+.contest-card {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.5rem;
 }
-.form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.form-grid label,
-.ruleset-row label {
-  font-weight: 650;
-}
-.form-grid input,
-.form-grid textarea,
-.ruleset-row select {
-  width: 100%;
-  min-height: 2.65rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.45rem;
-  font: inherit;
-}
-.full-width {
-  grid-column: 1 / -1;
-}
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: fit-content;
-  font-weight: 650;
-}
-.checkbox-field input {
-  width: 1.2rem;
-  height: 1.2rem;
+.contest-card h3 {
+  margin: 0.25rem 0;
 }
 .field-help {
   margin: 0;
@@ -955,9 +581,6 @@ onMounted(refreshData)
   gap: 0.45rem 1rem;
   margin: 0;
 }
-.contest-meta div {
-  min-width: 0;
-}
 .contest-meta dt {
   color: var(--color-muted);
   font-size: 0.8rem;
@@ -967,17 +590,29 @@ onMounted(refreshData)
   overflow-wrap: anywhere;
   font-size: 0.9rem;
 }
+.ruleset-row {
+  align-items: end;
+}
+.ruleset-row label {
+  display: grid;
+  flex: 1;
+  gap: 0.35rem;
+  font-weight: 650;
+}
 .primary-button,
 .secondary-button,
-.quiet-button,
-.primary-link {
+.primary-link,
+.file-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: fit-content;
   min-height: 2.6rem;
-  padding: 0.55rem 0.8rem;
-  border: 1px solid transparent;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
+  color: var(--color-brand-700);
+  background: var(--color-surface);
   font: inherit;
   font-weight: 700;
   text-decoration: none;
@@ -985,18 +620,13 @@ onMounted(refreshData)
 }
 .primary-button,
 .primary-link {
-  width: fit-content;
+  border-color: transparent;
   color: var(--color-surface);
   background: var(--color-brand-700);
 }
-.secondary-button {
-  color: var(--color-brand-700);
-  background: var(--color-surface);
-  border-color: var(--color-border-strong);
-}
 .danger-button {
   min-height: 2.6rem;
-  padding: 0.55rem 0.8rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-error-ink);
   border-radius: 0.45rem;
   color: var(--color-error-ink);
@@ -1005,18 +635,22 @@ onMounted(refreshData)
   font-weight: 700;
   cursor: pointer;
 }
-.danger-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
-.quiet-button {
-  color: var(--color-brand-900);
-  background: var(--color-surface-muted);
-}
-.primary-button:disabled,
-.secondary-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
 }
 .notice,
 .success-panel,
@@ -1037,6 +671,7 @@ onMounted(refreshData)
 }
 @media (max-width: 700px) {
   .manager-heading,
+  .section-title,
   .ruleset-row {
     align-items: stretch;
     flex-direction: column;
@@ -1044,7 +679,6 @@ onMounted(refreshData)
   .contest-card-actions {
     justify-content: flex-start;
   }
-  .form-grid,
   .contest-meta {
     grid-template-columns: 1fr;
   }
