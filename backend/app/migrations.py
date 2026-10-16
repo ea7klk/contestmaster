@@ -5,6 +5,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 
 from backend.app.db import build_engine
@@ -17,6 +18,11 @@ def upgrade_database() -> None:
     """Apply the baseline and pending revisions before serving API requests."""
     logger.info("database_upgrade_started")
     project_root = Path(__file__).resolve().parents[2]
+    active_config = _config(project_root)
+    active_revision_ids = {
+        revision.revision
+        for revision in ScriptDirectory.from_config(active_config).walk_revisions()
+    }
     database_engine = build_engine()
     try:
         inspector = inspect(database_engine)
@@ -25,7 +31,7 @@ def upgrade_database() -> None:
                 current_revision = connection.scalar(
                     text("SELECT version_num FROM alembic_version")
                 )
-            if current_revision and current_revision != _BASELINE_REVISION:
+            if current_revision and current_revision not in active_revision_ids:
                 # One-time compatibility path for installations created before the
                 # migration squash. These revisions are archived and are not part of
                 # the active migration graph for new databases.
@@ -44,9 +50,14 @@ def upgrade_database() -> None:
                     "shared_legacy_baseline_detected",
                     extra={"current_revision": current_revision},
                 )
+            elif current_revision:
+                logger.info(
+                    "current_database_revision_detected",
+                    extra={"current_revision": current_revision},
+                )
     finally:
         database_engine.dispose()
-    command.upgrade(_config(project_root), "head")
+    command.upgrade(active_config, "head")
     logger.info("database_upgrade_finished")
 
 

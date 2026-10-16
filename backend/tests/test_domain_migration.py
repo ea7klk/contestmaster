@@ -289,6 +289,23 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine.dispose()
 
 
+def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'already-current.sqlite3'}"
+    _alembic(database_url, "upgrade", "head")
+
+    _run_python(
+        database_url, "from backend.app.migrations import upgrade_database; upgrade_database()"
+    )
+    _alembic(database_url, "check")
+
+    engine = build_engine(database_url)
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "0019_contest_periodicity"
+        )
+    engine.dispose()
+
+
 def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) -> None:
     database_url = f"sqlite:///{tmp_path / 'shared-baseline.sqlite3'}"
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
