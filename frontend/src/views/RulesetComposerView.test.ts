@@ -541,15 +541,13 @@ describe('RulesetComposerView', () => {
     expect(
       (wrapper.get('.metadata-panel input').element as HTMLInputElement).value,
     ).toBe('field-day')
-    await wrapper.findAll('button.primary-button')[0]?.trigger('click')
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      'Enter a new version identifier',
-    )
     expect(
-      fetchMock.mock.calls.some(([path]) =>
-        String(path).endsWith('/rulesets/validate'),
-      ),
-    ).toBe(false)
+      (wrapper.findAll('.metadata-panel input')[1]?.element as HTMLInputElement)
+        .value,
+    ).toBe('2026')
+    expect(wrapper.text()).toContain(
+      'Enter a new version identifier; saved versions cannot be changed',
+    )
     await wrapper.findAll('.metadata-panel input')[1]?.setValue('2026-revised')
     await wrapper.findAll('button.primary-button')[0]?.trigger('click')
     await flushPromises()
@@ -606,7 +604,7 @@ describe('RulesetComposerView', () => {
     expect(
       (wrapper.findAll('.metadata-panel input')[1]?.element as HTMLInputElement)
         .value,
-    ).toBe('')
+    ).toBe('2026')
   })
 
   it('preserves the current draft when a selected saved version cannot load', async () => {

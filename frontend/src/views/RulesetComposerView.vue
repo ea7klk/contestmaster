@@ -343,7 +343,7 @@ async function loadSavedVersion(
     throw new Error('The saved ruleset has an invalid configuration.')
   }
   rulesetKey.value = definition.ruleset_key
-  version.value = ''
+  version.value = definition.version
   sourceUrl.value = definition.source_url ?? ''
   sourceEdition.value = definition.source_edition ?? ''
   rules.value = definition.rules.map((item) => ({ ...item }))
