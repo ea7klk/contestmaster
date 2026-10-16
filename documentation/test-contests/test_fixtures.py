@@ -78,6 +78,10 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
 
         assert matched_calls * 5 == total_calls * 4
         for station, qsos in parsed_logs.items():
+            if folder == "cabrillo":
+                assert [qso.exchange_sent for qso in qsos] == [
+                    f"{serial:03d}" for serial in range(1, len(qsos) + 1)
+                ]
             by_peer = {qso.callsign_received: qso for qso in qsos}
             for peer, qso in by_peer.items():
                 if peer in participants:

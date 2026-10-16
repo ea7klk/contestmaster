@@ -7,7 +7,7 @@ These two synthetic contests exercise the public log intake with no participant 
 | [`cabrillo`](cabrillo/) | `contest.json` | Cabrillo 3.0 | 110 |
 | [`adif`](adif/) | `contest.json` | ADI/ADIF | 56 |
 
-Every station and contact is synthetic. Each participant log contains 10, 15, or 20 QSOs. Exactly 80% of worked-call entries name another participant whose log contains the reciprocal QSO; the other 20% name external stations with no log in that contest. Cabrillo QSOs use sequential sent serials and the received serial from the other participant's matching record. The Cabrillo ruleset requires a serial both sent and received.
+Every station and contact is synthetic. Each participant log contains 10, 15, or 20 QSOs. Exactly 80% of worked-call entries name another participant whose log contains the reciprocal QSO; the other 20% name external stations with no log in that contest. Cabrillo QSO lines put the logging station's exchange after its callsign and the correspondent's exchange after the correspondent's callsign, as shown in the [WWROF Cabrillo QSO data specification](https://wwrof.org/cabrillo/cabrillo-qso-data/). The fixtures use sequential sent serials and include the serial received from each matched correspondent; the Cabrillo ruleset requires the serial in both directions.
 
 Every Cabrillo fixture includes a synthetic `EMAIL: <callsign>@nomail.invalid` header. The reserved `.invalid` domain ensures these addresses cannot deliver mail.
 
