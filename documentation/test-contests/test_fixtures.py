@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 from backend.app.logs.adif import parse_adif
 from backend.app.logs.cabrillo import parse_cabrillo
+from backend.app.rulesets.engine import ScoringEntry, ScoringQso, score_entry
 from backend.app.rulesets.schema import RulesetDefinition
 from backend.app.rulesets.validation import validate_ruleset
 
@@ -30,6 +32,47 @@ def _load_generator(format_name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _score_generated_contest(folder: str) -> dict[str, object]:
+    package = json.loads((ROOT / folder / "contest.json").read_text(encoding="utf-8"))
+    definition = RulesetDefinition.model_validate(package["ruleset"])
+    start = datetime.fromisoformat(package["contest"]["starts_at"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(package["contest"]["ends_at"].replace("Z", "+00:00"))
+    extension = "*.log" if folder == "cabrillo" else "*.adi"
+    scores = {}
+    for entry_id, path in enumerate(sorted((ROOT / folder / "logs").glob(extension)), start=1):
+        content = path.read_text(encoding="utf-8")
+        parsed = parse_cabrillo(content) if folder == "cabrillo" else parse_adif(content)
+        qsos = []
+        for qso_id, qso in enumerate(parsed.qsos, start=1):
+            if folder == "cabrillo":
+                sent_exchange = {"serial": int(qso.exchange_sent)}
+                received_exchange = {"serial": int(qso.exchange_received)}
+                mode = qso.mode
+            else:
+                sent_exchange = qso.fields["_exchange_sent_values"]
+                received_exchange = qso.fields["_exchange_received_values"]
+                mode = qso.mode
+            qsos.append(
+                ScoringQso(
+                    qso_id=qso_id,
+                    occurred_at=qso.occurred_at,
+                    worked_callsign=qso.callsign_received,
+                    band="20m",
+                    mode=mode,
+                    sent_exchange=sent_exchange,
+                    received_exchange=received_exchange,
+                )
+            )
+        result = score_entry(
+            definition,
+            ScoringEntry(entry_id=entry_id, station_callsign=path.stem, qsos=qsos),
+            contest_starts_at=start,
+            contest_ends_at=end,
+        )
+        scores[path.stem] = result
+    return scores
 
 
 def test_contest_packages_are_valid_and_only_enable_their_declared_format():
@@ -61,6 +104,12 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
             assert serial.value_type == "serial"
             assert serial.direction == "both"
             assert serial.required
+        multipliers = [rule.rule for rule in ruleset.rules if rule.rule.kind == "multiplier"]
+        assert len(multipliers) == 1
+        assert multipliers[0].source_fact == "qso.worked_callsign"
+        formula = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "score_formula")
+        assert formula.steps[0].operator == "multiply"
+        assert formula.steps[0].operand.variable == "multiplier_count"
 
 
 def test_generated_logs_are_reproducible_unique_and_parseable():
@@ -120,3 +169,17 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
                 elif folder == "cabrillo":
                     assert qso.exchange_sent.isdecimal()
                     assert qso.exchange_received.isdecimal()
+
+
+def test_synthetic_contest_rules_produce_clear_ranked_winners():
+    for folder, expected_scores in (
+        ("cabrillo", {"K0AAA": 6400, "K0AAB": 900, "K0AAC": 400}),
+        ("adif", {"K0AAA": 1600, "K0AAB": 400, "K0AAC": 100}),
+    ):
+        scores = _score_generated_contest(folder)
+        ordered = sorted(scores.items(), key=lambda item: item[1].final_score, reverse=True)
+        assert [(callsign, score.final_score) for callsign, score in ordered[:3]] == list(
+            expected_scores.items()
+        )
+        assert len({score.final_score for _callsign, score in ordered[:3]}) == 3
+        assert all(score.outcome == "scored" for score in scores.values())

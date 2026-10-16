@@ -23,7 +23,8 @@
       {"id": "eligibility", "rule": {"kind": "eligibility", "reject_self_contacts": true, "reject_out_of_period": true, "reject_missing_required_exchange": true, "action": "not_credited"}},
       {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band"], "effect": "not_credited", "penalty_points": 0}},
       {"id": "points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1}},
-      {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": []}},
+      {"id": "worked-call-multiplier", "rule": {"kind": "multiplier", "source_fact": "qso.worked_callsign", "scope": "contest", "label": "Unique worked callsigns"}},
+      {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": [{"operator": "multiply", "operand": {"variable": "multiplier_count"}}]}},
       {"id": "format-mapping", "rule": {"kind": "format_mapping", "format": "cabrillo", "preserve_unknown_fields": true}}
     ]
   }

@@ -31,7 +31,9 @@ def callsign(index: int) -> str:
 
 def build_logs() -> dict[str, str]:
     stations = [callsign(index) for index in range(PARTICIPANT_COUNT)]
-    contact_plan = build_contact_plan(stations, STARTS_AT)
+    contact_plan = build_contact_plan(
+        stations, STARTS_AT, featured_contact_degrees={0: 64, 1: 24, 2: 16}
+    )
     logs: dict[str, str] = {}
     for station in stations:
         qso_lines = []

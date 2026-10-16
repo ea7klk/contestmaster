@@ -30,14 +30,27 @@ def _external_callsign(index: int) -> str:
     return "W9" + "".join(reversed(chars))
 
 
-def build_contact_plan(callsigns: list[str], starts_at: datetime) -> dict[str, list[Contact]]:
-    """Build 10, 15, or 20 QSOs per station with exactly 80% reciprocal calls."""
+def build_contact_plan(
+    callsigns: list[str],
+    starts_at: datetime,
+    *,
+    featured_contact_degrees: dict[int, int],
+) -> dict[str, list[Contact]]:
+    """Build reciprocal graphs with featured stations and 80% reciprocal calls."""
     count = len(callsigns)
     if count < 17:
         raise ValueError("at least 17 stations are needed for the configured contact degrees")
 
-    degree_options = (8, 12, 16)
-    degrees = [degree_options[i % len(degree_options)] for i in range(count)]
+    if any(
+        station < 0 or station >= count or degree < 4 or degree >= count or degree % 2
+        for station, degree in featured_contact_degrees.items()
+    ):
+        raise ValueError("featured stations need valid, even reciprocal contact degrees")
+    degrees = [4] * count
+    for station, degree in featured_contact_degrees.items():
+        degrees[station] = degree
+    if sum(degrees) % 2:
+        raise ValueError("reciprocal contact degrees must sum to an even number")
     remaining = degrees.copy()
     tie_break = list(range(count))
     # A stable permutation varies the graph without introducing nondeterminism.
