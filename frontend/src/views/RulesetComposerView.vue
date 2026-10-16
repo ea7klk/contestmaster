@@ -11,6 +11,7 @@ import {
 } from '../api/operatingCatalog'
 import {
   getRuleCatalog,
+  listRulesetVersions,
   getSavedRulesetVersion,
   RulesetApiError,
   saveRulesetVersion,
@@ -20,6 +21,7 @@ import {
   type RuleTypeDescriptor,
   type RulesetIssue,
   type RulesetValidationResponse,
+  type SavedRulesetVersion,
 } from '../api/rulesets'
 
 interface ConfiguredRuleDraft {
@@ -30,6 +32,7 @@ interface ConfiguredRuleDraft {
 
 const catalog = ref<RuleTypeDescriptor[]>([])
 const operatingCatalog = ref<OperatingCatalogItem[]>([])
+const savedVersions = ref<SavedRulesetVersion[]>([])
 const rules = ref<ConfiguredRuleDraft[]>([])
 const rulesetKey = ref('my-contest')
 const version = ref('1')
@@ -45,6 +48,10 @@ const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const editingSource = ref('')
+const savedVersionsLoaded = ref(false)
+const loadingSavedVersions = ref(false)
+const loadingSelectedVersion = ref(false)
+const selectedSavedVersionId = ref('')
 const props = defineProps<{ editVersionId?: string }>()
 
 const optionalTypes = computed(() =>
@@ -288,6 +295,66 @@ function clearValidation() {
   savedMessage.value = ''
 }
 
+async function browseSavedVersions() {
+  if (loadingSavedVersions.value) return
+  loadingSavedVersions.value = true
+  generalError.value = ''
+  try {
+    const response = await listRulesetVersions()
+    savedVersions.value = response.items
+    savedVersionsLoaded.value = true
+  } catch (error) {
+    generalError.value =
+      error instanceof Error
+        ? error.message
+        : 'Saved rulesets could not be loaded.'
+  } finally {
+    loadingSavedVersions.value = false
+  }
+}
+
+async function loadSavedVersion(
+  versionId: number,
+  signal?: Parameters<typeof getSavedRulesetVersion>[1],
+) {
+  const saved = await getSavedRulesetVersion(versionId, signal)
+  const definition = saved.configuration
+  if (
+    !Array.isArray(definition.rules) ||
+    typeof definition.ruleset_key !== 'string' ||
+    typeof definition.version !== 'string'
+  ) {
+    throw new Error('The saved ruleset has an invalid configuration.')
+  }
+  rulesetKey.value = definition.ruleset_key
+  version.value = ''
+  sourceUrl.value = definition.source_url ?? ''
+  sourceEdition.value = definition.source_edition ?? ''
+  rules.value = definition.rules.map((item) => ({ ...item }))
+  selectedSavedVersionId.value = String(versionId)
+  editingSource.value = `${definition.ruleset_key} version ${definition.version}`
+  clearValidation()
+  savedMessage.value = `Loaded ${editingSource.value}. Enter a new version identifier to save your changes.`
+}
+
+async function loadSelectedVersion() {
+  const versionId = Number(selectedSavedVersionId.value)
+  if (!Number.isSafeInteger(versionId) || versionId < 1) return
+  loadingSelectedVersion.value = true
+  generalError.value = ''
+  savedMessage.value = ''
+  try {
+    await loadSavedVersion(versionId)
+  } catch (error) {
+    generalError.value =
+      error instanceof Error
+        ? error.message
+        : 'The saved ruleset could not be loaded.'
+  } finally {
+    loadingSelectedVersion.value = false
+  }
+}
+
 function exportDraft() {
   const blob = new Blob([`${JSON.stringify(buildDraft(), null, 2)}\n`], {
     type: 'application/json',
@@ -411,14 +478,7 @@ onMounted(async () => {
       if (!Number.isSafeInteger(versionId) || versionId < 1) {
         throw new Error('The requested saved ruleset version is invalid.')
       }
-      const saved = await getSavedRulesetVersion(versionId, controller.signal)
-      const definition = saved.configuration
-      rulesetKey.value = definition.ruleset_key
-      version.value = ''
-      sourceUrl.value = definition.source_url ?? ''
-      sourceEdition.value = definition.source_edition ?? ''
-      rules.value = definition.rules.map((item) => ({ ...item }))
-      editingSource.value = `${definition.ruleset_key} version ${definition.version}`
+      await loadSavedVersion(versionId, controller.signal)
     } else {
       seedRequiredRules()
     }
@@ -459,6 +519,60 @@ function catalogErrorMessage(reason: unknown) {
       Loading the built-in rule catalog…
     </p>
     <template v-else-if="catalog.length">
+      <fieldset class="panel saved-version-panel">
+        <legend>Continue from a saved ruleset</legend>
+        <p class="field-help">
+          Load any saved version into the composer, make changes, then save with
+          a new version identifier. The saved version remains unchanged.
+        </p>
+        <button
+          id="browse-saved-rulesets"
+          type="button"
+          class="secondary-button"
+          :disabled="loadingSavedVersions"
+          @click="browseSavedVersions"
+        >
+          {{
+            loadingSavedVersions
+              ? 'Loading saved versions…'
+              : savedVersionsLoaded
+                ? 'Refresh saved versions'
+                : 'Browse saved versions'
+          }}
+        </button>
+        <template v-if="savedVersionsLoaded">
+          <p v-if="savedVersions.length === 0" class="field-help">
+            No saved ruleset versions are available yet.
+          </p>
+          <div v-else class="saved-version-controls">
+            <label for="saved-ruleset-version">Saved ruleset version</label>
+            <select
+              id="saved-ruleset-version"
+              v-model="selectedSavedVersionId"
+              :disabled="loadingSelectedVersion"
+            >
+              <option value="">Choose a saved version</option>
+              <option
+                v-for="saved in savedVersions"
+                :key="saved.id"
+                :value="String(saved.id)"
+              >
+                {{ saved.ruleset_key }} version {{ saved.version }}
+              </option>
+            </select>
+            <button
+              id="load-saved-ruleset"
+              type="button"
+              class="secondary-button"
+              :disabled="!selectedSavedVersionId || loadingSelectedVersion"
+              @click="loadSelectedVersion"
+            >
+              {{ loadingSelectedVersion ? 'Loading…' : 'Load into composer' }}
+            </button>
+          </div>
+        </template>
+      </fieldset>
+
       <fieldset class="panel metadata-panel">
         <legend>Ruleset identity</legend>
         <div class="metadata-grid">
@@ -826,6 +940,25 @@ function catalogErrorMessage(reason: unknown) {
   border-radius: 0.8rem;
   background: var(--color-surface);
   box-shadow: 0 10px 28px var(--color-card-shadow);
+}
+.saved-version-panel,
+.saved-version-controls {
+  display: grid;
+  gap: 0.75rem;
+}
+.saved-version-panel p {
+  margin: 0;
+}
+.saved-version-controls label {
+  font-weight: 650;
+}
+.saved-version-controls select {
+  width: min(100%, 36rem);
+  min-height: 2.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.45rem;
+  font: inherit;
 }
 .panel legend {
   padding: 0 0.4rem;

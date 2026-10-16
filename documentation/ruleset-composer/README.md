@@ -29,7 +29,7 @@ For example, the package shape is:
 }
 ```
 
-The example's empty `rules` array is a shape illustration only; a real ruleset must include and validate all required rule types. The **Edit ruleset** action on a contest opens its saved version in the graphic composer. It is loaded as a new draft: enter a new version identifier and save. Existing versions are immutable, and editing does not change the contest's current assignment. Select the newly saved version from the contest manager when ready.
+The example's empty `rules` array is a shape illustration only; a real ruleset must include and validate all required rule types. The **Edit ruleset** action on a contest opens its saved version in the graphic composer. The composer also has a **Continue from a saved ruleset** picker to browse and load any saved version, including versions not assigned to a contest. A loaded version becomes a new draft: enter a new version identifier and save. Existing versions are immutable, and editing does not change a contest's current assignment. Select the newly saved version from the contest manager when ready.
 
 ## Schedule and submissions
 
