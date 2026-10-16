@@ -522,8 +522,19 @@ describe('RulesetComposerView', () => {
     await flushPromises()
     await wrapper.get('#browse-saved-rulesets').trigger('click')
     await flushPromises()
-    await wrapper.get('#saved-ruleset-version').setValue('21')
-    await wrapper.get('#load-saved-ruleset').trigger('click')
+    expect(wrapper.get('.saved-version-list').attributes()).toMatchObject({
+      tabindex: '0',
+      'aria-label': 'Scrollable saved ruleset versions',
+    })
+    await wrapper.get('#saved-ruleset-filter').setValue('not-present')
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'No saved rulesets match',
+    )
+    await wrapper.get('#saved-ruleset-filter').setValue('categories')
+    expect(wrapper.findAll('.saved-version-item')).toHaveLength(1)
+    await wrapper.get('#saved-ruleset-filter').setValue('2026')
+    expect(wrapper.findAll('.saved-version-item')).toHaveLength(1)
+    await wrapper.get('#load-saved-version-21').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Editing field-day version 2026')
@@ -647,8 +658,7 @@ describe('RulesetComposerView', () => {
 
     await wrapper.get('#browse-saved-rulesets').trigger('click')
     await flushPromises()
-    await wrapper.get('#saved-ruleset-version').setValue('21')
-    await wrapper.get('#load-saved-ruleset').trigger('click')
+    await wrapper.get('#load-saved-version-21').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[role="alert"]').text()).toContain(

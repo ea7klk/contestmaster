@@ -72,6 +72,16 @@ const form = reactive<ContestForm>(emptyForm())
 const formTitle = computed(() =>
   editingId.value === null ? 'Create a contest' : 'Edit contest',
 )
+const contestFilter = ref('')
+const filteredContests = computed(() => {
+  const query = contestFilter.value.trim().toLocaleLowerCase()
+  if (!query) return contests.value
+  return contests.value.filter((contest) =>
+    [contest.name, contest.slug, contest.status].some((value) =>
+      value.toLocaleLowerCase().includes(query),
+    ),
+  )
+})
 
 function utcInputValue(instant: string): string {
   const date = new Date(instant)
@@ -385,6 +395,186 @@ onMounted(refreshData)
       draft. The imported contest starts as a draft.
     </p>
 
+    <section
+      v-if="!loading && !forbidden"
+      class="contest-list"
+      aria-labelledby="contest-list-title"
+    >
+      <div class="contest-list-heading">
+        <h2 id="contest-list-title">Your contests</h2>
+        <label for="contest-filter">
+          Filter contests
+          <input
+            id="contest-filter"
+            v-model="contestFilter"
+            type="search"
+            autocomplete="off"
+            placeholder="Name, slug, or status"
+            aria-describedby="contest-filter-help"
+          />
+          <span id="contest-filter-help" class="field-help">
+            Search by contest name, URL slug, or status.
+          </span>
+        </label>
+      </div>
+      <p v-if="contests.length === 0" class="notice">
+        You have not created a contest yet.
+      </p>
+      <p v-else-if="filteredContests.length === 0" class="notice" role="status">
+        No contests match “{{ contestFilter }}”.
+      </p>
+      <div
+        v-else
+        class="contest-list-scroll"
+        tabindex="0"
+        aria-label="Scrollable contest list"
+      >
+        <article
+          v-for="contest in filteredContests"
+          :key="contest.id"
+          class="panel contest-card"
+        >
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">{{ contest.status }}</p>
+              <h3>{{ contest.name }}</h3>
+              <p class="field-help">/{{ contest.slug }}</p>
+            </div>
+            <div class="contest-card-actions">
+              <button
+                v-if="
+                  contest.status === 'draft' &&
+                  contest.ruleset_version_id !== null
+                "
+                class="primary-button"
+                type="button"
+                :disabled="statusSavingId === contest.id"
+                @click="setContestStatus(contest, 'open')"
+              >
+                {{
+                  statusSavingId === contest.id ? 'Opening…' : 'Open contest'
+                }}
+              </button>
+              <button
+                v-else-if="contest.status === 'open'"
+                class="secondary-button"
+                type="button"
+                :disabled="statusSavingId === contest.id"
+                @click="setContestStatus(contest, 'closed')"
+              >
+                {{
+                  statusSavingId === contest.id ? 'Closing…' : 'Close contest'
+                }}
+              </button>
+              <button
+                v-else-if="
+                  contest.status === 'closed' &&
+                  contest.ruleset_version_id !== null
+                "
+                class="primary-button"
+                type="button"
+                :disabled="statusSavingId === contest.id"
+                @click="setContestStatus(contest, 'open')"
+              >
+                {{
+                  statusSavingId === contest.id
+                    ? 'Reopening…'
+                    : 'Reopen contest'
+                }}
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                @click="editContest(contest)"
+              >
+                Edit details
+              </button>
+            </div>
+          </div>
+          <p
+            v-if="
+              contest.status === 'draft' && contest.ruleset_version_id !== null
+            "
+            class="field-help"
+          >
+            Opening makes this contest public and eligible for log submissions.
+          </p>
+          <RouterLink :to="`/manage/contests/${contest.id}/results`">
+            Generate and publish results
+          </RouterLink>
+          <dl class="contest-meta">
+            <div>
+              <dt>Starts</dt>
+              <dd>{{ new Date(contest.starts_at).toLocaleString() }}</dd>
+            </div>
+            <div>
+              <dt>Ends</dt>
+              <dd>{{ new Date(contest.ends_at).toLocaleString() }}</dd>
+            </div>
+            <div>
+              <dt>Log cutoff</dt>
+              <dd>
+                {{
+                  new Date(contest.log_submission_cutoff_at).toLocaleString()
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>Automatic recalculation</dt>
+              <dd>{{ contest.auto_recalculate_on_upload ? 'On' : 'Off' }}</dd>
+            </div>
+          </dl>
+          <div class="ruleset-row">
+            <label :for="`ruleset-${contest.id}`">
+              Ruleset and category definition
+              <select
+                :id="`ruleset-${contest.id}`"
+                v-model="rulesetSelections[contest.id]"
+                :disabled="contest.status !== 'draft' || rulesets.length === 0"
+              >
+                <option value="">Select a saved ruleset</option>
+                <option
+                  v-for="version in rulesets"
+                  :key="version.id"
+                  :value="String(version.id)"
+                >
+                  {{ version.ruleset_key }} · {{ version.version }} ({{
+                    version.rule_type_keys.includes('categories')
+                      ? 'categories configured'
+                      : 'no categories'
+                  }})
+                </option>
+              </select>
+            </label>
+            <button
+              class="secondary-button"
+              type="button"
+              :disabled="
+                contest.status !== 'draft' ||
+                !rulesetSelections[contest.id] ||
+                rulesetSavingId === contest.id
+              "
+              @click="saveRuleset(contest)"
+            >
+              {{
+                rulesetSavingId === contest.id ? 'Assigning…' : 'Assign ruleset'
+              }}
+            </button>
+            <RouterLink
+              v-if="contest.ruleset_version_id !== null"
+              class="secondary-button"
+              :to="`/rulesets/compose/${contest.ruleset_version_id}`"
+            >
+              Edit ruleset
+            </RouterLink>
+          </div>
+          <p v-if="contest.ruleset_version_id === null" class="field-help">
+            This draft needs a validated ruleset before it can be opened.
+          </p>
+        </article>
+      </div>
+    </section>
+
     <form
       v-if="!loading && !forbidden"
       class="panel contest-form"
@@ -559,152 +749,6 @@ onMounted(refreshData)
         }}
       </button>
     </form>
-
-    <section
-      v-if="!loading && !forbidden"
-      class="contest-list"
-      aria-labelledby="contest-list-title"
-    >
-      <h2 id="contest-list-title">Your contests</h2>
-      <p v-if="contests.length === 0" class="notice">
-        You have not created a contest yet.
-      </p>
-      <article
-        v-for="contest in contests"
-        :key="contest.id"
-        class="panel contest-card"
-      >
-        <div class="section-title">
-          <div>
-            <p class="eyebrow">{{ contest.status }}</p>
-            <h3>{{ contest.name }}</h3>
-            <p class="field-help">/{{ contest.slug }}</p>
-          </div>
-          <div class="contest-card-actions">
-            <button
-              v-if="
-                contest.status === 'draft' &&
-                contest.ruleset_version_id !== null
-              "
-              class="primary-button"
-              type="button"
-              :disabled="statusSavingId === contest.id"
-              @click="setContestStatus(contest, 'open')"
-            >
-              {{ statusSavingId === contest.id ? 'Opening…' : 'Open contest' }}
-            </button>
-            <button
-              v-else-if="contest.status === 'open'"
-              class="secondary-button"
-              type="button"
-              :disabled="statusSavingId === contest.id"
-              @click="setContestStatus(contest, 'closed')"
-            >
-              {{ statusSavingId === contest.id ? 'Closing…' : 'Close contest' }}
-            </button>
-            <button
-              v-else-if="
-                contest.status === 'closed' &&
-                contest.ruleset_version_id !== null
-              "
-              class="primary-button"
-              type="button"
-              :disabled="statusSavingId === contest.id"
-              @click="setContestStatus(contest, 'open')"
-            >
-              {{
-                statusSavingId === contest.id ? 'Reopening…' : 'Reopen contest'
-              }}
-            </button>
-            <button
-              class="secondary-button"
-              type="button"
-              @click="editContest(contest)"
-            >
-              Edit details
-            </button>
-          </div>
-        </div>
-        <p
-          v-if="
-            contest.status === 'draft' && contest.ruleset_version_id !== null
-          "
-          class="field-help"
-        >
-          Opening makes this contest public and eligible for log submissions.
-        </p>
-        <RouterLink :to="`/manage/contests/${contest.id}/results`">
-          Generate and publish results
-        </RouterLink>
-        <dl class="contest-meta">
-          <div>
-            <dt>Starts</dt>
-            <dd>{{ new Date(contest.starts_at).toLocaleString() }}</dd>
-          </div>
-          <div>
-            <dt>Ends</dt>
-            <dd>{{ new Date(contest.ends_at).toLocaleString() }}</dd>
-          </div>
-          <div>
-            <dt>Log cutoff</dt>
-            <dd>
-              {{ new Date(contest.log_submission_cutoff_at).toLocaleString() }}
-            </dd>
-          </div>
-          <div>
-            <dt>Automatic recalculation</dt>
-            <dd>{{ contest.auto_recalculate_on_upload ? 'On' : 'Off' }}</dd>
-          </div>
-        </dl>
-        <div class="ruleset-row">
-          <label :for="`ruleset-${contest.id}`">
-            Ruleset and category definition
-            <select
-              :id="`ruleset-${contest.id}`"
-              v-model="rulesetSelections[contest.id]"
-              :disabled="contest.status !== 'draft' || rulesets.length === 0"
-            >
-              <option value="">Select a saved ruleset</option>
-              <option
-                v-for="version in rulesets"
-                :key="version.id"
-                :value="String(version.id)"
-              >
-                {{ version.ruleset_key }} · {{ version.version }} ({{
-                  version.rule_type_keys.includes('categories')
-                    ? 'categories configured'
-                    : 'no categories'
-                }})
-              </option>
-            </select>
-          </label>
-          <button
-            class="secondary-button"
-            type="button"
-            :disabled="
-              contest.status !== 'draft' ||
-              !rulesetSelections[contest.id] ||
-              rulesetSavingId === contest.id
-            "
-            @click="saveRuleset(contest)"
-          >
-            {{
-              rulesetSavingId === contest.id ? 'Assigning…' : 'Assign ruleset'
-            }}
-          </button>
-          <RouterLink
-            v-if="contest.ruleset_version_id !== null"
-            class="secondary-button"
-            :to="`/rulesets/compose/${contest.ruleset_version_id}`"
-          >
-            Edit ruleset
-          </RouterLink>
-        </div>
-        <p v-if="contest.ruleset_version_id === null" class="field-help">
-          This draft needs a validated ruleset before it can be opened.
-        </p>
-      </article>
-    </section>
   </section>
 </template>
 
@@ -713,6 +757,39 @@ onMounted(refreshData)
 .contest-list {
   display: grid;
   gap: 1rem;
+}
+.contest-list-heading {
+  display: grid;
+  gap: 0.75rem;
+}
+.contest-list-heading h2 {
+  margin: 0;
+}
+.contest-list-heading label {
+  display: grid;
+  width: min(100%, 38rem);
+  gap: 0.35rem;
+  font-weight: 650;
+}
+.contest-list-heading input {
+  min-height: 2.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.45rem;
+  font: inherit;
+}
+.contest-list-scroll {
+  max-height: 34rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 1rem;
+  padding: 0.25rem;
+}
+.contest-list-scroll:focus-visible,
+.saved-version-list:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }
 .manager-heading,
 .section-title,

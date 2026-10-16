@@ -103,6 +103,80 @@ describe('ContestManagerView', () => {
     )
   })
 
+  it('shows the contest list before the form with filtering and scroll access', async () => {
+    const contests = [
+      {
+        id: 41,
+        owner_user_id: 4,
+        name: 'Summer QSO Party',
+        slug: 'summer-qso-party',
+        description: null,
+        starts_at: '2026-07-04T12:00:00Z',
+        ends_at: '2026-07-04T18:00:00Z',
+        periodicity: null,
+        log_submission_cutoff_at: '2026-07-11T12:00:00Z',
+        status: 'draft',
+        auto_recalculate_on_upload: false,
+        ruleset_version_id: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 42,
+        owner_user_id: 4,
+        name: 'Winter Sprint',
+        slug: 'winter-sprint',
+        description: null,
+        starts_at: '2026-12-04T12:00:00Z',
+        ends_at: '2026-12-04T18:00:00Z',
+        periodicity: null,
+        log_submission_cutoff_at: '2026-12-11T12:00:00Z',
+        status: 'open',
+        auto_recalculate_on_upload: false,
+        ruleset_version_id: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.includes('/contests'))
+          return ok({
+            items: contests,
+            meta: { page: 1, page_size: 100, total: 2, pages: 1 },
+          })
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountManager()
+    await flushPromises()
+
+    const list = wrapper.get('.contest-list')
+    const form = wrapper.get('.contest-form')
+    expect(list.element.compareDocumentPosition(form.element) & 4).toBe(4)
+    expect(wrapper.get('.contest-list-scroll').attributes()).toMatchObject({
+      tabindex: '0',
+      'aria-label': 'Scrollable contest list',
+    })
+    expect(wrapper.findAll('.contest-card')).toHaveLength(2)
+
+    await wrapper.get('#contest-filter').setValue('SUMMER-QSO')
+    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Summer QSO Party')
+    expect(wrapper.text()).not.toContain('Winter Sprint')
+
+    await wrapper.get('#contest-filter').setValue('open')
+    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Winter Sprint')
+
+    await wrapper.get('#contest-filter').setValue('no-match')
+    expect(wrapper.get('[role="status"]').text()).toContain('No contests match')
+  })
+
   it('directs unauthenticated users to staff sign-in', async () => {
     vi.stubGlobal(
       'fetch',

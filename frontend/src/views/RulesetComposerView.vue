@@ -52,6 +52,7 @@ const savedVersionsLoaded = ref(false)
 const loadingSavedVersions = ref(false)
 const loadingSelectedVersion = ref(false)
 const selectedSavedVersionId = ref('')
+const savedVersionFilter = ref('')
 const props = defineProps<{ editVersionId?: string }>()
 
 const optionalTypes = computed(() =>
@@ -60,6 +61,21 @@ const optionalTypes = computed(() =>
 const usedSingletonKinds = computed(
   () => new Set(rules.value.map((item) => String(item.rule.kind))),
 )
+const filteredSavedVersions = computed(() => {
+  const query = savedVersionFilter.value.trim().toLocaleLowerCase()
+  if (!query) return savedVersions.value
+  return savedVersions.value.filter((saved) =>
+    [
+      saved.ruleset_key,
+      saved.version,
+      saved.source_edition ?? '',
+      ...saved.rule_type_keys,
+    ]
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(query),
+  )
+})
 
 function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
   if (schema.$ref) {
@@ -355,6 +371,11 @@ async function loadSelectedVersion() {
   }
 }
 
+async function loadSavedVersionFromList(versionId: number) {
+  selectedSavedVersionId.value = String(versionId)
+  await loadSelectedVersion()
+}
+
 function exportDraft() {
   const blob = new Blob([`${JSON.stringify(buildDraft(), null, 2)}\n`], {
     type: 'application/json',
@@ -544,31 +565,50 @@ function catalogErrorMessage(reason: unknown) {
           <p v-if="savedVersions.length === 0" class="field-help">
             No saved ruleset versions are available yet.
           </p>
-          <div v-else class="saved-version-controls">
-            <label for="saved-ruleset-version">Saved ruleset version</label>
-            <select
-              id="saved-ruleset-version"
-              v-model="selectedSavedVersionId"
-              :disabled="loadingSelectedVersion"
+          <div v-else class="saved-version-browser">
+            <label for="saved-ruleset-filter">Filter saved rulesets</label>
+            <input
+              id="saved-ruleset-filter"
+              v-model="savedVersionFilter"
+              type="search"
+              autocomplete="off"
+              placeholder="Key, version, edition, or rule type"
+              aria-describedby="saved-ruleset-filter-help"
+            />
+            <p id="saved-ruleset-filter-help" class="field-help">
+              Filter by ruleset key, version, source edition, or rule type.
+            </p>
+            <p
+              v-if="filteredSavedVersions.length === 0"
+              class="notice"
+              role="status"
             >
-              <option value="">Choose a saved version</option>
-              <option
-                v-for="saved in savedVersions"
-                :key="saved.id"
-                :value="String(saved.id)"
-              >
-                {{ saved.ruleset_key }} version {{ saved.version }}
-              </option>
-            </select>
-            <button
-              id="load-saved-ruleset"
-              type="button"
-              class="secondary-button"
-              :disabled="!selectedSavedVersionId || loadingSelectedVersion"
-              @click="loadSelectedVersion"
+              No saved rulesets match “{{ savedVersionFilter }}”.
+            </p>
+            <ul
+              v-else
+              class="saved-version-list"
+              tabindex="0"
+              aria-label="Scrollable saved ruleset versions"
             >
-              {{ loadingSelectedVersion ? 'Loading…' : 'Load into composer' }}
-            </button>
+              <li v-for="saved in filteredSavedVersions" :key="saved.id">
+                <button
+                  :id="`load-saved-version-${saved.id}`"
+                  type="button"
+                  class="saved-version-item"
+                  :disabled="loadingSelectedVersion"
+                  @click="loadSavedVersionFromList(saved.id)"
+                >
+                  <span class="saved-version-title">
+                    {{ saved.ruleset_key }} · version {{ saved.version }}
+                  </span>
+                  <span class="saved-version-details">
+                    {{ saved.source_edition || 'No source edition' }} ·
+                    {{ saved.rule_type_keys.length }} rule types
+                  </span>
+                </button>
+              </li>
+            </ul>
           </div>
         </template>
       </fieldset>
@@ -942,23 +982,61 @@ function catalogErrorMessage(reason: unknown) {
   box-shadow: 0 10px 28px var(--color-card-shadow);
 }
 .saved-version-panel,
-.saved-version-controls {
+.saved-version-browser {
   display: grid;
   gap: 0.75rem;
 }
 .saved-version-panel p {
   margin: 0;
 }
-.saved-version-controls label {
+.saved-version-browser label {
   font-weight: 650;
 }
-.saved-version-controls select {
+.saved-version-browser input {
   width: min(100%, 36rem);
   min-height: 2.65rem;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--color-border-strong);
   border-radius: 0.45rem;
   font: inherit;
+}
+.saved-version-list {
+  max-height: 18rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+}
+.saved-version-item {
+  display: grid;
+  width: 100%;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.saved-version-item:hover,
+.saved-version-item:focus-visible {
+  border-color: var(--color-brand-700);
+  background: var(--color-surface-muted);
+}
+.saved-version-title {
+  color: var(--color-brand-900);
+  font-weight: 700;
+}
+.saved-version-details {
+  color: var(--color-muted);
+  font-size: 0.9rem;
 }
 .panel legend {
   padding: 0 0.4rem;
