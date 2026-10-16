@@ -115,7 +115,7 @@ def list_submittable_contests(
 
 def _contest_upload_formats(session: Session, contest: Contest) -> list[str]:
     if contest.ruleset_version_id is None:
-        return ["cabrillo"]
+        return []
     version = session.get(RulesetVersion, contest.ruleset_version_id)
     if version is None:
         return []
@@ -223,9 +223,6 @@ def _contest_rules(
 def _selected_format_config(
     format_configs: dict[str, dict[str, object]], upload_format: str
 ) -> dict[str, object]:
-    # Legacy contests without a stored ruleset keep their original Cabrillo behavior.
-    if not format_configs and upload_format == "cabrillo":
-        return {"qso_columns": None, "header_fields": {}, "category_mappings": []}
     config = format_configs.get(upload_format)
     if config is None:
         raise HTTPException(
@@ -662,6 +659,7 @@ def _entry_and_authorize(
 
 
 def _entry_output(session: Session, entry: Entry) -> dict[str, object]:
+    contest = session.get(Contest, entry.contest_id)
     revision = _latest_revision(session, entry.id)
     qsos = (
         list(
@@ -677,6 +675,7 @@ def _entry_output(session: Session, entry: Entry) -> dict[str, object]:
     return {
         "entry_id": entry.id,
         "contest_id": entry.contest_id,
+        "accepted_formats": _contest_upload_formats(session, contest) if contest else [],
         "entry_key": entry.entry_key,
         "category_values": entry.category_values,
         "revision_number": revision.revision_number if revision else None,

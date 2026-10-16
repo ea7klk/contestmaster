@@ -25,6 +25,7 @@ describe('EntryManagementView', () => {
             JSON.stringify({
               entry_id: 4,
               contest_id: 1,
+              accepted_formats: ['adif'],
               entry_key: 'entry-4',
               category_values: {},
               revision_number: revision,
@@ -38,6 +39,7 @@ describe('EntryManagementView', () => {
           JSON.stringify({
             entry_id: 4,
             contest_id: 1,
+            accepted_formats: ['adif'],
             entry_key: 'entry-4',
             category_values: {},
             revision_number: revision,
@@ -73,6 +75,12 @@ describe('EntryManagementView', () => {
     await expectAccessible(wrapper.element)
 
     expect(wrapper.text()).toContain('F4ABC')
+    expect(wrapper.get('#revision-file').attributes('accept')).toBe(
+      '.adi,.adif',
+    )
+    expect(wrapper.get('label[for="revision-file"]').text()).toBe(
+      'Corrected log file (ADI/ADIF)',
+    )
     await wrapper
       .findAll('button')
       .find((button) => button.text() === 'Remove')

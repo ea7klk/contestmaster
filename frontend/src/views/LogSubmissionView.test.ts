@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { expectAccessible } from '../test/a11y'
 import LogSubmissionView from './LogSubmissionView.vue'
 
@@ -25,6 +26,62 @@ afterEach(() => vi.unstubAllGlobals())
 const pendingUploadCompletions: Array<() => void> = []
 
 describe('LogSubmissionView', () => {
+  it('filters file types per contest and clears a file when the contest changes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 1,
+                  name: 'Digital Sprint',
+                  slug: 'digital-sprint',
+                  cutoff_at: '2026-12-01T00:00:00Z',
+                  accepted_formats: ['adif'],
+                },
+                {
+                  id: 2,
+                  name: 'Phone Sprint',
+                  slug: 'phone-sprint',
+                  cutoff_at: '2026-12-01T00:00:00Z',
+                  accepted_formats: ['cabrillo'],
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(LogSubmissionView, {
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+    await wrapper.get('#upload-contest').setValue('digital-sprint')
+
+    const input = wrapper.get<HTMLInputElement>('#log-file')
+    expect(input.attributes('accept')).toBe('.adi,.adif')
+    expect(wrapper.get('label[for="log-file"]').text()).toBe('ADI/ADIF file')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['<EOR>'], 'entry.adif', { type: 'text/plain' })],
+    })
+    await input.trigger('change')
+    expect(
+      wrapper.get('button[type="submit"]').attributes('disabled'),
+    ).toBeUndefined()
+
+    await wrapper.get('#upload-contest').setValue('phone-sprint')
+    expect(input.attributes('accept')).toBe('.log,.cbr,.cabrillo,.txt')
+    expect(wrapper.get('label[for="log-file"]').text()).toBe('Cabrillo file')
+    expect(
+      wrapper.get('button[type="submit"]').attributes('disabled'),
+    ).toBeDefined()
+  })
+
   it('shows progress, import summary, warnings, and the entry receipt token', async () => {
     const fetchMock = vi.fn(
       async () =>
@@ -69,7 +126,11 @@ describe('LogSubmissionView', () => {
     }
     vi.stubGlobal('XMLHttpRequest', FakeRequest)
 
-    const wrapper = mount(LogSubmissionView)
+    const wrapper = mount(LogSubmissionView, {
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
     await flushPromises()
     await wrapper.get('#upload-contest').setValue('winter-sprint')
     expect(wrapper.get('label[for="log-file"]').text()).toBe(
@@ -104,7 +165,14 @@ describe('LogSubmissionView', () => {
         async () =>
           new Response(
             JSON.stringify({
-              items: [{ id: 1, name: 'Sprint', slug: 'sprint' }],
+              items: [
+                {
+                  id: 1,
+                  name: 'Sprint',
+                  slug: 'sprint',
+                  accepted_formats: ['cabrillo'],
+                },
+              ],
             }),
             {
               status: 200,
@@ -142,7 +210,11 @@ describe('LogSubmissionView', () => {
     }
     vi.stubGlobal('XMLHttpRequest', RejectedRequest)
 
-    const wrapper = mount(LogSubmissionView)
+    const wrapper = mount(LogSubmissionView, {
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
     await flushPromises()
     await wrapper.get('#upload-contest').setValue('sprint')
     const input = wrapper.get<HTMLInputElement>('#log-file')

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
 import {
@@ -13,14 +13,44 @@ import {
 
 const contests = ref<SubmitContest[]>([])
 const contestSlug = ref('')
-const selectedContest = computed(() => contests.value.find((item) => item.slug === contestSlug.value))
-const acceptedFormats = computed(() => selectedContest.value?.accepted_formats ?? ['cabrillo'])
+const selectedContest = computed(() =>
+  contests.value.find((item) => item.slug === contestSlug.value),
+)
+const acceptedFormats = computed(
+  () => selectedContest.value?.accepted_formats ?? [],
+)
+const acceptedExtensions = computed(() =>
+  acceptedFormats.value.flatMap((format) =>
+    format === 'cabrillo'
+      ? ['.log', '.cbr', '.cabrillo', '.txt']
+      : format === 'adif'
+        ? ['.adi', '.adif']
+        : [],
+  ),
+)
+const fileAccept = computed(() => acceptedExtensions.value.join(','))
 const fileLabel = computed(() => {
   const formats = acceptedFormats.value
-  if (formats.includes('adif') && formats.includes('cabrillo')) return 'Cabrillo or ADI/ADIF file'
-  return formats.includes('adif') ? 'ADI/ADIF file' : 'Cabrillo file'
+  if (formats.includes('adif') && formats.includes('cabrillo'))
+    return 'Cabrillo or ADI/ADIF file'
+  if (formats.includes('adif')) return 'ADI/ADIF file'
+  if (formats.includes('cabrillo')) return 'Cabrillo file'
+  return 'Log file'
 })
 const file = ref<File | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+const selectedFileAllowed = computed(() => {
+  if (!file.value) return true
+  const extension = file.value.name
+    .slice(file.value.name.lastIndexOf('.'))
+    .toLowerCase()
+  const format = ['.adi', '.adif'].includes(extension)
+    ? 'adif'
+    : ['.log', '.cbr', '.cabrillo', '.txt'].includes(extension)
+      ? 'cabrillo'
+      : null
+  return format !== null && acceptedFormats.value.includes(format)
+})
 const loading = ref(true)
 const uploading = ref(false)
 const progress = ref(0)
@@ -31,6 +61,14 @@ const router = useRouter()
 const route = useRoute()
 
 const allMessages = (messages: ImportMessage[]) => messages
+
+watch(contestSlug, () => {
+  file.value = null
+  if (fileInput.value) fileInput.value.value = ''
+  result.value = null
+  submissionKey.value = ''
+  progress.value = 0
+})
 
 async function loadContests() {
   error.value = ''
@@ -63,7 +101,13 @@ function chooseFile(event: Event) {
 }
 
 async function submit() {
-  if (!file.value || !contestSlug.value || uploading.value) return
+  if (
+    !file.value ||
+    !selectedFileAllowed.value ||
+    !contestSlug.value ||
+    uploading.value
+  )
+    return
   if (!submissionKey.value) submissionKey.value = newIdempotencyKey()
   error.value = ''
   result.value = null
@@ -112,8 +156,8 @@ onMounted(loadContests)
     <p class="eyebrow">Contest entry</p>
     <h1 id="upload-title">Submit a log</h1>
     <p>
-      Choose an open contest and upload a log in one of its accepted formats. You do not need a system
-      account.
+      Choose an open contest and upload a log in one of its accepted formats.
+      You do not need a system account.
     </p>
 
     <p v-if="loading" role="status">Loading contests…</p>
@@ -145,17 +189,28 @@ onMounted(loadContests)
       <label for="log-file">{{ fileLabel }}</label>
       <input
         id="log-file"
+        ref="fileInput"
         type="file"
-        accept=".log,.cbr,.cabrillo,.txt,.adi,.adif,text/plain"
+        :accept="fileAccept"
         required
-        :disabled="uploading"
+        :disabled="uploading || acceptedFormats.length === 0"
         @change="chooseFile"
       />
       <p class="field-hint">
-        UTF-8 text, up to 5 MiB. Accepted formats for this contest:
-        {{ acceptedFormats.map((format) => format.toUpperCase()).join(' and ') }}.
+        <template v-if="acceptedFormats.length">
+          UTF-8 text, up to 5 MiB. Accepted formats for this contest:
+          {{
+            acceptedFormats.map((format) => format.toUpperCase()).join(' and ')
+          }}.
+        </template>
+        <template v-else>
+          Select a contest with a configured supported log format.
+        </template>
         ADIF records need UTC date/time, callsign, mode, band or frequency, and
         the exchange required by the contest.
+      </p>
+      <p v-if="file && !selectedFileAllowed" class="form-error" role="alert">
+        This file format is not enabled for the selected contest.
       </p>
 
       <div
@@ -174,7 +229,7 @@ onMounted(loadContests)
       <button
         class="primary-button"
         type="submit"
-        :disabled="uploading || !file || !contestSlug"
+        :disabled="uploading || !file || !selectedFileAllowed || !contestSlug"
       >
         {{
           uploading

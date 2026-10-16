@@ -45,6 +45,7 @@ export interface EntryContact {
 export interface ManagedEntry {
   entry_id: number
   contest_id: number
+  accepted_formats: Array<'cabrillo' | 'adif'>
   entry_key: string
   category_values: Record<string, string>
   revision_number: number | null

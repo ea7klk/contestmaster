@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ApiError } from '../api/client'
 import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
@@ -19,6 +19,43 @@ const route = useRoute()
 const entryId = Number(route.params.entryId)
 const receiptToken = ref('')
 const entry = ref<ManagedEntry | null>(null)
+const acceptedFormats = computed(() => entry.value?.accepted_formats ?? [])
+const revisionAccept = computed(() =>
+  acceptedFormats.value
+    .flatMap((format) =>
+      format === 'cabrillo'
+        ? ['.log', '.cbr', '.cabrillo', '.txt']
+        : format === 'adif'
+          ? ['.adi', '.adif']
+          : [],
+    )
+    .join(','),
+)
+const revisionFileLabel = computed(() => {
+  if (
+    acceptedFormats.value.includes('adif') &&
+    acceptedFormats.value.includes('cabrillo')
+  ) {
+    return 'Corrected log file (Cabrillo or ADI/ADIF)'
+  }
+  if (acceptedFormats.value.includes('adif'))
+    return 'Corrected log file (ADI/ADIF)'
+  if (acceptedFormats.value.includes('cabrillo'))
+    return 'Corrected log file (Cabrillo)'
+  return 'Corrected log file'
+})
+const revisionFileAllowed = computed(() => {
+  if (!file.value) return true
+  const extension = file.value.name
+    .slice(file.value.name.lastIndexOf('.'))
+    .toLowerCase()
+  const format = ['.adi', '.adif'].includes(extension)
+    ? 'adif'
+    : ['.log', '.cbr', '.cabrillo', '.txt'].includes(extension)
+      ? 'cabrillo'
+      : null
+  return format !== null && acceptedFormats.value.includes(format)
+})
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -163,7 +200,7 @@ function chooseFile(event: Event) {
 }
 
 async function resubmit() {
-  if (!file.value || saving.value) return
+  if (!file.value || !revisionFileAllowed.value || saving.value) return
   if (!uploadKey.value) uploadKey.value = newIdempotencyKey()
   saving.value = true
   error.value = ''
@@ -379,15 +416,28 @@ onMounted(() => {
 
       <form class="stacked-form" @submit.prevent="resubmit">
         <h2>Replace log file</h2>
-        <label for="revision-file">Corrected log file (Cabrillo or ADI/ADIF)</label>
+        <label for="revision-file">{{ revisionFileLabel }}</label>
         <input
           id="revision-file"
           type="file"
-          accept=".log,.cbr,.cabrillo,.txt,.adi,.adif"
+          :accept="revisionAccept"
           @change="chooseFile"
         />
         <p class="field-hint">
-          Use a format enabled by this contest's ruleset. UTF-8 text, up to 5 MiB.
+          <template v-if="acceptedFormats.length">
+            This contest accepts
+            {{
+              acceptedFormats
+                .map((format) => format.toUpperCase())
+                .join(' and ')
+            }}. Use UTF-8 text, up to 5 MiB.
+          </template>
+          <template v-else>
+            This contest has no supported log format enabled in its ruleset.
+          </template>
+        </p>
+        <p v-if="file && !revisionFileAllowed" class="form-error" role="alert">
+          This file format is not enabled for this contest.
         </p>
         <div
           v-if="saving && file"
@@ -405,7 +455,7 @@ onMounted(() => {
         <button
           class="secondary-button"
           type="submit"
-          :disabled="saving || !file"
+          :disabled="saving || !file || !revisionFileAllowed"
         >
           {{ saving ? 'Saving…' : 'Upload new revision' }}
         </button>

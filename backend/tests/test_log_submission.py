@@ -72,6 +72,12 @@ def log_database():
                 status="open",
             )
         )
+    enable_digital_ruleset(
+        factory,
+        formats=("cabrillo",),
+        ruleset_key="fixture-cabrillo",
+        version="1",
+    )
 
     def override_session():
         with factory() as session:
@@ -102,7 +108,13 @@ def submit(
     )
 
 
-def enable_digital_ruleset(factory, *, formats=("adif",)):
+def enable_digital_ruleset(
+    factory,
+    *,
+    formats=("adif",),
+    ruleset_key="test-upload-formats",
+    version="1",
+):
     configuration = json.loads(
         (
             Path(__file__).parents[2] / "documentation/ruleset-drafts/vhf-uhf-ft8-activity.json"
@@ -122,6 +134,8 @@ def enable_digital_ruleset(factory, *, formats=("adif",)):
     configuration["rules"] = [
         item for item in configuration["rules"] if item["rule"]["kind"] != "format_mapping"
     ] + mappings
+    configuration["ruleset_key"] = ruleset_key
+    configuration["version"] = version
     with factory.begin() as session:
         contest = session.scalar(select(Contest).where(Contest.slug == "guest-sprint"))
         ruleset = RulesetVersion(
@@ -137,7 +151,8 @@ def enable_digital_ruleset(factory, *, formats=("adif",)):
         contest.ruleset_version_id = ruleset.id
         from backend.app.logs.api import _contest_upload_formats
 
-        assert _contest_upload_formats(session, contest) == sorted(formats)
+        expected = sorted(set(formats) & {"adif", "cabrillo"})
+        assert _contest_upload_formats(session, contest) == expected
 
 
 def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
@@ -158,7 +173,9 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
 
     entry_id = result["entry_id"]
     headers = {"X-Entry-Receipt": result["receipt_token"]}
-    assert client.get(f"/api/v1/public/entries/{entry_id}", headers=headers).status_code == 200
+    entry_details = client.get(f"/api/v1/public/entries/{entry_id}", headers=headers)
+    assert entry_details.status_code == 200
+    assert entry_details.json()["accepted_formats"] == ["cabrillo"]
     assert client.get(f"/api/v1/public/entries/{entry_id}").status_code == 404
 
 
@@ -192,6 +209,11 @@ def test_guest_upload_accepts_ruleset_enabled_adif_and_preserves_format(log_data
 
     assert response.status_code == 201, response.text
     assert response.json()["summary"]["accepted_qsos"] == 1
+    entry_details = client.get(
+        f"/api/v1/public/entries/{response.json()['entry_id']}",
+        headers={"X-Entry-Receipt": response.json()["receipt_token"]},
+    )
+    assert entry_details.json()["accepted_formats"] == ["adif", "cabrillo"]
     with log_database() as session:
         revision = session.scalar(select(EntryRevision))
         qso = session.scalar(select(Qso))
@@ -206,6 +228,30 @@ def test_guest_upload_rejects_format_not_enabled_by_contest_ruleset(log_database
 
     response = submit(TestClient(app), LOG, key="disabled-format-test", filename="entry.log")
 
+    assert response.status_code == 415
+    with log_database() as session:
+        assert session.query(Entry).count() == 0
+
+
+def test_guest_upload_rejects_contest_without_ruleset_format(log_database):
+    with log_database.begin() as session:
+        contest = session.scalar(select(Contest).where(Contest.slug == "guest-sprint"))
+        contest.ruleset_version_id = None
+
+    client = TestClient(app)
+    assert client.get("/api/v1/public/submittable-contests").json()["items"] == []
+    response = submit(client, LOG, key="no-ruleset-format", filename="entry.log")
+    assert response.status_code == 415
+    with log_database() as session:
+        assert session.query(Entry).count() == 0
+
+
+def test_guest_upload_rejects_ruleset_with_only_unsupported_format(log_database):
+    enable_digital_ruleset(log_database, formats=("csv",))
+
+    client = TestClient(app)
+    assert client.get("/api/v1/public/submittable-contests").json()["items"] == []
+    response = submit(client, LOG, key="csv-only-format", filename="entry.log")
     assert response.status_code == 415
     with log_database() as session:
         assert session.query(Entry).count() == 0
@@ -233,6 +279,54 @@ def test_entry_log_resubmission_accepts_adif_for_enabled_format(log_database):
             session.scalars(select(EntryRevision).order_by(EntryRevision.revision_number))
         )
         assert [revision.input_format for revision in revisions] == ["adif", "adif"]
+
+
+def test_entry_log_resubmission_rejects_format_not_enabled_by_ruleset(log_database):
+    enable_digital_ruleset(log_database, formats=("adif",))
+    client = TestClient(app)
+    created = submit(client, ADIF_LOG, key="adif-resubmit-base", filename="base.adif")
+    assert created.status_code == 201
+
+    response = client.put(
+        f"/api/v1/public/entries/{created.json()['entry_id']}/log",
+        headers={
+            "Idempotency-Key": "disabled-revision-format",
+            "X-Entry-Receipt": created.json()["receipt_token"],
+        },
+        files={"file": ("wrong-format.log", LOG.encode(), "text/plain")},
+    )
+
+    assert response.status_code == 415
+    with log_database() as session:
+        assert session.query(EntryRevision).count() == 1
+
+
+@pytest.mark.parametrize("format_state", ["no_ruleset", "unsupported_only"])
+def test_entry_revision_rejects_contest_without_supported_format(
+    log_database, format_state
+):
+    client = TestClient(app)
+    created = submit(client, key="revision-format-base")
+    assert created.status_code == 201
+    if format_state == "no_ruleset":
+        with log_database.begin() as session:
+            contest = session.scalar(select(Contest).where(Contest.slug == "guest-sprint"))
+            contest.ruleset_version_id = None
+    else:
+        enable_digital_ruleset(log_database, formats=("csv",))
+
+    response = client.put(
+        f"/api/v1/public/entries/{created.json()['entry_id']}/log",
+        headers={
+            "Idempotency-Key": f"revision-{format_state}-format",
+            "X-Entry-Receipt": created.json()["receipt_token"],
+        },
+        files={"file": ("corrected.log", LOG.encode(), "text/plain")},
+    )
+
+    assert response.status_code == 415
+    with log_database() as session:
+        assert session.query(EntryRevision).count() == 1
 
 
 def test_idempotent_retry_reuses_entry_and_conflicting_body_is_rejected(log_database):
