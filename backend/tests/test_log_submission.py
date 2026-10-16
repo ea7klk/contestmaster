@@ -505,9 +505,20 @@ def test_verified_participant_identity_is_associated_and_can_use_its_session(log
         assert revision.received_via == "participant_session"
 
 
-def test_fixed_window_rate_limiter_rejects_excess_requests():
+def test_sliding_window_rate_limiter_rejects_excess_requests():
     logs.api.limiter.clear()
+    assert logs.api.RATE_LIMIT_COUNT == 60
     for index in range(logs.api.RATE_LIMIT_COUNT):
         assert logs.api.allow_submission("station-test", float(index))
-    assert not logs.api.allow_submission("station-test", 30.0)
-    assert logs.api.allow_submission("station-test", 61.0)
+    assert not logs.api.allow_submission("station-test", 59.5)
+    assert logs.api.allow_submission("station-test", 120.0)
+
+
+def test_anonymous_log_upload_allows_60_per_ip_per_rolling_minute(log_database):
+    client = TestClient(app)
+    accepted = [submit(client).status_code for _ in range(60)]
+
+    assert all(status in {200, 201} for status in accepted)
+    limited = submit(client, key="request-key-0002")
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) > 0

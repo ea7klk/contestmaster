@@ -59,7 +59,7 @@ python documentation/test-contests/upload_logs.py http://127.0.0.1:8000 --contes
 python documentation/test-contests/upload_logs.py http://127.0.0.1:8000 --contest adif
 ```
 
-The default is 3.1 seconds between logs to stay below the API's per-IP limit of 20 uploads per minute. A `429` response is retried using `Retry-After` when provided. Stable content-based idempotency keys make rerunning the tool safe for exact retries. It reports entry IDs and HTTP failures but deliberately does not display or save the receipt tokens returned by the API.
+The API accepts up to 60 anonymous log submissions per IP in any rolling 60-second window. The uploader defaults to 1.1 seconds between logs, staying just below that limit, and rejects `--delay` values below 1.1 seconds. A `429` response is retried using `Retry-After` when provided, with at least the default delay. Stable content-based idempotency keys make rerunning the tool safe for exact retries. It reports entry IDs and HTTP failures but deliberately does not display or save the receipt tokens returned by the API.
 
 The uploader logs timestamps, batch and per-file progress, accepted entry IDs, retry reasons and delays, and bounded validation details for final failures. Per-contest and overall summaries include total, accepted, failed, retry count, elapsed seconds, and average logs per minute. Logs go to standard error, leaving standard output available for command wrappers.
 

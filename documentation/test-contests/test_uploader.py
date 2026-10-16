@@ -72,6 +72,11 @@ def test_app_base_url_normalizes_vite_and_api_urls():
     )
 
 
+def test_default_delay_stays_below_the_updated_api_rate_limit():
+    assert upload_logs.DEFAULT_DELAY_SECONDS == 1.1
+    assert 60 / upload_logs.DEFAULT_DELAY_SECONDS < 60
+
+
 def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypatch, caplog):
     caplog.set_level(logging.INFO, logger="contestmaster.test_upload")
     log_dir = tmp_path / "cabrillo" / "logs"
@@ -90,7 +95,9 @@ def test_upload_batch_logs_progress_and_summary_metrics(tmp_path: Path, monkeypa
         ),
     )
 
-    results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo", 3.1)
+    results = upload_logs.upload_set(
+        "http://127.0.0.1:8000", "cabrillo", upload_logs.DEFAULT_DELAY_SECONDS
+    )
 
     messages = caplog.text
     assert len(results) == 1 and results[0].accepted
@@ -168,7 +175,9 @@ def test_retry_and_failure_logs_include_safe_details_without_tokens(
         "cabrillo",
         (failure_dir, "test-cabrillo-results-sprint"),
     )
-    batch_results = upload_logs.upload_set("http://127.0.0.1:8000", "cabrillo", 3.1)
+    batch_results = upload_logs.upload_set(
+        "http://127.0.0.1:8000", "cabrillo", upload_logs.DEFAULT_DELAY_SECONDS
+    )
     assert len(batch_results) == 1 and not batch_results[0].accepted
     assert "HTTP 409: contest closed" in caplog.text
     assert "1/1" in caplog.text

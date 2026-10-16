@@ -21,7 +21,7 @@ CONTESTS = {
     "cabrillo": (ROOT / "cabrillo", "test-cabrillo-results-sprint"),
     "adif": (ROOT / "adif", "test-adif-ft8-results-sprint"),
 }
-DEFAULT_DELAY_SECONDS = 3.1
+DEFAULT_DELAY_SECONDS = 1.1
 MAX_ATTEMPTS = 5
 LOGGER = logging.getLogger("contestmaster.test_upload")
 

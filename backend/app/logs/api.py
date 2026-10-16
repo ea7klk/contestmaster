@@ -58,7 +58,7 @@ FORMAT_SUFFIXES = {
     ".adif": "adif",
 }
 _IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
-RATE_LIMIT_COUNT = 20
+RATE_LIMIT_COUNT = 60
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 
