@@ -353,13 +353,32 @@ function displayIssue(issue: RulesetIssue) {
 onMounted(async () => {
   const controller = new AbortController()
   try {
-    const [response, bands, modes] = await Promise.all([
-      getRuleCatalog(controller.signal),
-      getBands(controller.signal),
-      getModes(controller.signal),
-    ])
-    catalog.value = response.rule_types
-    operatingCatalog.value = [...bands.items, ...modes.items]
+    const [ruleCatalogResult, bandsResult, modesResult] =
+      await Promise.allSettled([
+        getRuleCatalog(controller.signal),
+        getBands(controller.signal),
+        getModes(controller.signal),
+      ])
+    if (ruleCatalogResult.status === 'rejected') {
+      throw new Error(
+        `The built-in rule catalog could not be loaded: ${catalogErrorMessage(ruleCatalogResult.reason)}`,
+      )
+    }
+    if (bandsResult.status === 'rejected') {
+      throw new Error(
+        `The band catalog could not be loaded: ${catalogErrorMessage(bandsResult.reason)}`,
+      )
+    }
+    if (modesResult.status === 'rejected') {
+      throw new Error(
+        `The mode catalog could not be loaded: ${catalogErrorMessage(modesResult.reason)}`,
+      )
+    }
+    catalog.value = ruleCatalogResult.value.rule_types
+    operatingCatalog.value = [
+      ...bandsResult.value.items,
+      ...modesResult.value.items,
+    ]
     seedRequiredRules()
   } catch (error) {
     generalError.value =
@@ -370,6 +389,12 @@ onMounted(async () => {
     catalogLoading.value = false
   }
 })
+
+function catalogErrorMessage(reason: unknown) {
+  return reason instanceof Error
+    ? reason.message
+    : 'The API returned an unknown error.'
+}
 </script>
 
 <template>
@@ -382,6 +407,9 @@ onMounted(async () => {
       integer scoring example.
     </p>
 
+    <p v-if="generalError" role="alert" class="error-panel">
+      {{ generalError }}
+    </p>
     <p v-if="catalogLoading" role="status" class="notice">
       Loading the built-in rule catalog…
     </p>
@@ -963,9 +991,6 @@ onMounted(async () => {
         </label>
       </div>
 
-      <p v-if="generalError" role="alert" class="error-panel">
-        {{ generalError }}
-      </p>
       <ul
         v-if="issues.length"
         class="error-list"

@@ -39,6 +39,46 @@ function operatingCatalogResponse() {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('RulesetComposerView', () => {
+  it.each([
+    ['/rulesets/bands', 'band'],
+    ['/rulesets/modes', 'mode'],
+  ])(
+    'identifies when the %s eligibility catalog fails to load',
+    async (path, kind) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input)
+          if (url.endsWith('/rulesets/catalog'))
+            return new Response(JSON.stringify(catalogResponse()), {
+              status: 200,
+            })
+          if (url.endsWith(path))
+            return new Response(
+              JSON.stringify({
+                error: { message: 'Catalog service is unavailable.' },
+              }),
+              { status: 503 },
+            )
+          if (
+            url.endsWith('/rulesets/bands') ||
+            url.endsWith('/rulesets/modes')
+          )
+            return new Response(JSON.stringify(operatingCatalogResponse()), {
+              status: 200,
+            })
+          throw new Error(`Unexpected request ${url}`)
+        }),
+      )
+      const wrapper = mount(RulesetComposerView)
+      await flushPromises()
+
+      expect(wrapper.get('[role="alert"]').text()).toContain(
+        `The ${kind} catalog could not be loaded: Catalog service is unavailable.`,
+      )
+    },
+  )
+
   it('places each eligibility toggle above its matching catalog choices', async () => {
     vi.stubGlobal(
       'fetch',
