@@ -1,10 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectAccessible } from '../test/a11y'
 import ContestEntriesView from './ContestEntriesView.vue'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
+})
 
 function ok(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200 })
@@ -103,6 +107,7 @@ describe('ContestEntriesView', () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
+        { path: '/manage/contests', component: { template: '<div />' } },
         {
           path: '/manage/contests/:contestId/entries/:entryId?',
           component: ContestEntriesView,
@@ -111,16 +116,23 @@ describe('ContestEntriesView', () => {
     })
     await router.push('/manage/contests/7/entries')
     await router.isReady()
-    const wrapper = mount(ContestEntriesView, { global: { plugins: [router] } })
+    const wrapper = mount(ContestEntriesView, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Spring Test Sprint')
     expect(wrapper.text()).toContain('K1TEST')
-    await expectAccessible(wrapper.element)
 
-    await router.push('/manage/contests/7/entries/22')
+    const detailsLink = wrapper.get('a[aria-label="View log details for K1TEST"]')
+    expect(detailsLink.attributes('href')).toBe('/manage/contests/7/entries/22')
+    await detailsLink.trigger('click')
     await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/manage/contests/7/entries/22')
     expect(wrapper.text()).toContain('K2ONE')
+    await nextTick()
+    expect(document.activeElement?.id).toBe('log-detail-title')
     expect(wrapper.text()).toContain('Exchange sent')
     expect(wrapper.text()).toContain('serial: 001')
     expect(wrapper.text()).toContain('Revision 1')

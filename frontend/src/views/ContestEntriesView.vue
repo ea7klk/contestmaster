@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
 import { getContest, type Contest } from '../api/contests'
@@ -56,7 +56,7 @@ async function loadPage() {
   }
 }
 
-async function loadDetails() {
+async function loadDetails(focusDetails = false) {
   if (entryId.value === null) {
     detail.value = null
     detailError.value = ''
@@ -76,6 +76,10 @@ async function loadDetails() {
     detailError.value = messageFor(cause, 'Log details could not be loaded.')
   } finally {
     detailLoading.value = false
+  }
+  if (focusDetails && detail.value) {
+    await nextTick()
+    document.getElementById('log-detail-title')?.focus()
   }
 }
 
@@ -134,11 +138,19 @@ async function downloadSelectedRevision() {
 
 onMounted(() => {
   void loadPage()
-  void loadDetails()
+  void loadDetails(true)
 })
 
 watch(
-  () => [route.params.entryId, route.query.revision],
+  () => route.params.entryId,
+  () => {
+    detailPage.value = 1
+    void loadDetails(true)
+  },
+)
+
+watch(
+  () => route.query.revision,
   () => {
     detailPage.value = 1
     void loadDetails()
@@ -249,7 +261,9 @@ Next
           <div class="section-title">
             <div>
               <p class="eyebrow">{{ detail.entry.status }}{{ detail.entry.is_late ? ' · late' : '' }}</p>
-              <h2 id="log-detail-title">{{ detail.entry.callsign }}</h2>
+              <h2 id="log-detail-title" tabindex="-1">
+                {{ detail.entry.callsign }}
+              </h2>
             </div>
             <button
               class="secondary-button"
