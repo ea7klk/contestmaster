@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Contestmaster mockup B: contest dashboard first</title>
+  <desc id="desc">A participant-oriented landing page with a split find-and-submit hero, upcoming events, and a separate manager workspace panel.</desc>
+  <defs><style>text{font-family:Inter,Arial,sans-serif;fill:#282421}.muted{fill:#655b55}.small{font-size:14px}.label{font-size:12px;font-weight:700;letter-spacing:1.4px}.h1{font-size:36px;font-weight:750;letter-spacing:-1px}.h2{font-size:21px;font-weight:700}.body{font-size:16px}.tiny{font-size:12px}.button{font-size:14px;font-weight:700}</style></defs>
+  <rect width="1440" height="900" fill="#f6f1eb"/><rect width="1440" height="76" fill="#55271f"/>
+  <path d="M31 24h24M31 31h24M31 38h24" stroke="#fffdfa" stroke-width="2.5" stroke-linecap="round"/><text x="72" y="45" fill="#fffdfa" font-size="23" font-weight="750">Contestmaster</text>
+  <text x="280" y="45" fill="#e7d8cf" font-size="14" font-weight="700">Explore</text><text x="376" y="45" fill="#e7d8cf" font-size="14" font-weight="700">Results</text><text x="466" y="45" fill="#e7d8cf" font-size="14" font-weight="700">Help</text>
+  <rect x="1153" y="18" width="150" height="40" rx="7" fill="#fffdfa"/><text x="1182" y="43" class="button" fill="#55271f">Submit a log</text><text x="1325" y="44" fill="#fffdfa" font-size="14" font-weight="700">Sign in</text>
+  <rect x="0" y="76" width="1440" height="338" fill="#77382b"/>
+  <circle cx="1120" cy="190" r="170" fill="#914a37" opacity=".45"/><circle cx="1215" cy="278" r="125" fill="#c98255" opacity=".22"/>
+  <text x="120" y="145" class="label" fill="#f0d3c1">CONTESTS MADE CLEAR</text>
+  <text x="120" y="200" class="h1" fill="#fffdfa">Your next contest</text><text x="120" y="245" class="h1" fill="#fffdfa">starts here.</text>
+  <text x="120" y="286" class="body" fill="#f2e6df">Find an event, review its exchange and rules,</text><text x="120" y="310" class="body" fill="#f2e6df">then send your log when you're finished.</text>
+  <rect x="120" y="337" width="174" height="48" rx="7" fill="#fffdfa"/><text x="152" y="367" class="button" fill="#55271f">Browse contests →</text>
+  <rect x="308" y="337" width="164" height="48" rx="7" fill="none" stroke="#f0d3c1" stroke-width="1.5"/><text x="337" y="367" class="button" fill="#fffdfa">Submit a log ↑</text>
+  <text x="120" y="477" class="label" fill="#914a37">A GOOD PLACE TO START</text><text x="120" y="516" class="h2">Upcoming contests</text><text x="120" y="542" class="small muted">A short list of events accepting entries soon.</text>
+  <rect x="120" y="568" width="730" height="94" rx="9" fill="#fffdfa" stroke="#ded2c9"/><text x="148" y="600" class="label" fill="#914a37">CW · WORLDWIDE</text><text x="148" y="634" class="h2">Autumn DX Challenge</text><text x="540" y="608" class="small muted">18 Oct · 14:00 UTC</text><text x="540" y="635" class="small" fill="#77382b" font-weight="700">Rules and exchange →</text>
+  <rect x="120" y="677" width="730" height="94" rx="9" fill="#fffdfa" stroke="#ded2c9"/><text x="148" y="709" class="label" fill="#914a37">DIGITAL · RTTY</text><text x="148" y="743" class="h2">Worldwide Digital Weekend</text><text x="540" y="717" class="small muted">24 Oct · 18:00 UTC</text><text x="540" y="744" class="small" fill="#77382b" font-weight="700">Rules and exchange →</text>
+  <rect x="890" y="466" width="430" height="305" rx="11" fill="#fffdfa" stroke="#ded2c9"/><text x="922" y="507" class="label" fill="#914a37">FOR CONTEST MANAGERS</text><text x="922" y="546" class="h2">Your contest workspace</text><text x="922" y="577" class="small muted">Create a contest, configure its rules,</text><text x="922" y="598" class="small muted">and publish results when they are ready.</text>
+  <path d="M922 623h366" stroke="#ded2c9"/><text x="922" y="657" class="body" font-weight="700">Manage contests</text><text x="922" y="680" class="small muted">Schedules · submissions · result runs</text><text x="1267" y="665" font-size="20" fill="#914a37">→</text>
+  <path d="M922 700h366" stroke="#ded2c9"/><text x="922" y="737" class="body" font-weight="700">Open ruleset composer</text><text x="1267" y="742" font-size="20" fill="#914a37">→</text>
+  <path d="M120 803h1200" stroke="#ded2c9"/><text x="120" y="833" class="tiny muted">Contestmaster · Amateur radio contest engine · Reference-data attributions and licenses</text>
+  <text x="120" y="870" class="tiny" fill="#914a37" font-weight="700">MOCKUP B · CONTEST DASHBOARD FIRST</text>
+</svg>
