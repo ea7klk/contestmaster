@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
-import { getPublicContest, type PublicContest } from '../api/results'
+import { getPublicContest, type PublicContestDetails } from '../api/results'
+import { describeContestRuleset } from './publicContestDescription'
 
 const props = defineProps<{ slug: string }>()
-const contest = ref<PublicContest | null>(null)
+const contest = ref<PublicContestDetails | null>(null)
 const loading = ref(true)
 const error = ref('')
+const rulesetSummary = computed(() =>
+  describeContestRuleset(contest.value?.ruleset ?? null),
+)
 
 const utcDateTime = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -52,6 +56,18 @@ onMounted(async () => {
     <template v-else-if="contest">
       <h1 id="public-contest-title">{{ contest.name }}</h1>
       <p v-if="contest.description">{{ contest.description }}</p>
+      <section
+        class="ruleset-overview"
+        aria-labelledby="ruleset-overview-title"
+      >
+        <h2 id="ruleset-overview-title">Contest rules at a glance</h2>
+        <ul v-if="rulesetSummary.length">
+          <li v-for="(item, index) in rulesetSummary" :key="index">
+            {{ item }}
+          </li>
+        </ul>
+        <p v-else>Detailed contest rules are not available yet.</p>
+      </section>
       <dl class="contest-dates">
         <div>
           <dt>Contest start</dt>
@@ -96,6 +112,24 @@ onMounted(async () => {
 .contest-dates {
   display: grid;
   gap: 0.75rem;
+}
+.ruleset-overview {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border, #ded2c9);
+  border-radius: 0.5rem;
+  background: var(--surface, #fffdfa);
+}
+.ruleset-overview h2 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+.ruleset-overview ul {
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+}
+.ruleset-overview li + li {
+  margin-top: 0.45rem;
 }
 .contest-dates div {
   display: grid;

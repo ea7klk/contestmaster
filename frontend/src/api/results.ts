@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import type { RulesetDraft } from './rulesets'
 
 export interface PublicContest {
   id: number
@@ -9,6 +10,10 @@ export interface PublicContest {
   ends_at: string
   log_submission_cutoff_at: string
   status: string
+}
+
+export interface PublicContestDetails extends PublicContest {
+  ruleset: RulesetDraft | null
 }
 
 export interface PublicContestList {
@@ -135,7 +140,7 @@ export function listUpcomingContests(signal?: AbortSignal) {
 }
 
 export function getPublicContest(slug: string, signal?: AbortSignal) {
-  return apiRequest<PublicContest>(
+  return apiRequest<PublicContestDetails>(
     `/public/contests/${encodeURIComponent(slug)}`,
     { signal },
   )

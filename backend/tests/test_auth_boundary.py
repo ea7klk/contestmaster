@@ -714,6 +714,22 @@ def test_contest_status_requires_ruleset_and_public_routes_only_show_published(
     )
     assert opened.status_code == 200
     assert opened.json()["status"] == "open"
+    public_details = client.get("/api/v1/public/contests/status-contest")
+    assert public_details.status_code == 200
+    assert public_details.json()["ruleset"]["ruleset_key"] == "sample-sprint"
+    assert public_details.json()["ruleset"]["version"] == "2026"
+    assert {item["rule"]["kind"] for item in public_details.json()["ruleset"]["rules"]} == {
+        "submission",
+        "categories",
+        "exchange",
+        "eligibility",
+        "duplicates",
+        "points",
+        "score_formula",
+        "format_mapping",
+        "multiplier",
+        "bonus",
+    }
     assert (
         client.put(
             f"/api/v1/contests/{contest_id}/status",

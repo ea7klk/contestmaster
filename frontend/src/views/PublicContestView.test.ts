@@ -14,6 +14,28 @@ const details = {
   periodicity: null,
   log_submission_cutoff_at: '2026-10-21T00:00:00Z',
   status: 'open',
+  ruleset: {
+    schema_version: 2,
+    ruleset_key: 'autumn-test',
+    version: '2026',
+    rules: [
+      {
+        id: 'eligibility',
+        rule: {
+          kind: 'eligibility',
+          allowed_bands: ['20m', '40m'],
+          allowed_modes: ['CW'],
+          reject_self_contacts: true,
+          reject_out_of_period: true,
+          reject_missing_required_exchange: true,
+        },
+      },
+      {
+        id: 'points',
+        rule: { kind: 'points', fact: 'fixed', fixed_points: 2 },
+      },
+    ],
+  },
 }
 
 describe('PublicContestView', () => {
@@ -31,6 +53,12 @@ describe('PublicContestView', () => {
 
     expect(wrapper.get('h1').text()).toBe('Autumn Test')
     expect(wrapper.text()).toContain('20 Oct 2026, 00:00 UTC')
+    expect(wrapper.get('#ruleset-overview-title').text()).toBe(
+      'Contest rules at a glance',
+    )
+    expect(wrapper.text()).toContain('bands 20m and 40m')
+    expect(wrapper.text()).toContain('modes CW')
+    expect(wrapper.text()).toContain('Each eligible contact is worth 2 points.')
     expect(wrapper.get('a.primary-button').attributes('href')).toBe(
       '/submit-log?contest=autumn-test',
     )

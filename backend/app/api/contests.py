@@ -708,6 +708,23 @@ def public_contest_output(contest: Contest) -> dict[str, object]:
     }
 
 
+def public_contest_detail_output(
+    contest: Contest, session: Session
+) -> dict[str, object]:
+    """Expose public contest metadata and its selected, validated ruleset."""
+    output = public_contest_output(contest)
+    ruleset = (
+        session.get(RulesetVersion, contest.ruleset_version_id)
+        if contest.ruleset_version_id is not None
+        else None
+    )
+    if ruleset is not None:
+        output["ruleset"] = load_ruleset_version(ruleset).model_dump(mode="json")
+    else:
+        output["ruleset"] = None
+    return output
+
+
 @public_router.get("", responses=API_ERROR_RESPONSES)
 def list_published_contests(
     session: Annotated[Session, Depends(get_session)],
@@ -768,4 +785,4 @@ def get_public_contest(
     )
     if contest is None:
         raise HTTPException(status_code=404, detail="Contest not found.")
-    return public_contest_output(contest)
+    return public_contest_detail_output(contest, session)
