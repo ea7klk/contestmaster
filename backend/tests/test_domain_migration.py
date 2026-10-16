@@ -4,7 +4,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import insert, inspect, text
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from backend.app.db import build_engine
@@ -12,7 +12,6 @@ from backend.app.migrations import _config
 from backend.app.models import (
     BandCatalogItem,
     Contest,
-    ContestStatus,
     RulesetVersion,
     SystemRole,
     SystemUser,
@@ -69,6 +68,8 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
         "participant_sessions",
         "participants",
         "contests",
+        "contest_series",
+        "contest_series_exceptions",
         "contest_deletion_permits",
         "ruleset_deletion_permits",
         "entries",
@@ -94,7 +95,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "operating_catalog_items" not in tables
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0021_authorized_ruleset_deletion"
+            "0022_recurring_contest_series"
         )
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
@@ -153,19 +154,22 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
             "immutable_result_publication_update",
             "prevent_active_master_data_version_delete",
         } <= triggers
-        assert not {
-            "immutable_ruleset_versions_delete",
-            "immutable_entry_revisions_delete",
-            "immutable_stations_delete",
-            "immutable_qsos_delete",
-            "immutable_qso_decisions_delete",
-            "immutable_ruleset_activations_delete",
-            "retain_score_runs",
-            "completed_score_runs_delete",
-            "completed_qso_scores_delete",
-            "retain_result_publications",
-            "retain_result_publication_entries",
-        } & triggers
+        assert (
+            not {
+                "immutable_ruleset_versions_delete",
+                "immutable_entry_revisions_delete",
+                "immutable_stations_delete",
+                "immutable_qsos_delete",
+                "immutable_qso_decisions_delete",
+                "immutable_ruleset_activations_delete",
+                "retain_score_runs",
+                "completed_score_runs_delete",
+                "completed_qso_scores_delete",
+                "retain_result_publications",
+                "retain_result_publication_entries",
+            }
+            & triggers
+        )
     with Session(engine) as session:
         band = session.query(BandCatalogItem).filter_by(key="160m").one()
         assert band.description == "160 m HF band"
@@ -224,15 +228,17 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 4
-    assert revisions[0].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[0].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[1].revision == "0020_authorized_contest_deletion"
-    assert revisions[1].down_revision == "0019_contest_periodicity"
-    assert revisions[2].revision == "0019_contest_periodicity"
-    assert revisions[2].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[3].down_revision is None
-    assert revisions[3].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 5
+    assert revisions[0].revision == "0022_recurring_contest_series"
+    assert revisions[0].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[1].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[1].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[2].revision == "0020_authorized_contest_deletion"
+    assert revisions[2].down_revision == "0019_contest_periodicity"
+    assert revisions[3].revision == "0019_contest_periodicity"
+    assert revisions[3].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[4].down_revision is None
+    assert revisions[4].revision == "0018_remove_unscored_country_data"
 
 
 def test_periodicity_migration_copies_legacy_ruleset_recurrence(tmp_path) -> None:
@@ -337,7 +343,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0021_authorized_ruleset_deletion"
+            "0022_recurring_contest_series"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
@@ -356,7 +362,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0021_authorized_ruleset_deletion"
+            "0022_recurring_contest_series"
         )
     engine.dispose()
 
@@ -417,18 +423,28 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     # Core insert that writes only columns present in both schema versions.
     with engine.begin() as connection:
         result = connection.execute(
-            insert(Contest.__table__).values(
-                owner_user_id=actor_id,
-                ruleset_version_id=ruleset_id,
-                name="Shared Baseline Contest",
-                slug="shared-baseline-contest",
-                starts_at=datetime(2025, 6, 21, tzinfo=UTC),
-                ends_at=datetime(2025, 6, 21, 2, tzinfo=UTC),
-                log_submission_cutoff_at=datetime(2025, 6, 28, tzinfo=UTC),
-                status=ContestStatus.DRAFT,
-            )
+            text(
+                "INSERT INTO contests "
+                "(owner_user_id, ruleset_version_id, name, slug, starts_at, ends_at, "
+                "log_submission_cutoff_at, status, auto_recalculate_on_upload, "
+                "created_at, updated_at) "
+                "VALUES (:owner_user_id, :ruleset_version_id, :name, :slug, :starts_at, "
+                ":ends_at, :cutoff, :status, 0, :created_at, :updated_at)"
+            ),
+            {
+                "owner_user_id": actor_id,
+                "ruleset_version_id": ruleset_id,
+                "name": "Shared Baseline Contest",
+                "slug": "shared-baseline-contest",
+                "starts_at": "2025-06-21T00:00:00.000000Z",
+                "ends_at": "2025-06-21T02:00:00.000000Z",
+                "cutoff": "2025-06-28T00:00:00.000000Z",
+                "status": "draft",
+                "created_at": "2025-06-21T00:00:00.000000Z",
+                "updated_at": "2025-06-21T00:00:00.000000Z",
+            },
         )
-        contest_id = result.inserted_primary_key[0]
+        contest_id = result.lastrowid
     engine.dispose()
 
     _run_python(
@@ -441,7 +457,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0021_authorized_ruleset_deletion"
+            "0022_recurring_contest_series"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

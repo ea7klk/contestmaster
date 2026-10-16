@@ -58,7 +58,12 @@ def test_api_startup_schedules_immediate_sync_without_waiting(monkeypatch) -> No
     monkeypatch.setattr(
         main,
         "settings",
-        SimpleNamespace(master_data_scheduler_enabled=True, master_data_nightly_hour_utc=2),
+        SimpleNamespace(
+            master_data_scheduler_enabled=True,
+            master_data_nightly_hour_utc=2,
+            contest_scheduler_enabled=False,
+            contest_scheduler_interval_seconds=3600,
+        ),
     )
     monkeypatch.setattr(main, "has_all_required_versions", lambda _factory: False)
     monkeypatch.setattr(main, "run_master_data_sync", startup_sync)
@@ -91,7 +96,12 @@ def test_api_startup_skips_master_data_scheduler_when_disabled(monkeypatch) -> N
     monkeypatch.setattr(
         main,
         "settings",
-        SimpleNamespace(master_data_scheduler_enabled=False, master_data_nightly_hour_utc=2),
+        SimpleNamespace(
+            master_data_scheduler_enabled=False,
+            master_data_nightly_hour_utc=2,
+            contest_scheduler_enabled=False,
+            contest_scheduler_interval_seconds=3600,
+        ),
     )
     monkeypatch.setattr(main, "run_master_data_sync", startup_sync)
     monkeypatch.setattr(main, "upgrade_database", startup_migration)

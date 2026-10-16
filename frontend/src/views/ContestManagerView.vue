@@ -167,9 +167,7 @@ async function importContestFile(event: Event) {
   try {
     const parsed: unknown = JSON.parse(await file.text())
     if (!isRecord(parsed) || !isRecord(parsed.contest)) {
-      throw new Error(
-        'Expected a contest package with a contest object.',
-      )
+      throw new Error('Expected a contest package with a contest object.')
     }
     if (
       parsed.ruleset !== undefined &&
@@ -249,7 +247,9 @@ async function exportContest(contest: Contest, includeRuleset: boolean) {
       : `Exported ${current.name} without its ruleset.`
   } catch (error) {
     errorMessage.value =
-      error instanceof Error ? error.message : 'The contest could not be exported.'
+      error instanceof Error
+        ? error.message
+        : 'The contest could not be exported.'
   } finally {
     exportingContestId.value = null
   }
@@ -430,7 +430,18 @@ onMounted(refreshData)
                 >
                   Edit details
                 </RouterLink>
+                <RouterLink
+                  v-if="
+                    contest.series_id !== null &&
+                    contest.series_id !== undefined
+                  "
+                  class="secondary-button"
+                  :to="`/manage/contests/${contest.id}/edit`"
+                >
+                  Manage series
+                </RouterLink>
                 <button
+                  v-else
                   class="danger-button"
                   type="button"
                   :disabled="deletingContestId === contest.id"
@@ -619,8 +630,13 @@ onMounted(refreshData)
   display: grid;
   gap: 0.5rem;
 }
-.export-actions { position: relative; }
-.export-actions summary { cursor: pointer; font-weight: 650; }
+.export-actions {
+  position: relative;
+}
+.export-actions summary {
+  cursor: pointer;
+  font-weight: 650;
+}
 .export-action-options {
   position: absolute;
   z-index: 2;

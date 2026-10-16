@@ -2,6 +2,8 @@ from backend.app.models.audit import AdminNote, AuditEvent
 from backend.app.models.domain import (
     Contest,
     ContestDeletionPermit,
+    ContestSeries,
+    ContestSeriesException,
     Entry,
     EntryAccessGrant,
     EntryRevision,
@@ -60,6 +62,8 @@ __all__ = [
     "CallsignPrefix",
     "Contest",
     "ContestDeletionPermit",
+    "ContestSeries",
+    "ContestSeriesException",
     "ContestEntity",
     "ContestMasterDataVersion",
     "ContestStatus",

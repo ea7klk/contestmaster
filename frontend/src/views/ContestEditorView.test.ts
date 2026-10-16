@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { routerKey } from 'vue-router'
 import { expectAccessible } from '../test/a11y'
 import ContestEditorView from './ContestEditorView.vue'
 
@@ -36,6 +37,7 @@ function mountEditor(contestId?: string) {
   return mount(ContestEditorView, {
     props: contestId ? { contestId } : {},
     global: {
+      provide: { [routerKey]: { push: vi.fn() } },
       stubs: {
         RouterLink: { template: '<a :href="to"><slot /></a>', props: ['to'] },
       },
@@ -118,5 +120,64 @@ describe('ContestEditorView', () => {
       'Contest details saved',
     )
     await expectAccessible(wrapper.element)
+  })
+
+  it('creates a recurring series with a relative cutoff and rolling window', async () => {
+    const submissions: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests') && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          submissions.push(body)
+          return ok({ id: 55, ...body, status: 'draft', owner_user_id: 4 })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountEditor()
+    await flushPromises()
+    const inputs = wrapper.findAll('input')
+    await inputs[0]?.setValue('Annual Sprint')
+    await inputs[1]?.setValue('annual-sprint')
+    const datetimes = wrapper.findAll('input[type="datetime-local"]')
+    await datetimes[0]?.setValue('2026-05-01T12:00')
+    await datetimes[1]?.setValue('2026-05-01T18:00')
+    const selects = wrapper.findAll('.schedule-controls select')
+    await selects[0]?.setValue('annual_date')
+    const recurringSelects = wrapper.findAll('.schedule-controls select')
+    await recurringSelects[1]?.setValue(5)
+    await wrapper
+      .findAll('label')
+      .find((label) =>
+        label.text().includes('Default time after each edition ends'),
+      )!
+      .get('input[type="number"]')
+      .setValue('2')
+    const cutoffUnitSelect = wrapper
+      .findAll('.schedule-controls select')
+      .find((select) => select.text().includes('hours'))
+    await cutoffUnitSelect?.setValue('days')
+    const autoCreateToggle = wrapper
+      .findAll('label.checkbox-field')
+      .find((label) => label.text().includes('Automatically create future'))
+    await autoCreateToggle!.get('input').setValue(true)
+    await wrapper.findAll('input[type="number"]').at(-1)?.setValue('90')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(submissions[0]?.periodicity).toEqual({
+      frequency: 'annual_date',
+      month: 5,
+      day: 1,
+    })
+    expect(submissions[0]?.cutoff_offset_seconds).toBe(172800)
+    expect(submissions[0]?.cutoff_is_override).toBe(false)
+    expect(submissions[0]?.log_submission_cutoff_at).toBe(
+      '2026-05-03T18:00:00.000Z',
+    )
+    expect(submissions[0]?.automatic_window_days).toBe(90)
   })
 })

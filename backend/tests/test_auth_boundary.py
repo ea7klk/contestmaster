@@ -384,6 +384,114 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
         assert events[1].event_metadata == {"changed_fields": ["name", "periodicity"]}
 
 
+def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(identity_database):
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="series-owner",
+        email="series-owner@example.test",
+    )
+    client = TestClient(app)
+    signed = client.post(
+        "/api/v1/auth/login",
+        json={"email": "series-owner@example.test", "password": "Correct horse battery staple"},
+    )
+    assert signed.status_code == 200
+    csrf = {"X-CSRF-Token": client.cookies.get("contestmaster_csrf")}
+    created = client.post(
+        "/api/v1/contests",
+        headers=csrf,
+        json={
+            "name": "Annual Sprint",
+            "slug": "annual-sprint",
+            "starts_at": "2026-05-01T12:00:00Z",
+            "ends_at": "2026-05-01T18:00:00Z",
+            "periodicity": {"frequency": "annual_date", "month": 5, "day": 1},
+            "log_submission_cutoff_at": "2026-05-03T18:00:00Z",
+            "cutoff_offset_seconds": 172800,
+            "cutoff_is_override": False,
+            "automatic_window_days": 90,
+        },
+    )
+    assert created.status_code == 201
+    contest = created.json()
+    assert contest["series_id"] is not None
+    assert contest["is_series_anchor"] is True
+    assert contest["series_cutoff_offset_seconds"] == 172800
+    assert contest["series_automatic_window_days"] == 90
+    assert contest["log_submission_cutoff_at"] == "2026-05-03T18:00:00Z"
+    series_id = contest["series_id"]
+
+    fractional_hour_offset = client.post(
+        "/api/v1/contests",
+        headers=csrf,
+        json={
+            "name": "Invalid Cutoff Offset",
+            "slug": "invalid-cutoff-offset",
+            "starts_at": "2026-05-01T12:00:00Z",
+            "ends_at": "2026-05-01T18:00:00Z",
+            "periodicity": {"frequency": "annual_date", "month": 5, "day": 1},
+            "log_submission_cutoff_at": "2026-05-01T18:30:00Z",
+            "cutoff_offset_seconds": 1800,
+        },
+    )
+    assert fractional_hour_offset.status_code == 422
+
+    moved = client.post(
+        f"/api/v1/contests/series/{series_id}/exceptions",
+        headers=csrf,
+        json={
+            "occurrence_date": "2027-05-01",
+            "action": "move",
+            "moved_to_date": "2027-05-08",
+        },
+    )
+    assert moved.status_code == 201
+    assert moved.json() == {
+        "occurrence_date": "2027-05-01",
+        "action": "move",
+        "moved_to_date": "2027-05-08",
+    }
+    assert client.get(f"/api/v1/contests/series/{series_id}/exceptions").json()["items"] == [
+        moved.json()
+    ]
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="other-series-owner",
+        email="other-series-owner@example.test",
+    )
+    other_client = TestClient(app)
+    other_login = other_client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "other-series-owner@example.test",
+            "password": "Correct horse battery staple",
+        },
+    )
+    assert other_login.status_code == 200
+    assert other_client.get(f"/api/v1/contests/series/{series_id}/exceptions").status_code == 404
+    duplicate_destination = client.post(
+        f"/api/v1/contests/series/{series_id}/exceptions",
+        headers=csrf,
+        json={
+            "occurrence_date": "2028-05-01",
+            "action": "move",
+            "moved_to_date": "2027-05-08",
+        },
+    )
+    assert duplicate_destination.status_code == 409
+
+    deleted = client.request(
+        "DELETE",
+        f"/api/v1/contests/series/{series_id}",
+        headers=csrf,
+        json={"confirm_name": "Annual Sprint"},
+    )
+    assert deleted.status_code == 204, deleted.text
+    assert client.get("/api/v1/contests").json()["meta"]["total"] == 0
+
+
 def test_contest_managers_can_browse_entry_logs_only_for_owned_contests(identity_database):
     manager_id = add_user(
         identity_database,

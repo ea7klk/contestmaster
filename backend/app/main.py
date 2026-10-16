@@ -31,6 +31,10 @@ from backend.app.api.master_data_admin import router as master_data_admin_router
 from backend.app.api.participant_identity import router as participant_identity_router
 from backend.app.body_limit import RequestBodyLimitMiddleware
 from backend.app.config import get_settings
+from backend.app.contest_series_scheduler import (
+    contest_edition_timer,
+    run_edition_generation,
+)
 from backend.app.db import SessionFactory, engine, get_session
 from backend.app.logging_config import configure_logging
 from backend.app.logs.api import MAX_REQUEST_BYTES
@@ -60,8 +64,11 @@ MAX_JSON_REQUEST_BYTES = 1024 * 1024
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     timer: asyncio.Task[None] | None = None
+    contest_timer: asyncio.Task[None] | None = None
     initial_sync: asyncio.Task[None] | None = None
+    initial_edition_generation: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
+    contest_generation_lock = asyncio.Lock()
     await asyncio.to_thread(upgrade_database)
     if settings.master_data_scheduler_enabled:
         if not has_all_required_versions(SessionFactory):
@@ -76,6 +83,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             ),
             name="master-data-nightly-timer",
         )
+    if settings.contest_scheduler_enabled:
+        initial_edition_generation = asyncio.create_task(
+            run_edition_generation(SessionFactory, contest_generation_lock, trigger="startup"),
+            name="contest-edition-initial-generation",
+        )
+        contest_timer = asyncio.create_task(
+            contest_edition_timer(
+                SessionFactory,
+                contest_generation_lock,
+                settings.contest_scheduler_interval_seconds,
+            ),
+            name="contest-edition-timer",
+        )
     try:
         yield
     finally:
@@ -85,10 +105,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 await timer
             except asyncio.CancelledError:
                 pass
+        if contest_timer is not None:
+            contest_timer.cancel()
+            try:
+                await contest_timer
+            except asyncio.CancelledError:
+                pass
         try:
             if initial_sync is not None:
                 # Let an in-flight importer finish before disposing the shared ORM engine.
                 await initial_sync
+            if initial_edition_generation is not None:
+                await initial_edition_generation
         finally:
             engine.dispose()
 

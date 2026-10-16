@@ -198,3 +198,15 @@ This scoped enhancement package was tracked by parent issue [#79](https://github
 5. [x] [#84 — Importable contest JSON starter drafts](https://github.com/ea7klk/contestmaster/issues/84): two validated, source-linked drafts for each requested mode family in `documentation/ruleset-drafts/`.
 
 **Verification:** backend pytest — 122 passed; frontend Vitest — 19 files / 51 tests passed; frontend typecheck, lint, and production build — passed; Ruff check and changed-file format check — passed; `git diff --check` — passed.
+
+## Supplemental work — Recurring contest series (in progress)
+
+The user's schedule and deadline refinements are tracked by parent issue [#215](https://github.com/ea7klk/contestmaster/issues/215), milestone **Recurring contest series and deadlines**, with linked child issues #216–#220. The accepted behavior is: UTC annual/nth-weekday/full-weekend schedules; a five-occurrence preview; independent edition records; optional internal-timer creation within a rolling window; skip/move exceptions; elapsed whole-hour/day cutoff offsets with absolute per-edition overrides; and confirmed deletion of a whole series.
+
+1. [x] [#216 — Series model, recurrence patterns, and exceptions](https://github.com/ea7klk/contestmaster/issues/216).
+2. [x] [#217 — Rolling-window edition scheduler](https://github.com/ea7klk/contestmaster/issues/217).
+3. [x] [#218 — Relative cutoff and per-edition override](https://github.com/ea7klk/contestmaster/issues/218).
+4. [x] [#219 — Delete series and dependent edition data](https://github.com/ea7klk/contestmaster/issues/219).
+5. [x] [#220 — Architecture, data model, API, and operator documentation](https://github.com/ea7klk/contestmaster/issues/220).
+
+**Verification:** backend `.venv/bin/pytest -q` — 207 passed; frontend Node 24 `npm run typecheck`, `npm test -- --run`, `npm run lint`, and `npm run build` — passed (26 files / 98 tests); `.venv/bin/ruff check backend/app backend/tests` — passed; fresh isolated SQLite `alembic upgrade head` and `alembic check` — passed; `git diff --check` — passed. One existing Alembic configuration deprecation warning remains.

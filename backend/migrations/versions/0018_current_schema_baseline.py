@@ -86,15 +86,52 @@ _CONTEST_FREE_BANDS = {"2200m", "630m", "60m", "30m", "17m", "12m"}
 
 def upgrade() -> None:
     bind = op.get_bind()
-    # Keep tables introduced by later revisions out of the initial baseline even
-    # though create_all reads current ORM metadata.
-    Base.metadata.create_all(
-        bind=bind,
-        tables=[
-            table for table in Base.metadata.sorted_tables
-            if table.name not in {"contest_deletion_permits", "ruleset_deletion_permits"}
-        ],
-    )
+    # Freeze this squashed baseline to the schema shape it originally created.
+    # Later model changes must be represented by forward-only migrations.
+    later_tables = {
+        "contest_deletion_permits",
+        "ruleset_deletion_permits",
+        "contest_series",
+        "contest_series_exceptions",
+    }
+    later_contest_columns = {
+        "series_id",
+        "series_occurrence_date",
+        "is_series_anchor",
+        "cutoff_is_override",
+    }
+    contests = Base.metadata.tables["contests"]
+    removed_columns = [contests.c[name] for name in later_contest_columns]
+    removed_constraints = [
+        constraint
+        for constraint in contests.constraints
+        if any(column.name in later_contest_columns for column in getattr(constraint, "columns", ()))
+    ]
+    removed_indexes = [
+        index
+        for index in contests.indexes
+        if any(column.name in later_contest_columns for column in index.columns)
+    ]
+    for constraint in removed_constraints:
+        contests.constraints.remove(constraint)
+    for index in removed_indexes:
+        contests.indexes.remove(index)
+    for column in removed_columns:
+        contests._columns.remove(column)
+    try:
+        Base.metadata.create_all(
+            bind=bind,
+            tables=[
+                table for table in Base.metadata.sorted_tables if table.name not in later_tables
+            ],
+        )
+    finally:
+        for column in removed_columns:
+            contests._columns.add(column)
+        for constraint in removed_constraints:
+            contests.constraints.add(constraint)
+        for index in removed_indexes:
+            contests.indexes.add(index)
     # This baseline predates contest periodicity. Keep its shape stable even
     # though its table definitions are sourced from the current ORM metadata;
     # revision 0019 adds the column for both fresh and existing installations.

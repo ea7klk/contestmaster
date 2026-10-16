@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     entry_receipt_secret: str = "development-only-change-before-deploy"
     master_data_scheduler_enabled: bool = True
     master_data_nightly_hour_utc: int = 2
+    contest_scheduler_enabled: bool = True
+    contest_scheduler_interval_seconds: int = 3600
     metrics_enabled: bool = False
     metrics_bearer_token: SecretStr | None = None
 
@@ -40,6 +42,13 @@ class Settings(BaseSettings):
     def nightly_hour_must_be_valid(cls, value: int) -> int:
         if not 0 <= value <= 23:
             raise ValueError("master_data_nightly_hour_utc must be between 0 and 23")
+        return value
+
+    @field_validator("contest_scheduler_interval_seconds")
+    @classmethod
+    def contest_scheduler_interval_must_be_valid(cls, value: int) -> int:
+        if value < 60:
+            raise ValueError("contest_scheduler_interval_seconds must be at least 60")
         return value
 
     @model_validator(mode="after")
@@ -90,6 +99,10 @@ class Settings(BaseSettings):
             if not self.master_data_scheduler_enabled:
                 raise ValueError(
                     "master_data_scheduler_enabled must be enabled in staging and production"
+                )
+            if not self.contest_scheduler_enabled:
+                raise ValueError(
+                    "contest_scheduler_enabled must be enabled in staging and production"
                 )
 
         return self

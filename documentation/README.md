@@ -74,7 +74,7 @@ IARU organizational regions are outside the current release: they are not a firs
 
 ## Architecture overview
 
-The Vue application handles contest setup, manager-authored Markdown contest descriptions, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. Public contest details display the manager's description above a generated ruleset summary. The frontend sanitizes rendered Markdown; the summary includes category dimensions and configured choices, but can be imprecise, so the sponsor's official rules remain authoritative. The manager result-generation workflow shows an accessible indeterminate progress bar while the API calculates results; no percentage is shown because the current API does not report incremental progress. The frontend sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative. Managers can permanently delete their contests (global administrators can delete any contest), including all dependent logs, scores, results, access grants, and contest history; shared participant identities and global audit events are retained. Saved ruleset versions can be deleted by their creator or a global administrator only when no contest assignment, activation history, or score run references them.
+The Vue application handles contest setup, manager-authored Markdown contest descriptions, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. Recurring schedules are modeled as a series of independent contest editions: each edition has its own dates, lifecycle, logs, score runs, and results. Public contest details display the manager's description above a generated ruleset summary. The frontend sanitizes rendered Markdown; the summary includes category dimensions and configured choices, but can be imprecise, so the sponsor's official rules remain authoritative. The manager result-generation workflow shows an accessible indeterminate progress bar while the API calculates results; no percentage is shown because the current API does not report incremental progress. The frontend sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative. Managers can permanently delete their contests (global administrators can delete any contest), including all dependent logs, scores, results, access grants, and contest history; deleting a series removes all its editions and exceptions. Shared participant identities and global audit events are retained. Saved ruleset versions can be deleted by their creator or a global administrator only when no contest assignment, activation history, or score run references them.
 
 ```mermaid
 flowchart LR
@@ -101,6 +101,9 @@ flowchart LR
     Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo, ADI/ADIF and other log formats]
     Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[CTY cty.dat import job]
+    Timer -->|rolling-window materialization| EditionGenerator[Recurring edition generator]
+    Series[Contest series configuration] --> EditionGenerator
+    EditionGenerator -->|independent draft editions| API
     StackCLI[Stack CLI] -->|starts| API
     MasterCLI[Master-data CLI] -->|one-shot sync| MasterImport
     DBCLI[Database maintenance CLI] -->|offline backup, integrity check, restore| Store
@@ -114,8 +117,9 @@ flowchart LR
 ### Main boundaries
 
 - **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides contest management with paged contest lists, JSON contest import/export (with optional attached ruleset), Markdown contest descriptions, and draft editing of saved rulesets as new immutable versions. The contest list uses normal page scrolling without a nested scroll region. Render manager-authored contest descriptions safely from Markdown source. The public details page places this description above a generated category/rules overview that may be imprecise; the official contest rules remain authoritative. The graphical composer validates and reviews contest rules. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
-- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
+- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. A single-process internal timer materializes editions through each series' configured rolling window and applies skip/move exceptions. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for callsign normalization, QSO validation, duplicate selection, counterpart-log matching, scoring, and adjudication. Keep pure rule checks independent of HTTP and SQLite; ORM orchestration records immutable decisions and score runs at the application boundary.
+- **Contest schedules:** one-time contests and recurring series both produce ordinary contest records. A series stores UTC recurrence configuration, duration, cutoff offset, optional rolling creation window, ruleset/default settings, and exceptions; each edition is an independent contest record with its own state and data. Managers can skip or move an occurrence, set an absolute cutoff override for an edition, or delete a whole series with its editions. The API's internal timer is the sole scheduler owner in the initial one-process deployment.
 - **Rulesets:** define reusable categories, exchange interpretation, QSO eligibility predicates over contact geography, entry categories/declarations, and the station callsign, plus multipliers, penalties, and rounding rules. Contest start/end instants, periodicity, and log submission cutoff belong to contest configuration and are excluded from rulesets. The ruleset's submission rule only selects late-log handling. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Configured cross-log workflow hooks control reciprocal-contact tolerances and whether missing/mismatched counterpart contacts require review. Submitted configuration never executes code. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
 - **Operating catalogs:** store reusable bands and modes in independent ORM-managed `band_catalog_items` and `mode_catalog_items` tables. The API exposes active values through separate resources; the global-admin page has distinct Bands and Modes sections, each with its own “Add catalog item” form. Eligibility selections persist stable keys in immutable ruleset configuration JSON; no foreign-key relationship makes historical snapshots depend on mutable catalog rows. Contest-free marks are advisory metadata shown in the composer and do not change scoring.
 - **Adapters:** translate files and external formats into and out of the common domain model. The API enforces upload limits and passes file contents to import adapters. Keep format parsing separate from validation and scoring.
@@ -140,6 +144,10 @@ The active ORM schema and migration baseline contain no IARU-region table, entit
 ```mermaid
 erDiagram
     SYSTEM_USER ||--o{ CONTEST : owns
+    SYSTEM_USER ||--o{ CONTEST_SERIES : manages
+    RULESET_VERSION o|--o{ CONTEST_SERIES : defaults
+    CONTEST_SERIES ||--o{ CONTEST : editions
+    CONTEST_SERIES ||--o{ CONTEST_SERIES_EXCEPTION : exceptions
     SYSTEM_USER o|--o{ ENTRY : submits
     CONTEST ||--o{ ENTRY : accepts
     PARTICIPANT ||--o{ ENTRY : identifies
@@ -187,15 +195,38 @@ erDiagram
     CONTEST {
         integer id PK
         integer owner_user_id FK
+        integer series_id FK "nullable"
+        text series_occurrence_date "nullable UTC date"
+        integer is_series_anchor
         text name
         text description "nullable Markdown source"
         text starts_at_utc
         text ends_at_utc
         json periodicity
         text log_submission_cutoff_at_utc
+        integer cutoff_is_override
         text status
         integer ruleset_version_id FK
         integer auto_recalculate_on_upload
+    }
+    CONTEST_SERIES {
+        integer id PK
+        integer owner_user_id FK
+        text name
+        text base_slug
+        json periodicity
+        integer start_time_seconds_utc
+        integer duration_seconds
+        integer cutoff_offset_seconds
+        integer automatic_window_days "nullable disables generation"
+        integer ruleset_version_id FK
+    }
+    CONTEST_SERIES_EXCEPTION {
+        integer id PK
+        integer series_id FK
+        text occurrence_date_utc
+        text action "skip or move"
+        text moved_to_date_utc "nullable"
     }
     CONTEST_DELETION_PERMIT {
         integer contest_id PK "temporary FK to contest"

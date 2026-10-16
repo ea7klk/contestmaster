@@ -4,7 +4,12 @@ import type { RulesetDraft } from './rulesets'
 export type ContestStatus = 'draft' | 'open' | 'closed' | 'published'
 
 export interface ContestPeriodicity {
-  frequency: 'annual_date' | 'nth_weekday' | 'first_full_weekend'
+  frequency:
+    | 'annual_date'
+    | 'nth_weekday'
+    | 'first_full_weekend'
+    | 'last_full_weekend'
+    | 'nth_full_weekend'
   month: number
   day?: number
   weekday?: number
@@ -21,6 +26,13 @@ export interface Contest {
   ends_at: string
   periodicity: ContestPeriodicity | null
   log_submission_cutoff_at: string
+  cutoff_is_override?: boolean
+  series_id?: number | null
+  series_occurrence_date?: string | null
+  is_series_anchor?: boolean
+  series_cutoff_offset_seconds?: number | null
+  series_automatic_window_days?: number | null
+  series_edition_count?: number | null
   status: ContestStatus
   auto_recalculate_on_upload: boolean
   ruleset_version_id: number | null
@@ -36,6 +48,9 @@ export interface ContestDraft {
   ends_at: string
   periodicity: ContestPeriodicity | null
   log_submission_cutoff_at: string
+  cutoff_offset_seconds?: number | null
+  cutoff_is_override?: boolean
+  automatic_window_days?: number | null
   auto_recalculate_on_upload: boolean
 }
 
@@ -102,17 +117,58 @@ export function deleteContest(id: number, confirmSlug: string) {
 
 export function previewContestSchedule(
   periodicity: ContestPeriodicity,
-  year: number,
   starts_at: string,
   ends_at: string,
+  exceptions: ContestSeriesException[] = [],
 ) {
-  return apiRequest<{ starts_at: string; ends_at: string }>(
-    '/contests/schedule-preview',
-    {
-      method: 'POST',
-      body: JSON.stringify({ periodicity, year, starts_at, ends_at }),
-    },
+  return apiRequest<{
+    starts_at: string
+    ends_at: string
+    occurrences?: Array<{ starts_at: string; ends_at: string }>
+  }>('/contests/schedule-preview', {
+    method: 'POST',
+    body: JSON.stringify({ periodicity, starts_at, ends_at, exceptions }),
+  })
+}
+
+export interface ContestSeriesException {
+  occurrence_date: string
+  action: 'skip' | 'move'
+  moved_to_date: string | null
+}
+
+export function listSeriesExceptions(seriesId: number) {
+  return apiRequest<{ items: ContestSeriesException[] }>(
+    `/contests/series/${seriesId}/exceptions`,
+    { method: 'GET' },
   )
+}
+
+export function setSeriesException(
+  seriesId: number,
+  exception: ContestSeriesException,
+) {
+  return apiRequest<ContestSeriesException>(
+    `/contests/series/${seriesId}/exceptions`,
+    { method: 'POST', body: JSON.stringify(exception) },
+  )
+}
+
+export function removeSeriesException(
+  seriesId: number,
+  occurrenceDate: string,
+) {
+  return apiRequest<void>(
+    `/contests/series/${seriesId}/exceptions/${occurrenceDate}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function deleteContestSeries(seriesId: number, confirmName: string) {
+  return apiRequest<void>(`/contests/series/${seriesId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirm_name: confirmName }),
+  })
 }
 
 export function selectRuleset(id: number, rulesetVersionId: number) {

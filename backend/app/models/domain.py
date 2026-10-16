@@ -1,19 +1,23 @@
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db import Base
 from backend.app.models.enums import (
@@ -153,6 +157,9 @@ class ParticipantSession(Base):
 class Contest(Base):
     __tablename__ = "contests"
     __table_args__ = (
+        Index(
+            "contest_series_occurrence_unique", "series_id", "series_occurrence_date", unique=True
+        ),
         UniqueConstraint("id", "owner_user_id", name="contest_id_owner_unique"),
         CheckConstraint("length(trim(name)) > 0", name="name_not_blank"),
         CheckConstraint("length(trim(slug)) > 0", name="slug_not_blank"),
@@ -160,6 +167,11 @@ class Contest(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    series_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contest_series.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    series_occurrence_date: Mapped[date | None] = mapped_column(Date)
+    is_series_anchor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     owner_user_id: Mapped[int] = mapped_column(
         ForeignKey("system_users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -173,6 +185,7 @@ class Contest(Base):
     ends_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     periodicity: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     log_submission_cutoff_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    cutoff_is_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[ContestStatus] = mapped_column(
         enum_column(ContestStatus, "contest_status"), nullable=False, default=ContestStatus.DRAFT
     )
@@ -181,6 +194,74 @@ class Contest(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
     )
+    series: Mapped[ContestSeries | None] = relationship(back_populates="editions")
+
+
+class ContestSeries(Base):
+    """Reusable UTC recurrence and template settings for independent contest editions."""
+
+    __tablename__ = "contest_series"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="contest_series_name_not_blank"),
+        CheckConstraint("length(trim(base_slug)) > 0", name="contest_series_slug_not_blank"),
+        CheckConstraint(
+            "start_time_seconds >= 0 AND start_time_seconds < 86400", name="series_start_time_valid"
+        ),
+        CheckConstraint("duration_seconds > 0", name="series_duration_positive"),
+        CheckConstraint("cutoff_offset_seconds >= 0", name="series_cutoff_offset_nonnegative"),
+        CheckConstraint(
+            "automatic_window_days IS NULL OR automatic_window_days BETWEEN 1 AND 730",
+            name="series_automatic_window_valid",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("system_users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    base_slug: Mapped[str] = mapped_column(String(120, collation="NOCASE"), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    periodicity: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    start_time_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    cutoff_offset_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    automatic_window_days: Mapped[int | None] = mapped_column(Integer)
+    auto_recalculate_on_upload: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ruleset_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ruleset_versions.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
+    )
+    editions: Mapped[list[Contest]] = relationship(back_populates="series")
+    exceptions: Mapped[list[ContestSeriesException]] = relationship(back_populates="series")
+
+
+class ContestSeriesException(Base):
+    """A skipped or moved recurrence keyed by its original UTC scheduled date."""
+
+    __tablename__ = "contest_series_exceptions"
+    __table_args__ = (
+        UniqueConstraint("series_id", "occurrence_date", name="series_exception_date_unique"),
+        CheckConstraint("action IN ('skip', 'move')", name="series_exception_action_valid"),
+        CheckConstraint(
+            "(action = 'skip' AND moved_to_date IS NULL) OR "
+            "(action = 'move' AND moved_to_date IS NOT NULL)",
+            name="series_exception_move_date_valid",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    series_id: Mapped[int] = mapped_column(
+        ForeignKey("contest_series.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
+    action: Mapped[str] = mapped_column(String(8), nullable=False)
+    moved_to_date: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    series: Mapped[ContestSeries] = relationship(back_populates="exceptions")
 
 
 class ContestDeletionPermit(Base):

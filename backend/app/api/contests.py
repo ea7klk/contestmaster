@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,9 +20,12 @@ from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.audit import record_audit_event
 from backend.app.contest_deletion import DeletionConflictError, delete_contest_records
+from backend.app.contest_series import create_series_for_contest
 from backend.app.db import get_session
 from backend.app.models import (
     Contest,
+    ContestSeries,
+    ContestSeriesException,
     ContestStatus,
     Entry,
     EntryAccessGrant,
@@ -45,9 +48,11 @@ from backend.app.rulesets.schema import RulesetDefinition
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 from backend.app.scheduling import (
     Recurrence,
+    ResolvedSchedule,
     ScheduleResolutionError,
     recurrence_date,
     resolve_contest_schedule,
+    resolve_next_contest_schedules,
 )
 
 router = APIRouter(tags=["contests"])
@@ -82,13 +87,49 @@ def _integrity_failure_kind(exc: IntegrityError) -> str:
 def preview_contest_schedule(payload: ContestSchedulePreviewPayload) -> dict[str, object]:
     try:
         resolved = resolve_contest_schedule(
-            payload.periodicity, payload.year, payload.starts_at, payload.ends_at
+            payload.periodicity,
+            payload.year or payload.starts_at.astimezone(UTC).year,
+            payload.starts_at,
+            payload.ends_at,
+        )
+        upcoming = resolve_next_contest_schedules(
+            payload.periodicity,
+            payload.starts_at,
+            payload.ends_at,
+            count=min(20, 5 + len(payload.exceptions)),
         )
     except ScheduleResolutionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    exception_by_date = {item.occurrence_date: item for item in payload.exceptions}
+    preview_occurrences: list[ResolvedSchedule] = []
+    for occurrence in upcoming:
+        exception = exception_by_date.get(occurrence.starts_at.date())
+        if exception is not None and exception.action == "skip":
+            continue
+        occurrence_date = (
+            exception.moved_to_date
+            if exception is not None and exception.action == "move"
+            else occurrence.starts_at.date()
+        )
+        start = datetime.combine(occurrence_date, occurrence.starts_at.time(), tzinfo=UTC)
+        preview_occurrences.append(
+            ResolvedSchedule(
+                starts_at=start,
+                ends_at=start + (occurrence.ends_at - occurrence.starts_at),
+            )
+        )
+        if len(preview_occurrences) == 5:
+            break
     return {
         "starts_at": resolved.starts_at.isoformat().replace("+00:00", "Z"),
         "ends_at": resolved.ends_at.isoformat().replace("+00:00", "Z"),
+        "occurrences": [
+            {
+                "starts_at": occurrence.starts_at.isoformat().replace("+00:00", "Z"),
+                "ends_at": occurrence.ends_at.isoformat().replace("+00:00", "Z"),
+            }
+            for occurrence in preview_occurrences
+        ],
     }
 
 
@@ -102,6 +143,9 @@ class ContestWrite(BaseModel):
     ends_at: datetime
     periodicity: Recurrence | None = None
     log_submission_cutoff_at: datetime
+    cutoff_offset_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
+    cutoff_is_override: bool = False
+    automatic_window_days: int | None = Field(default=None, ge=1, le=730)
     auto_recalculate_on_upload: bool = False
     audit_reason: str | None = Field(default=None, max_length=2000)
 
@@ -112,10 +156,14 @@ class ContestWrite(BaseModel):
             raise ValueError("Contest times must include an explicit timezone offset")
         if self.starts_at >= self.ends_at:
             raise ValueError("Contest start must precede contest end")
+        if self.cutoff_offset_seconds is not None and self.cutoff_offset_seconds % 3600:
+            raise ValueError("Recurring cutoff offsets must use whole hours or whole days")
         if self.periodicity is not None:
             starts_at_utc = self.starts_at.astimezone(UTC)
             if recurrence_date(self.periodicity, starts_at_utc.year) != starts_at_utc.date():
                 raise ValueError("Contest start date must match its configured UTC periodicity")
+        elif self.cutoff_offset_seconds is not None or self.automatic_window_days is not None:
+            raise ValueError("Recurring-series settings require contest periodicity")
         return self
 
 
@@ -130,9 +178,10 @@ class ContestSchedulePreviewPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     periodicity: Recurrence
-    year: int = Field(ge=1900, le=2200)
+    year: int | None = Field(default=None, ge=1900, le=2200)
     starts_at: datetime
     ends_at: datetime
+    exceptions: list[SeriesExceptionWrite] = Field(default_factory=list, max_length=15)
 
     @model_validator(mode="after")
     def validate_instants(self) -> ContestSchedulePreviewPayload:
@@ -144,6 +193,40 @@ class ContestSchedulePreviewPayload(BaseModel):
         if self.starts_at >= self.ends_at:
             raise ValueError("Contest end must follow its start")
         return self
+
+
+class SeriesExceptionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    occurrence_date: date
+    action: Literal["skip", "move"]
+    moved_to_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_exception(self) -> SeriesExceptionWrite:
+        if self.action == "move" and self.moved_to_date is None:
+            raise ValueError("A moved occurrence requires a new UTC date")
+        if self.action == "skip" and self.moved_to_date is not None:
+            raise ValueError("A skipped occurrence cannot have a moved date")
+        return self
+
+
+def _series_for_user(session: Session, series_id: int, principal: Principal) -> ContestSeries:
+    series = session.get(ContestSeries, series_id)
+    if series is None or (
+        principal.role is not SystemRole.GLOBAL_ADMINISTRATOR
+        and series.owner_user_id != principal.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Contest series not found.")
+    return series
+
+
+def series_exception_output(item: ContestSeriesException) -> dict[str, object]:
+    return {
+        "occurrence_date": item.occurrence_date.isoformat(),
+        "action": item.action,
+        "moved_to_date": item.moved_to_date.isoformat() if item.moved_to_date else None,
+    }
 
 
 class RulesetSelection(BaseModel):
@@ -164,6 +247,12 @@ class ContestDeleteConfirmation(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     confirm_slug: str = Field(min_length=1, max_length=120)
+
+
+class SeriesDeleteConfirmation(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    confirm_name: str = Field(min_length=1, max_length=200)
 
 
 class EntryStatusChange(BaseModel):
@@ -193,6 +282,7 @@ class EntryGrantChange(BaseModel):
 
 
 def contest_output(contest: Contest) -> dict[str, object]:
+    series = contest.series
     return {
         "id": contest.id,
         "owner_user_id": contest.owner_user_id,
@@ -203,6 +293,21 @@ def contest_output(contest: Contest) -> dict[str, object]:
         "ends_at": contest.ends_at,
         "periodicity": contest.periodicity,
         "log_submission_cutoff_at": contest.log_submission_cutoff_at,
+        "cutoff_is_override": contest.cutoff_is_override,
+        "series_id": contest.series_id,
+        "series_occurrence_date": (
+            contest.series_occurrence_date.isoformat()
+            if contest.series_occurrence_date is not None
+            else None
+        ),
+        "is_series_anchor": contest.is_series_anchor,
+        "series_cutoff_offset_seconds": (
+            series.cutoff_offset_seconds if series is not None else None
+        ),
+        "series_automatic_window_days": (
+            series.automatic_window_days if series is not None else None
+        ),
+        "series_edition_count": len(series.editions) if series is not None else None,
         "status": contest.status.value,
         "auto_recalculate_on_upload": contest.auto_recalculate_on_upload,
         "ruleset_version_id": contest.ruleset_version_id,
@@ -216,6 +321,25 @@ def _accessible_contests(principal: Principal):
     if principal.role is not SystemRole.GLOBAL_ADMINISTRATOR:
         statement = statement.where(Contest.owner_user_id == principal.user_id)
     return statement
+
+
+def _cutoff_settings(payload: ContestWrite) -> tuple[datetime, int | None, bool]:
+    """Return the resolved cutoff, series offset, and override state."""
+    if payload.periodicity is None:
+        return payload.log_submission_cutoff_at, None, True
+    if payload.cutoff_offset_seconds is None:
+        offset = max(
+            0,
+            int((payload.log_submission_cutoff_at - payload.ends_at).total_seconds()),
+        )
+        return payload.log_submission_cutoff_at, offset, True
+    if payload.cutoff_is_override:
+        return payload.log_submission_cutoff_at, payload.cutoff_offset_seconds, True
+    return (
+        payload.ends_at + timedelta(seconds=payload.cutoff_offset_seconds),
+        payload.cutoff_offset_seconds,
+        False,
+    )
 
 
 @router.get("", responses=API_ERROR_RESPONSES)
@@ -280,6 +404,7 @@ def create_contest(
     session: Annotated[Session, Depends(get_session)],
     request: Request,
 ) -> dict[str, object]:
+    cutoff_at, cutoff_offset, cutoff_override = _cutoff_settings(payload)
     contest = Contest(
         owner_user_id=principal.user_id,
         name=payload.name,
@@ -292,13 +417,23 @@ def create_contest(
             if payload.periodicity is not None
             else None
         ),
-        log_submission_cutoff_at=payload.log_submission_cutoff_at,
+        log_submission_cutoff_at=cutoff_at,
+        cutoff_is_override=cutoff_override,
         status=ContestStatus.DRAFT,
         auto_recalculate_on_upload=payload.auto_recalculate_on_upload,
     )
     session.add(contest)
     try:
         session.flush()
+        if payload.periodicity is not None and cutoff_offset is not None:
+            create_series_for_contest(
+                session,
+                contest,
+                recurrence=payload.periodicity,
+                cutoff_offset_seconds=cutoff_offset,
+                automatic_window_days=payload.automatic_window_days,
+                cutoff_is_override=cutoff_override,
+            )
         record_audit_event(
             session,
             actor_user_id=principal.user_id,
@@ -352,6 +487,7 @@ def import_contest(
             )
 
     contest_payload = payload.contest
+    cutoff_at, cutoff_offset, cutoff_override = _cutoff_settings(contest_payload)
     contest = Contest(
         owner_user_id=principal.user_id,
         name=contest_payload.name,
@@ -364,7 +500,8 @@ def import_contest(
             if contest_payload.periodicity is not None
             else None
         ),
-        log_submission_cutoff_at=contest_payload.log_submission_cutoff_at,
+        log_submission_cutoff_at=cutoff_at,
+        cutoff_is_override=cutoff_override,
         status=ContestStatus.DRAFT,
         auto_recalculate_on_upload=contest_payload.auto_recalculate_on_upload,
     )
@@ -376,6 +513,15 @@ def import_contest(
         )
         session.add(contest)
         session.flush()
+        if contest_payload.periodicity is not None and cutoff_offset is not None:
+            create_series_for_contest(
+                session,
+                contest,
+                recurrence=contest_payload.periodicity,
+                cutoff_offset_seconds=cutoff_offset,
+                automatic_window_days=contest_payload.automatic_window_days,
+                cutoff_is_override=cutoff_override,
+            )
         activation = (
             activate_ruleset(
                 session,
@@ -449,6 +595,254 @@ def get_contest(
     return contest_output(contest)
 
 
+@router.get("/series/{series_id}/exceptions", responses=API_ERROR_RESPONSES)
+def list_series_exceptions(
+    series_id: int,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    series = _series_for_user(session, series_id, principal)
+    items = session.scalars(
+        select(ContestSeriesException)
+        .where(ContestSeriesException.series_id == series.id)
+        .order_by(ContestSeriesException.occurrence_date)
+    )
+    return {"items": [series_exception_output(item) for item in items]}
+
+
+@router.post("/series/{series_id}/exceptions", status_code=201, responses=API_ERROR_RESPONSES)
+def set_series_exception(
+    series_id: int,
+    payload: SeriesExceptionWrite,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    series = _series_for_user(session, series_id, principal)
+    recurrence = Recurrence.model_validate(series.periodicity)
+    try:
+        scheduled_date = recurrence_date(recurrence, payload.occurrence_date.year)
+    except ScheduleResolutionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if scheduled_date != payload.occurrence_date:
+        raise HTTPException(
+            status_code=422,
+            detail="The exception date does not match a scheduled recurrence.",
+        )
+    if payload.action == "move" and payload.moved_to_date == payload.occurrence_date:
+        raise HTTPException(
+            status_code=422, detail="Choose a different date for a moved occurrence."
+        )
+    if payload.action == "move" and payload.moved_to_date is not None:
+        try:
+            destination_occurrence = recurrence_date(recurrence, payload.moved_to_date.year)
+        except ScheduleResolutionError:
+            destination_occurrence = None
+        if destination_occurrence == payload.moved_to_date:
+            raise HTTPException(
+                status_code=409,
+                detail="The moved date is already reserved for another scheduled occurrence.",
+            )
+        destination_conflict = session.scalar(
+            select(ContestSeriesException.id)
+            .where(
+                ContestSeriesException.series_id == series.id,
+                ContestSeriesException.moved_to_date == payload.moved_to_date,
+            )
+            .limit(1)
+        )
+        if destination_conflict is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Another occurrence is already moved to this date.",
+            )
+    existing_exception = session.scalar(
+        select(ContestSeriesException).where(
+            ContestSeriesException.series_id == series.id,
+            ContestSeriesException.occurrence_date == payload.occurrence_date,
+        )
+    )
+    if existing_exception is not None:
+        raise HTTPException(status_code=409, detail="This occurrence already has an exception.")
+    edition = session.scalar(
+        select(Contest).where(
+            Contest.series_id == series.id,
+            Contest.series_occurrence_date == payload.occurrence_date,
+        )
+    )
+    if payload.action == "skip" and edition is not None:
+        has_entries = session.scalar(
+            select(Entry.id).where(Entry.contest_id == edition.id).limit(1)
+        )
+        if has_entries is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "An edition with submitted logs cannot be skipped. Close or retain it instead."
+                ),
+            )
+        try:
+            delete_contest_records(session, edition)
+        except DeletionConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    moved_to_date = payload.moved_to_date if payload.action == "move" else None
+    if payload.action == "move":
+        conflict = session.scalar(
+            select(Contest.id)
+            .where(
+                Contest.series_id == series.id,
+                Contest.starts_at >= datetime.combine(moved_to_date, time.min, tzinfo=UTC),
+                Contest.starts_at
+                < datetime.combine(moved_to_date + timedelta(days=1), time.min, tzinfo=UTC),
+                Contest.id != (edition.id if edition is not None else -1),
+            )
+            .limit(1)
+        )
+        if conflict is not None:
+            raise HTTPException(
+                status_code=409, detail="Another edition already uses the moved date."
+            )
+        if edition is not None:
+            start_seconds = series.start_time_seconds
+            start = datetime.combine(
+                moved_to_date,
+                time(start_seconds // 3600, (start_seconds % 3600) // 60, start_seconds % 60),
+                tzinfo=UTC,
+            )
+            edition.starts_at = start
+            edition.ends_at = start + timedelta(seconds=series.duration_seconds)
+            if not edition.cutoff_is_override:
+                edition.log_submission_cutoff_at = edition.ends_at + timedelta(
+                    seconds=series.cutoff_offset_seconds
+                )
+    exception = ContestSeriesException(
+        series_id=series.id,
+        occurrence_date=payload.occurrence_date,
+        action=payload.action,
+        moved_to_date=moved_to_date,
+    )
+    session.add(exception)
+    try:
+        session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=principal.user_id,
+            action="contest_series.exception_set",
+            target_type="contest_series",
+            target_id=series.id,
+            metadata={
+                "occurrence_date": payload.occurrence_date.isoformat(),
+                "action": payload.action,
+                "moved_to_date": moved_to_date.isoformat() if moved_to_date else None,
+            },
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="A series exception already exists.") from exc
+    return series_exception_output(exception)
+
+
+@router.delete("/series/{series_id}/exceptions/{occurrence_date}", responses=API_ERROR_RESPONSES)
+def remove_series_exception(
+    series_id: int,
+    occurrence_date: date,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    series = _series_for_user(session, series_id, principal)
+    exception = session.scalar(
+        select(ContestSeriesException).where(
+            ContestSeriesException.series_id == series.id,
+            ContestSeriesException.occurrence_date == occurrence_date,
+        )
+    )
+    if exception is None:
+        raise HTTPException(status_code=404, detail="Series exception not found.")
+    edition = session.scalar(
+        select(Contest).where(
+            Contest.series_id == series.id,
+            Contest.series_occurrence_date == occurrence_date,
+        )
+    )
+    if edition is not None and exception.action == "move":
+        start_seconds = series.start_time_seconds
+        start = datetime.combine(
+            occurrence_date,
+            time(start_seconds // 3600, (start_seconds % 3600) // 60, start_seconds % 60),
+            tzinfo=UTC,
+        )
+        edition.starts_at = start
+        edition.ends_at = start + timedelta(seconds=series.duration_seconds)
+        if not edition.cutoff_is_override:
+            edition.log_submission_cutoff_at = edition.ends_at + timedelta(
+                seconds=series.cutoff_offset_seconds
+            )
+    session.delete(exception)
+    record_audit_event(
+        session,
+        actor_user_id=principal.user_id,
+        action="contest_series.exception_removed",
+        target_type="contest_series",
+        target_id=series.id,
+        metadata={"occurrence_date": occurrence_date.isoformat()},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/series/{series_id}", status_code=204, responses=API_ERROR_RESPONSES)
+def delete_series(
+    series_id: int,
+    payload: SeriesDeleteConfirmation,
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    series = _series_for_user(session, series_id, principal)
+    if payload.confirm_name != series.name:
+        raise HTTPException(status_code=422, detail="Confirmation name does not match this series.")
+    series_name = series.name
+    editions = list(session.scalars(select(Contest).where(Contest.series_id == series.id)))
+    try:
+        counts = {"editions": len(editions), "entries": 0, "score_runs": 0, "publications": 0}
+        for edition in editions:
+            deleted = delete_contest_records(session, edition)
+            for key in ("entries", "score_runs", "publications"):
+                counts[key] += deleted[key]
+        session.execute(
+            delete(ContestSeriesException).where(ContestSeriesException.series_id == series_id)
+        )
+        session.delete(series)
+        record_audit_event(
+            session,
+            actor_user_id=principal.user_id,
+            action="contest_series.deleted",
+            target_type="contest_series",
+            target_id=series_id,
+            metadata={"name": series_name, **counts},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except DeletionConflictError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="The series has retained references that prevent safe deletion.",
+        ) from exc
+    except Exception:
+        session.rollback()
+        logger.exception("contest_series_delete_failed", extra={"series_id": series_id})
+        raise
+    return Response(status_code=204)
+
+
 @router.delete("/{contest_id}", status_code=204, responses=API_ERROR_RESPONSES)
 def delete_contest(
     payload: ContestDeleteConfirmation,
@@ -458,6 +852,11 @@ def delete_contest(
     request: Request,
 ) -> Response:
     """Delete a contest and its associated logs, results, and contest-scoped history."""
+    if contest.series_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Recurring editions must be removed through the entire-series deletion action.",
+        )
     if payload.confirm_slug != contest.slug:
         raise HTTPException(
             status_code=422, detail="Confirmation slug does not match this contest."
@@ -747,6 +1146,71 @@ def update_contest(
 ) -> dict[str, object]:
     if contest.status is ContestStatus.PUBLISHED:
         raise HTTPException(status_code=409, detail="Published contests cannot be edited.")
+    remove_series = False
+    if contest.series_id is not None and payload.periodicity is None:
+        series = contest.series
+        edition_ids = list(
+            session.scalars(select(Contest.id).where(Contest.series_id == contest.series_id))
+        )
+        exception_exists = session.scalar(
+            select(ContestSeriesException.id)
+            .where(ContestSeriesException.series_id == contest.series_id)
+            .limit(1)
+        )
+        if not contest.is_series_anchor or len(edition_ids) > 1 or exception_exists is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A recurring series with other editions or exceptions cannot be made one-time."
+                ),
+            )
+        remove_series = series is not None
+    if (
+        contest.series_id is not None
+        and not contest.is_series_anchor
+        and payload.periodicity is not None
+        and payload.periodicity.model_dump(mode="json", exclude_none=True)
+        != contest.series.periodicity
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Edit recurrence settings on the series anchor, not an individual edition.",
+        )
+    if contest.series_id is not None and contest.is_series_anchor:
+        series = contest.series
+        assert series is not None
+        existing_edition_count = (
+            session.scalar(
+                select(func.count()).select_from(Contest).where(Contest.series_id == series.id)
+            )
+            or 0
+        )
+        requested_recurrence = (
+            payload.periodicity.model_dump(mode="json", exclude_none=True)
+            if payload.periodicity is not None
+            else None
+        )
+        requested_start_seconds = (
+            payload.starts_at.astimezone(UTC).hour * 3600
+            + payload.starts_at.astimezone(UTC).minute * 60
+            + payload.starts_at.astimezone(UTC).second
+        )
+        requested_duration = int((payload.ends_at - payload.starts_at).total_seconds())
+        if existing_edition_count > 1 and (
+            requested_recurrence != series.periodicity
+            or requested_start_seconds != series.start_time_seconds
+            or requested_duration != series.duration_seconds
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Recurrence, start time, and duration cannot be changed after future editions "
+                    "exist. Use a skip or move exception for an individual occurrence."
+                ),
+            )
+    cutoff_at, cutoff_offset, cutoff_override = _cutoff_settings(payload)
+    if contest.series_id is not None and payload.cutoff_offset_seconds is None:
+        cutoff_offset = contest.series.cutoff_offset_seconds
     editable_fields = (
         "name",
         "slug",
@@ -755,6 +1219,7 @@ def update_contest(
         "ends_at",
         "periodicity",
         "log_submission_cutoff_at",
+        "cutoff_is_override",
         "auto_recalculate_on_upload",
     )
     values = payload.model_dump(exclude={"audit_reason"}, mode="python")
@@ -763,6 +1228,8 @@ def update_contest(
         if payload.periodicity is not None
         else None
     )
+    values["log_submission_cutoff_at"] = cutoff_at
+    values["cutoff_is_override"] = cutoff_override
     changed_fields = [
         field_name
         for field_name in editable_fields
@@ -771,6 +1238,51 @@ def update_contest(
     for field_name in editable_fields:
         setattr(contest, field_name, values[field_name])
     try:
+        if remove_series:
+            series = contest.series
+            contest.series_id = None
+            contest.series_occurrence_date = None
+            contest.is_series_anchor = False
+            contest.cutoff_is_override = True
+            if series is not None:
+                session.delete(series)
+        elif (
+            payload.periodicity is not None
+            and contest.series_id is None
+            and cutoff_offset is not None
+        ):
+            session.flush()
+            create_series_for_contest(
+                session,
+                contest,
+                recurrence=payload.periodicity,
+                cutoff_offset_seconds=cutoff_offset,
+                automatic_window_days=payload.automatic_window_days,
+                cutoff_is_override=cutoff_override,
+            )
+        elif contest.series_id is not None and contest.is_series_anchor:
+            series = contest.series
+            assert series is not None
+            if cutoff_offset is None:
+                cutoff_offset = max(0, int((cutoff_at - payload.ends_at).total_seconds()))
+            series.name = payload.name
+            series.base_slug = payload.slug
+            series.description = payload.description
+            series.periodicity = payload.periodicity.model_dump(mode="json", exclude_none=True)
+            series.start_time_seconds = (
+                payload.starts_at.astimezone(UTC).hour * 3600
+                + payload.starts_at.astimezone(UTC).minute * 60
+                + payload.starts_at.astimezone(UTC).second
+            )
+            series.duration_seconds = int((payload.ends_at - payload.starts_at).total_seconds())
+            series.cutoff_offset_seconds = cutoff_offset
+            series.automatic_window_days = payload.automatic_window_days
+            series.auto_recalculate_on_upload = payload.auto_recalculate_on_upload
+            for edition in series.editions:
+                if not edition.cutoff_is_override:
+                    edition.log_submission_cutoff_at = edition.ends_at + timedelta(
+                        seconds=cutoff_offset
+                    )
         if changed_fields:
             record_audit_event(
                 session,

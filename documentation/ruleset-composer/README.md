@@ -49,15 +49,19 @@ The example's empty `rules` array is a shape illustration only; a real ruleset m
 
 ## Schedule and submissions
 
-The contest manager owns UTC start and end instants and optional periodicity. Configure one-time or recurring schedule details in the contest form; schedule settings are not part of a reusable ruleset. Enter actual event instants in UTC. For recurring contests, choose annual date, nth weekday, or first full weekend, and preview a selected UTC year. A local start-time control adds no information to a UTC event instant. Daylight-saving “fold” means the repeated local wall-clock hour when clocks move backward; UTC scheduling has no fold.
+The contest manager owns UTC start and end instants and optional periodicity. Configure one-time or recurring schedule details in the contest form; schedule settings are not part of a reusable ruleset. Enter actual event instants in UTC. Recurring contests are a series of separate contest editions, each with its own logs, results, and lifecycle. The first contest is the series anchor. The composer previews the next five UTC occurrences. A local start-time control adds no information to a UTC event instant. Daylight-saving “fold” means the repeated local wall-clock hour when clocks move backward; UTC scheduling has no fold.
 
 Supported recurrence selectors are:
 
 - **Annual date:** same month and day every year.
 - **Nth weekday:** occurrence 1–5 or last (`-1`) of a chosen weekday within a month.
-- **First full weekend:** the first Saturday and Sunday pair entirely within the chosen month; the schedule starts Saturday at its configured UTC time.
+- **First, last, or Nth full weekend:** a full Saturday/Sunday pair entirely within the chosen month; the schedule starts Saturday at its configured UTC time. Nth weekend supports occurrences 1–5.
 
-The API's `POST /api/v1/contests/schedule-preview` previews the contest's recurrence for a requested year. An annual date that does not exist in a year and a fifth weekday that does not exist are rejected with a useful error.
+The API's `POST /api/v1/contests/schedule-preview` returns five upcoming occurrences, preserving the configured UTC time and event duration. An annual date that does not exist in a year, a fifth weekday that does not exist, or a fifth full weekend that does not fit in a month is omitted/rejected as appropriate.
+
+For recurring contests, **automatic edition creation** is optional. Set a rolling window from 1 to 730 days; the API's single-process internal timer checks at startup and hourly, then creates missing editions as drafts within that window. Leave it disabled to manage editions manually. The manager can add an exception to skip or move a scheduled date. A skipped edition that already has logs cannot be removed; keep it as an edition instead. Deleting a series requires typing its name and removes all editions and their dependent data.
+
+Set a recurring series' log cutoff as a whole number of hours or days after its end. If the event duration or series offset changes, derived edition cutoffs move with them. A manager may set an absolute UTC cutoff override for a particular edition; later series changes leave that override unchanged.
 
 Contest configuration owns the separate UTC log submission cutoff. The ruleset's log-submission policy only determines whether uploads beyond that cutoff are rejected, accepted as late, or classified as checklog. Manager extensions are possible only when explicitly enabled by the ruleset.
 

@@ -441,6 +441,13 @@ def test_contest_schedule_preview_api_uses_contest_configuration():
     assert response.json() == {
         "starts_at": "2026-01-03T08:00:00Z",
         "ends_at": "2026-01-03T09:30:00Z",
+        "occurrences": [
+            {"starts_at": "2026-01-03T08:00:00Z", "ends_at": "2026-01-03T09:30:00Z"},
+            {"starts_at": "2027-01-02T08:00:00Z", "ends_at": "2027-01-02T09:30:00Z"},
+            {"starts_at": "2028-01-01T08:00:00Z", "ends_at": "2028-01-01T09:30:00Z"},
+            {"starts_at": "2029-01-06T08:00:00Z", "ends_at": "2029-01-06T09:30:00Z"},
+            {"starts_at": "2030-01-05T08:00:00Z", "ends_at": "2030-01-05T09:30:00Z"},
+        ],
     }
     invalid = TestClient(app).post(
         "/api/v1/contests/schedule-preview",
