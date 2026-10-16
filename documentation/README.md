@@ -419,7 +419,7 @@ erDiagram
     }
 ```
 
-`BAND_CATALOG_ITEM` and `MODE_CATALOG_ITEM` are independent global-admin-managed reference tables. Both have stable keys, labels, descriptions, sort order, and active state. Bands additionally store frequency reference text and the advisory contest-free mark. `RULESET_VERSION.configuration_json` stores selected band/mode keys in the immutable ruleset snapshot. This intentional JSON reference avoids making historical versions depend on mutable catalog rows; referenced keys cannot be renamed or deleted, and deactivation does not rewrite saved rulesets. The split was introduced by Alembic migration `0015_split_operating_catalogs`, which preserves prior keys and values.
+`BAND_CATALOG_ITEM` and `MODE_CATALOG_ITEM` are independent global-admin-managed reference tables. Both have stable keys, labels, descriptions, sort order, and active state. Bands additionally store frequency reference text and the advisory contest-free mark. The initial band catalog ends at 10 GHz and marks 2200 m, 630 m, 60 m, 30 m, 17 m, and 12 m as no-contest advisory bands. `RULESET_VERSION.configuration_json` stores selected band/mode keys in the immutable ruleset snapshot. This intentional JSON reference avoids making historical versions depend on mutable catalog rows; referenced keys cannot be renamed or deleted, and deactivation does not rewrite saved rulesets. The split was introduced by Alembic migration `0015_split_operating_catalogs`; migration `0017_contest_free_band_defaults` sets initial advisory marks and deactivates legacy seeded entries above 10 GHz.
 
 ### Data and scoring conventions
 

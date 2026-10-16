@@ -69,16 +69,8 @@ def upgrade() -> None:
         ("9cm", "9 cm", "3.4 GHz"),
         ("6cm", "6 cm", "5.6 GHz"),
         ("3cm", "3 cm", "10 GHz"),
-        ("1.25cm", "1.25 cm", "24 GHz"),
-        ("6mm", "6 mm", "47 GHz"),
-        ("4mm", "4 mm", "76 GHz"),
-        ("2.5mm", "2.5 mm", "122 GHz"),
-        ("2mm", "2 mm", "134 GHz"),
-        ("1mm", "1 mm", "241 GHz"),
-        ("0.5mm", "0.5 mm", "472 GHz"),
-        ("0.4mm", "0.4 mm", "755 GHz"),
-        ("0.2mm", "0.2 mm", "1.4 THz"),
     ]
+    contest_free_bands = {"2200m", "630m", "60m", "30m", "17m", "12m"}
     for order, (key, label, frequency) in enumerate(bands):
         items.append(
             {
@@ -89,7 +81,7 @@ def upgrade() -> None:
                 "frequency_range": frequency,
                 "sort_order": order,
                 "is_active": True,
-                "contest_free": False,
+                "contest_free": key in contest_free_bands,
             }
         )
     modes = [

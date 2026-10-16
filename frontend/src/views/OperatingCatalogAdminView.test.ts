@@ -59,7 +59,7 @@ describe('OperatingCatalogAdminView', () => {
     await expectAccessible(wrapper.element)
     expect(wrapper.text()).toContain('60 m')
     expect(wrapper.text()).toContain('FT8')
-    expect(wrapper.text()).toContain('Contest-free designation')
+    expect(wrapper.text()).toContain('No-contest band (advisory)')
     expect(wrapper.text()).toContain('Active in ruleset composer')
     expect(wrapper.findAll('form.catalog-editor-form')).toHaveLength(2)
     expect(wrapper.get('#bands-heading').text()).toBe('Bands')

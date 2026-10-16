@@ -104,16 +104,27 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
             "SELECT count(*) FROM band_catalog_items WHERE is_active = 1"
         ).scalar_one()
         highest_band = connection.exec_driver_sql(
-            "SELECT frequency_range FROM band_catalog_items ORDER BY sort_order DESC LIMIT 1"
+            "SELECT frequency_range FROM band_catalog_items "
+            "WHERE is_active = 1 ORDER BY sort_order DESC LIMIT 1"
+        ).scalar_one()
+        no_contest_bands = connection.exec_driver_sql(
+            "SELECT key FROM band_catalog_items WHERE contest_free = 1 ORDER BY key"
+        ).scalars().all()
+        active_bands_above_10_ghz = connection.exec_driver_sql(
+            "SELECT count(*) FROM band_catalog_items WHERE is_active = 1 "
+            "AND key IN ('1.25cm', '6mm', '4mm', '2.5mm', '2mm', '1mm', "
+            "'0.5mm', '0.4mm', '0.2mm')"
         ).scalar_one()
         ft8 = connection.exec_driver_sql(
             "SELECT count(*) FROM mode_catalog_items WHERE key = 'FT8' AND is_active = 1"
         ).scalar_one()
     assert "operating_catalog_items" not in tables
-    assert version == "0016_catalog_item_descriptions"
+    assert version == "0017_contest_free_band_defaults"
     assert foreign_keys == 1
-    assert seeded_bands >= 30
-    assert highest_band == "1.4 THz"
+    assert seeded_bands >= 25
+    assert highest_band == "10 GHz"
+    assert no_contest_bands == ["12m", "17m", "2200m", "30m", "60m", "630m"]
+    assert active_bands_above_10_ghz == 0
     assert ft8 == 1
     with Session(engine) as session:
         assert (
@@ -233,6 +244,64 @@ def test_empty_sqlite_database_upgrades_to_current_domain_schema(tmp_path) -> No
                 {"version_id": active_version.id},
             )
         session.rollback()
+    engine.dispose()
+
+
+def test_band_policy_migration_preserves_legacy_ruleset_references(tmp_path) -> None:
+    database_path = tmp_path / "band-policy.sqlite3"
+    database_url = f"sqlite:///{database_path}"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "0016_catalog_item_descriptions"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO band_catalog_items "
+                "(key, label, description, frequency_range, sort_order, is_active, contest_free) "
+                "VALUES ('1.25cm', '1.25 cm', 'legacy', '24 GHz', 99, 1, 0)"
+            )
+        )
+    with Session(engine) as session:
+        session.add(
+            RulesetVersion(
+                ruleset_key="legacy-high-band",
+                version="1",
+                rule_type_keys=["eligibility"],
+                configuration={"allowed_bands": ["1.25cm"]},
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=project_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    engine = build_engine(database_url)
+    with engine.connect() as connection:
+        band = connection.execute(
+            text("SELECT is_active FROM band_catalog_items WHERE key = '1.25cm'")
+        ).scalar_one()
+    with Session(engine) as session:
+        ruleset = session.scalar(
+            select(RulesetVersion).where(RulesetVersion.ruleset_key == "legacy-high-band")
+        )
+        assert ruleset is not None
+        assert ruleset.configuration == {"allowed_bands": ["1.25cm"]}
+    assert band == 0
     engine.dispose()
 
 

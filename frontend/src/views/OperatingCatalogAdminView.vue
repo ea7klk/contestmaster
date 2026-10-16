@@ -289,7 +289,7 @@ onMounted(refresh)
                 <td>
                   {{ item.is_active ? 'Active' : 'Inactive' }}
                   <div v-if="item.contest_free" class="contest-free-label">
-                    Contest-free designation
+                    No-contest band (advisory)
                   </div>
                 </td>
                 <td class="master-data-actions">

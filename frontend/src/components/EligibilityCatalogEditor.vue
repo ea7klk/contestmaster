@@ -30,8 +30,9 @@ function toggle(key: string, checked: boolean, selected: string[]) {
     <legend>{{ kind === 'band' ? 'Eligible bands' : 'Allowed modes' }}</legend>
     <p v-if="kind === 'band'" class="schema-description">
       Select the catalog bands accepted by this contest. A band marked
-      contest-free is highlighted from the shared administrator-managed catalog;
-      this is a notice only and does not automatically exclude it.
+      no-contest is highlighted in red from the shared administrator-managed
+      catalog. This advisory does not automatically exclude the band; the
+      contest’s published rules remain authoritative.
     </p>
     <p v-else class="schema-description">
       Select the operating modes accepted by this contest. Leave all unchecked
@@ -66,7 +67,7 @@ function toggle(key: string, checked: boolean, selected: string[]) {
             v-if="kind === 'band' && item.contest_free"
             class="contest-free-label"
           >
-            Contest-free designation</strong
+            No-contest band (advisory)</strong
           >
           <small v-if="item.description">{{ item.description }}</small>
         </span>

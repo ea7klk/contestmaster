@@ -56,9 +56,11 @@ Band and mode catalogs are separate shared reference values, managed by global a
 
 Boolean rule settings use one checkbox each; they do not have a separate “Configure” switch. For a bonus rule, setting `evidence_key` enables the evidence requirement and names the required declaration. The redundant `evidence_required` boolean has been removed. Existing schema-version-1 drafts containing that field remain importable only when it agrees with `evidence_key`; the composer removes it during import and omits it from exports. The schema version remains 1 for this compatible normalization.
 
-The initial catalog includes named amateur bands from 2200 m through the 0.2 mm / 1.4 THz region and common modes (including CW, SSB, RTTY, FT8, and FT4). Frequency text is a reference label, not a universal allocation: national authorizations, license privileges, and the published contest rules determine permitted use. Administrators may edit the catalog accordingly.
+The initial built-in band catalog includes named amateur bands from 2200 m through 3 cm (10 GHz), plus common modes (including CW, SSB, RTTY, FT8, and FT4). It does not seed bands above 10 GHz. Frequency text is a reference label, not a universal allocation: national authorizations, license privileges, and the published contest rules determine permitted use.
 
-An administrator may mark a band **contest-free**. The composer displays that managed designation in red and with visible text; it is advisory and never excludes a band or changes scoring automatically.
+The initial catalog marks 2200 m, 630 m, 60 m, 30 m, 17 m, and 12 m as **no-contest bands (advisory)**, following the IARU's contest policy for narrow/secondary allocations ([IARU contest policy](https://www.iaru.org/on-the-air/iaru-contests/)). The Bands and Modes list displays this designation, and the ruleset composer displays it in red with visible text. It is advisory only: a mark never excludes a band or changes scoring automatically, and each contest's published rules remain authoritative. A global administrator can manage the designation for other entries.
+
+The catalog data migration removes the above-10-GHz defaults from fresh installations and deactivates those legacy seeded entries on existing installations. Their stable keys and saved ruleset snapshots are preserved.
 
 ## Scoring and format mapping
 

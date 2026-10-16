@@ -46,15 +46,6 @@ _BAND_DESCRIPTIONS = {
     "9cm": "9 cm SHF band",
     "6cm": "6 cm SHF band",
     "3cm": "3 cm SHF band",
-    "1.25cm": "1.25 cm SHF band",
-    "6mm": "6 mm EHF band",
-    "4mm": "4 mm EHF band",
-    "2.5mm": "2.5 mm EHF band",
-    "2mm": "2 mm EHF band",
-    "1mm": "1 mm EHF band",
-    "0.5mm": "0.5 mm submillimeter band",
-    "0.4mm": "0.4 mm submillimeter band",
-    "0.2mm": "0.2 mm submillimeter band",
 }
 
 _MODE_DESCRIPTIONS = {
