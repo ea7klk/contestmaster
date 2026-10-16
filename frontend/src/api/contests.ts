@@ -87,6 +87,13 @@ export function updateContest(id: number, draft: ContestDraft) {
   })
 }
 
+export function deleteContest(id: number, confirmSlug: string) {
+  return apiRequest<void>(`/contests/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirm_slug: confirmSlug }),
+  })
+}
+
 export function previewContestSchedule(
   periodicity: ContestPeriodicity,
   year: number,

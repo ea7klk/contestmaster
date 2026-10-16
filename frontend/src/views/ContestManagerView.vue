@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 import {
   createContest,
   changeContestStatus,
+  deleteContest,
   importContest,
   listContests,
   previewContestSchedule,
@@ -47,6 +48,7 @@ const rulesetSelections = reactive<Record<number, string>>({})
 const rulesetSavingId = ref<number | null>(null)
 const statusSavingId = ref<number | null>(null)
 const importing = ref(false)
+const deletingContestId = ref<number | null>(null)
 const previewYear = ref(new Date().getUTCFullYear())
 const schedulePreview = ref('')
 const schedulePreviewError = ref('')
@@ -280,6 +282,29 @@ async function setContestStatus(contest: Contest, status: ContestStatus) {
   }
 }
 
+async function removeContest(contest: Contest) {
+  const typedSlug = globalThis.prompt(
+    `Permanently delete “${contest.name}” and all of its uploaded logs, scoring, results, and contest history? This cannot be undone. Type the contest slug (${contest.slug}) to confirm.`,
+  )
+  if (typedSlug === null || typedSlug !== contest.slug) return
+  deletingContestId.value = contest.id
+  errorMessage.value = ''
+  statusMessage.value = ''
+  try {
+    await deleteContest(contest.id, typedSlug)
+    if (editingId.value === contest.id) cancelEdit()
+    await refreshData()
+    statusMessage.value = `${contest.name} and its contest data were deleted.`
+  } catch (error) {
+    errorMessage.value =
+      error instanceof ApiError
+        ? error.message
+        : 'The contest could not be deleted.'
+  } finally {
+    deletingContestId.value = null
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -488,6 +513,18 @@ onMounted(refreshData)
                 @click="editContest(contest)"
               >
                 Edit details
+              </button>
+              <button
+                class="danger-button"
+                type="button"
+                :disabled="deletingContestId === contest.id"
+                @click="removeContest(contest)"
+              >
+                {{
+                  deletingContestId === contest.id
+                    ? 'Deleting…'
+                    : 'Delete contest'
+                }}
               </button>
             </div>
           </div>
@@ -949,6 +986,21 @@ onMounted(refreshData)
   color: var(--color-brand-700);
   background: var(--color-surface);
   border-color: var(--color-border-strong);
+}
+.danger-button {
+  min-height: 2.6rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-error-ink);
+  border-radius: 0.45rem;
+  color: var(--color-error-ink);
+  background: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .quiet-button {
   color: var(--color-brand-900);

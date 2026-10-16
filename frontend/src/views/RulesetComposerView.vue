@@ -13,6 +13,7 @@ import {
   getRuleCatalog,
   listRulesetVersions,
   getSavedRulesetVersion,
+  deleteSavedRulesetVersion,
   RulesetApiError,
   saveRulesetVersion,
   validateRuleset,
@@ -51,6 +52,7 @@ const editingSource = ref('')
 const savedVersionsLoaded = ref(false)
 const loadingSavedVersions = ref(false)
 const loadingSelectedVersion = ref(false)
+const deletingSavedVersionId = ref<number | null>(null)
 const selectedSavedVersionId = ref('')
 const savedVersionFilter = ref('')
 const props = defineProps<{ editVersionId?: string }>()
@@ -376,6 +378,35 @@ async function loadSavedVersionFromList(versionId: number) {
   await loadSelectedVersion()
 }
 
+async function removeSavedVersion(saved: SavedRulesetVersion) {
+  if (!saved.can_delete) return
+  const identity = `${saved.ruleset_key}@${saved.version}`
+  const typedIdentity = globalThis.prompt(
+    `Delete saved ruleset ${identity}? This is allowed only when no contest or score history references it. Type ${identity} to confirm.`,
+  )
+  if (typedIdentity === null || typedIdentity !== identity) return
+  deletingSavedVersionId.value = saved.id
+  generalError.value = ''
+  savedMessage.value = ''
+  try {
+    await deleteSavedRulesetVersion(saved.id, typedIdentity)
+    savedVersions.value = savedVersions.value.filter(
+      (item) => item.id !== saved.id,
+    )
+    if (selectedSavedVersionId.value === String(saved.id)) {
+      selectedSavedVersionId.value = ''
+    }
+    savedMessage.value = `Deleted unused ruleset ${identity}.`
+  } catch (error) {
+    generalError.value =
+      error instanceof Error
+        ? error.message
+        : 'The ruleset version could not be deleted.'
+  } finally {
+    deletingSavedVersionId.value = null
+  }
+}
+
 function exportDraft() {
   const blob = new Blob([`${JSON.stringify(buildDraft(), null, 2)}\n`], {
     type: 'application/json',
@@ -592,21 +623,37 @@ function catalogErrorMessage(reason: unknown) {
               aria-label="Scrollable saved ruleset versions"
             >
               <li v-for="saved in filteredSavedVersions" :key="saved.id">
-                <button
-                  :id="`load-saved-version-${saved.id}`"
-                  type="button"
-                  class="saved-version-item"
-                  :disabled="loadingSelectedVersion"
-                  @click="loadSavedVersionFromList(saved.id)"
-                >
-                  <span class="saved-version-title">
-                    {{ saved.ruleset_key }} · version {{ saved.version }}
-                  </span>
-                  <span class="saved-version-details">
-                    {{ saved.source_edition || 'No source edition' }} ·
-                    {{ saved.rule_type_keys.length }} rule types
-                  </span>
-                </button>
+                <div class="saved-version-row">
+                  <button
+                    :id="`load-saved-version-${saved.id}`"
+                    type="button"
+                    class="saved-version-item"
+                    :disabled="loadingSelectedVersion"
+                    @click="loadSavedVersionFromList(saved.id)"
+                  >
+                    <span class="saved-version-title">
+                      {{ saved.ruleset_key }} · version {{ saved.version }}
+                    </span>
+                    <span class="saved-version-details">
+                      {{ saved.source_edition || 'No source edition' }} ·
+                      {{ saved.rule_type_keys.length }} rule types
+                    </span>
+                  </button>
+                  <button
+                    v-if="saved.can_delete"
+                    type="button"
+                    class="delete-version-button"
+                    :disabled="deletingSavedVersionId === saved.id"
+                    :aria-label="`Delete unused ruleset ${saved.ruleset_key} version ${saved.version}`"
+                    @click="removeSavedVersion(saved)"
+                  >
+                    {{
+                      deletingSavedVersionId === saved.id
+                        ? 'Deleting…'
+                        : 'Delete'
+                    }}
+                  </button>
+                </div>
               </li>
             </ul>
           </div>
@@ -1012,6 +1059,12 @@ function catalogErrorMessage(reason: unknown) {
   border: 1px solid var(--color-border);
   border-radius: 0.55rem;
 }
+.saved-version-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: stretch;
+}
 .saved-version-item {
   display: grid;
   width: 100%;
@@ -1024,6 +1077,22 @@ function catalogErrorMessage(reason: unknown) {
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+.delete-version-button {
+  align-self: center;
+  min-height: 2.4rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-error-ink);
+  border-radius: 0.4rem;
+  color: var(--color-error-ink);
+  background: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.delete-version-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .saved-version-item:hover,
 .saved-version-item:focus-visible {

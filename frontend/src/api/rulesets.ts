@@ -109,6 +109,7 @@ export interface SavedRulesetVersion {
   rule_type_keys: string[]
   created_by_user_id: number | null
   created_at: string
+  can_delete: boolean
 }
 
 export async function listRulesetVersions(
@@ -132,6 +133,13 @@ export async function saveRulesetVersion(
     method: 'POST',
     body: JSON.stringify(draft),
     signal,
+  })
+}
+
+export function deleteSavedRulesetVersion(id: number, confirmIdentity: string) {
+  return request<void>(`/rulesets/versions/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirm_identity: confirmIdentity }),
   })
 }
 

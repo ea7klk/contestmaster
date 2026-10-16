@@ -26,6 +26,10 @@ class ErrorEnvelope(BaseModel):
 
 API_ERROR_RESPONSES = {
     422: {"model": ErrorEnvelope, "description": "Invalid request."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": "The requested change conflicts with retained data.",
+    },
     500: {"model": ErrorEnvelope, "description": "Unexpected server error."},
 }
 

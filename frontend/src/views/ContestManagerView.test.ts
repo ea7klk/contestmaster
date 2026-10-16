@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectAccessible } from '../test/a11y'
 import ContestManagerView from './ContestManagerView.vue'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 function ok(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200 })
@@ -164,7 +167,9 @@ describe('ContestManagerView', () => {
     })
     expect(wrapper.findAll('.contest-card')).toHaveLength(2)
     expect(
-      wrapper.findAll('.contest-card a').some((link) => link.text() === 'Submitted logs'),
+      wrapper
+        .findAll('.contest-card a')
+        .some((link) => link.text() === 'Submitted logs'),
     ).toBe(true)
 
     await wrapper.get('#contest-filter').setValue('SUMMER-QSO')
@@ -202,6 +207,112 @@ describe('ContestManagerView', () => {
     expect(
       wrapper.findAll('a').find((link) => link.text() === 'Sign in'),
     ).toBeDefined()
+  })
+
+  it('requires the contest slug before deleting contest data', async () => {
+    const contest = {
+      id: 49,
+      owner_user_id: 4,
+      name: 'Delete Me Sprint',
+      slug: 'delete-me-sprint',
+      description: null,
+      starts_at: '2026-06-20T00:00:00Z',
+      ends_at: '2026-06-20T06:00:00Z',
+      periodicity: null,
+      log_submission_cutoff_at: '2026-06-27T00:00:00Z',
+      status: 'closed',
+      auto_recalculate_on_upload: false,
+      ruleset_version_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    let exists = true
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(managerUser())
+        if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+        if (path.includes('/contests/') && init?.method === 'DELETE') {
+          expect(JSON.parse(String(init.body))).toEqual({
+            confirm_slug: 'delete-me-sprint',
+          })
+          exists = false
+          return new Response(null, { status: 204 })
+        }
+        if (path.includes('/contests'))
+          return ok({
+            items: exists ? [contest] : [],
+            meta: {
+              page: 1,
+              page_size: 100,
+              total: exists ? 1 : 0,
+              pages: exists ? 1 : 0,
+            },
+          })
+        throw new Error(`Unexpected request: ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const prompt = vi
+      .spyOn(window, 'prompt')
+      .mockReturnValue('delete-me-sprint')
+    const wrapper = mountManager()
+    await flushPromises()
+    await wrapper.get('.danger-button').trigger('click')
+    await flushPromises()
+
+    expect(prompt).toHaveBeenCalledWith(
+      expect.stringContaining('all of its uploaded logs'),
+    )
+    expect(wrapper.findAll('.contest-card')).toHaveLength(0)
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'contest data were deleted',
+    )
+  })
+
+  it('leaves a contest untouched when deletion confirmation is cancelled', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path.endsWith('/auth/me')) return ok(managerUser())
+      if (path.endsWith('/rulesets/versions')) return ok({ items: [] })
+      if (path.includes('/contests'))
+        return ok({
+          items: [
+            {
+              id: 50,
+              owner_user_id: 4,
+              name: 'Keep Me Sprint',
+              slug: 'keep-me-sprint',
+              description: null,
+              starts_at: '2026-06-20T00:00:00Z',
+              ends_at: '2026-06-20T06:00:00Z',
+              periodicity: null,
+              log_submission_cutoff_at: '2026-06-27T00:00:00Z',
+              status: 'closed',
+              auto_recalculate_on_upload: false,
+              ruleset_version_id: null,
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          meta: { page: 1, page_size: 100, total: 1, pages: 1 },
+        })
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(window, 'prompt').mockReturnValue(null)
+    const wrapper = mountManager()
+    await flushPromises()
+    await wrapper.get('.danger-button').trigger('click')
+    await flushPromises()
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes('/contests/50') && init?.method === 'DELETE',
+      ),
+    ).toBe(false)
+    expect(wrapper.findAll('.contest-card')).toHaveLength(1)
   })
 
   it('assigns a saved ruleset to a draft contest through the authenticated API', async () => {

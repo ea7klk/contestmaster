@@ -18,6 +18,7 @@ from backend.app.api.auth import AuthenticatedUser, Principal, require_contest_a
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.audit import record_audit_event
+from backend.app.contest_deletion import DeletionConflictError, delete_contest_records
 from backend.app.db import get_session
 from backend.app.models import (
     Contest,
@@ -132,6 +133,12 @@ class ContestStatusChange(BaseModel):
 
     status: ContestStatus
     audit_reason: str | None = Field(default=None, max_length=2000)
+
+
+class ContestDeleteConfirmation(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    confirm_slug: str = Field(min_length=1, max_length=120)
 
 
 class EntryStatusChange(BaseModel):
@@ -384,6 +391,45 @@ def get_contest(
     contest: Annotated[Contest, Depends(require_contest_access)],
 ) -> dict[str, object]:
     return contest_output(contest)
+
+
+@router.delete("/{contest_id}", status_code=204, responses=API_ERROR_RESPONSES)
+def delete_contest(
+    payload: ContestDeleteConfirmation,
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    principal: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    """Delete a contest and its associated logs, results, and contest-scoped history."""
+    if payload.confirm_slug != contest.slug:
+        raise HTTPException(
+            status_code=422, detail="Confirmation slug does not match this contest."
+        )
+    contest_id = contest.id
+    contest_slug = contest.slug
+    try:
+        counts = delete_contest_records(session, contest)
+        record_audit_event(
+            session,
+            actor_user_id=principal.user_id,
+            action="contest.deleted",
+            target_type="contest",
+            target_id=contest_id,
+            metadata={"slug": contest_slug, **counts},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except DeletionConflictError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="The contest has retained references that prevent safe deletion.",
+        ) from exc
+    return Response(status_code=204)
 
 
 def _latest_revision_id():

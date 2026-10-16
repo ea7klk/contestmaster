@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,8 +14,9 @@ from sqlalchemy.orm import Session
 from backend.app.api.auth import AuthenticatedUser
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.audit import record_audit_event
+from backend.app.contest_deletion import DeletionConflictError, delete_unused_ruleset_version
 from backend.app.db import get_session
-from backend.app.models import RulesetVersion
+from backend.app.models import RulesetVersion, SystemRole
 from backend.app.rulesets.catalog_validation import catalog_reference_errors
 from backend.app.rulesets.persistence import (
     RulesetConflictError,
@@ -28,6 +30,12 @@ from backend.app.rulesets.summary import validation_report
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 router = APIRouter(tags=["rulesets"])
+
+
+class RulesetDeleteConfirmation(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    confirm_identity: str = Field(min_length=1, max_length=202)
 
 
 @router.get("/catalog", responses=API_ERROR_RESPONSES)
@@ -69,7 +77,7 @@ def validate_ruleset_payload(
 
 @router.get("/versions", responses=API_ERROR_RESPONSES)
 def list_ruleset_versions(
-    _actor: AuthenticatedUser,
+    actor: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
     versions = list(
@@ -90,6 +98,10 @@ def list_ruleset_versions(
                 "rule_type_keys": version.rule_type_keys,
                 "created_by_user_id": version.created_by_user_id,
                 "created_at": version.created_at,
+                "can_delete": (
+                    actor.role is SystemRole.GLOBAL_ADMINISTRATOR
+                    or version.created_by_user_id == actor.user_id
+                ),
             }
             for version in versions
         ]
@@ -176,3 +188,49 @@ def persist_ruleset_version(
         "created": persisted.created,
         "created_at": version.created_at,
     }
+
+
+@router.delete("/versions/{version_id}", status_code=204, responses=API_ERROR_RESPONSES)
+def delete_ruleset_version_endpoint(
+    version_id: int,
+    payload: RulesetDeleteConfirmation,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    version = session.get(RulesetVersion, version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Ruleset version not found.")
+    if (
+        actor.role is not SystemRole.GLOBAL_ADMINISTRATOR
+        and version.created_by_user_id != actor.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Ruleset version not found.")
+    identity = f"{version.ruleset_key}@{version.version}"
+    if payload.confirm_identity != identity:
+        raise HTTPException(
+            status_code=422,
+            detail="Confirmation must exactly match the ruleset key and version.",
+        )
+    try:
+        delete_unused_ruleset_version(session, version)
+        record_audit_event(
+            session,
+            actor_user_id=actor.user_id,
+            action="ruleset_version.deleted",
+            target_type="ruleset_version",
+            target_id=version_id,
+            metadata={"ruleset_key": version.ruleset_key, "version": version.version},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except DeletionConflictError as exc:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This ruleset version has retained references and cannot be deleted.",
+        ) from exc
+    return Response(status_code=204)
