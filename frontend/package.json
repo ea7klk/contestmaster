@@ -20,7 +20,7 @@
   "dependencies": {
     "dompurify": "^3.4.17",
     "marked": "^18.1.1",
-    "pinia": "^3.0.4",
+    "pinia": "^4.1.0",
     "vue": "^3.5.44",
     "vue-i18n": "^11.4.14",
     "vue-router": "^5.4.0"
