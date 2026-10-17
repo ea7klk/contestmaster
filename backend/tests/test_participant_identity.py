@@ -1,9 +1,10 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -14,12 +15,19 @@ from backend.app.models import (
     AuditEvent,
     Contest,
     Entry,
+    EntryAccessGrant,
+    EntryRevision,
+    EntryStatus,
     Participant,
+    ParticipantCallsign,
     ParticipantEmail,
     ParticipantEmailChange,
     ParticipantMagicLink,
     ParticipantPasswordReset,
     ParticipantSession,
+    Station,
+    SystemRole,
+    SystemUser,
 )
 
 
@@ -565,3 +573,206 @@ def test_participant_password_login_is_rate_limited_per_account(participant_data
     rejected = client.post("/api/v1/participants/auth/login", json=payload)
     assert rejected.status_code == 429
     assert rejected.headers["Retry-After"]
+
+
+def test_registered_participant_can_claim_open_guest_entries_for_receipted_callsign(
+    participant_database, monkeypatch
+):
+    delivered: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        participant_identity,
+        "send_participant_magic_link",
+        lambda email, link: delivered.append((email, link)),
+    )
+    monkeypatch.setattr(participant_identity, "enforce_rate_limit", lambda *_args, **_kwargs: None)
+    now = datetime.now(UTC)
+    receipt_tokens = {
+        "first": "receipt-token-for-first-guest-entry",
+        "second": "receipt-token-for-second-guest-entry",
+        "other_call": "receipt-token-for-other-callsign-entry",
+        "expired": "receipt-token-for-expired-entry",
+        "revoked": "receipt-token-for-revoked-entry",
+        "registered": "receipt-token-for-registered-entry",
+    }
+    with participant_database.begin() as session:
+        owner = SystemUser(
+            username="claim-owner",
+            email_normalized="claim-owner@example.test",
+            display_name="Contest owner",
+            role=SystemRole.CONTEST_MANAGER,
+            password_hash="unused-test-hash",
+        )
+        session.add(owner)
+        session.flush()
+        contest = Contest(
+            owner_user_id=owner.id,
+            name="Claim Contest",
+            slug="claim-contest",
+            starts_at=now - timedelta(days=2),
+            ends_at=now - timedelta(days=1),
+            log_submission_cutoff_at=now + timedelta(days=1),
+        )
+        session.add(contest)
+        session.flush()
+        guest_owners = {
+            name: Participant(
+                display_name=f"Guest {name}",
+                callsign_submitted="EA7ABC" if name != "other_call" else "K1XYZ",
+                callsign_normalized="EA7ABC" if name != "other_call" else "K1XYZ",
+            )
+            for name in ("first", "second", "other_call", "expired", "revoked")
+        }
+        registered_owner = Participant(
+            display_name="Different registered owner",
+            password_hash="already-registered-password-hash",
+        )
+        session.add_all([*guest_owners.values(), registered_owner])
+        session.flush()
+        for name, token in receipt_tokens.items():
+            owner_participant = (
+                registered_owner if name == "registered" else guest_owners[name]
+            )
+            call = "K1XYZ" if name == "other_call" else "EA7ABC"
+            entry = Entry(
+                contest_id=contest.id,
+                participant_id=owner_participant.id,
+                entry_key=f"entry-{name}",
+                status=EntryStatus.ACCEPTED,
+            )
+            session.add(entry)
+            session.flush()
+            content = f"fixture log {name}"
+            revision = EntryRevision(
+                entry_id=entry.id,
+                revision_number=1,
+                input_format="cabrillo",
+                storage_key=f"database://entry-revisions/{entry.id}/1",
+                original_content=content,
+                content_sha256=hashlib.sha256(content.encode()).hexdigest(),
+                byte_size=len(content.encode()),
+                submitted_at=now,
+            )
+            session.add(revision)
+            session.flush()
+            session.add(
+                Station(
+                    entry_revision_id=revision.id,
+                    callsign_submitted=call,
+                    callsign_normalized=call,
+                )
+            )
+            created_at = now - timedelta(days=2) if name in {"expired", "revoked"} else now
+            session.add(
+                EntryAccessGrant(
+                    entry_id=entry.id,
+                    token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                    created_at=created_at,
+                    expires_at=now - timedelta(days=1) if name == "expired" else None,
+                    revoked_at=now - timedelta(days=1) if name == "revoked" else None,
+                )
+            )
+        entry_ids = {
+            name: session.scalar(
+                select(Entry.id).where(Entry.entry_key == f"entry-{name}")
+            )
+            for name in receipt_tokens
+        }
+
+    client = TestClient(app)
+    registration = client.post(
+        "/api/v1/participants/auth/register",
+        json={
+            "email": "new-operator@example.test",
+            "callsign": "EA7ABC",
+            "password": "a long participant account password",
+            "display_name": "New operator",
+        },
+    )
+    assert registration.status_code == 202
+    verification_token = parse_qs(urlparse(delivered[0][1]).query)["token"][0]
+    assert (
+        client.post(
+            "/api/v1/participants/auth/consume-link", json={"token": verification_token}
+        ).status_code
+        == 200
+    )
+
+    claimed = client.post(
+        "/api/v1/participants/auth/claim-entries",
+        json={"receipt_token": receipt_tokens["first"]},
+        headers={
+            "X-CSRF-Token": client.cookies.get("contestmaster_participant_csrf"),
+        },
+    )
+    assert claimed.status_code == 200
+    assert claimed.json() == {
+        "status": "claimed",
+        "callsign": "EA7ABC",
+        "claimed_entries": 2,
+    }
+    listed_entries = client.get("/api/v1/participants/auth/entries")
+    assert listed_entries.status_code == 200
+    assert {item["id"] for item in listed_entries.json()["items"]} == {
+        entry_ids["first"],
+        entry_ids["second"],
+    }
+
+    repeated = client.post(
+        "/api/v1/participants/auth/claim-entries",
+        json={"receipt_token": receipt_tokens["first"]},
+        headers={
+            "X-CSRF-Token": client.cookies.get("contestmaster_participant_csrf"),
+        },
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["claimed_entries"] == 0
+
+    for token in (
+        "not-a-valid-receipt-token-value",
+        receipt_tokens["other_call"],
+        receipt_tokens["expired"],
+        receipt_tokens["revoked"],
+        receipt_tokens["registered"],
+    ):
+        rejected = client.post(
+            "/api/v1/participants/auth/claim-entries",
+            json={"receipt_token": token},
+            headers={
+                "X-CSRF-Token": client.cookies.get("contestmaster_participant_csrf"),
+            },
+        )
+        assert rejected.status_code == 404
+        assert (
+            rejected.json()["error"]["message"]
+            == "Entry not found or access is no longer valid."
+        )
+
+    with participant_database() as session:
+        claimant = session.scalar(
+            select(Participant).where(Participant.display_name == "New operator")
+        )
+        assert claimant is not None
+        assert session.get(Entry, entry_ids["first"]).participant_id == claimant.id
+        assert session.get(Entry, entry_ids["second"]).participant_id == claimant.id
+        assert session.get(Entry, entry_ids["other_call"]).participant_id != claimant.id
+        assert session.get(Entry, entry_ids["expired"]).participant_id != claimant.id
+        assert session.get(Entry, entry_ids["revoked"]).participant_id != claimant.id
+        assert session.get(Entry, entry_ids["registered"]).participant_id != claimant.id
+        claimed_call = session.scalar(
+            select(ParticipantCallsign).where(
+                ParticipantCallsign.participant_id == claimant.id
+            )
+        )
+        assert claimed_call is not None
+        assert claimed_call.verified_at is not None
+        claim_audit = session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "participant.guest_entries_claimed")
+        )
+        assert claim_audit is not None
+        assert claim_audit.event_metadata == {
+            "participant_id": claimant.id,
+            "callsign": "EA7ABC",
+            "claimed_entry_count": 2,
+            "access_channel": "participant_session",
+        }
+        assert receipt_tokens["first"] not in str(claim_audit.event_metadata)

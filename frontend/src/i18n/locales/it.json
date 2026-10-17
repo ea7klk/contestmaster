@@ -386,7 +386,7 @@
   "s_6676f3cc": "Valori di banda ammessi{condition}: {bands}; i valori di frequenza devono rientrare in queste bande.",
   "s_66a63782": "Account abilitato per il partecipante {id}",
   "s_66de7a09": "Descrizione",
-  "s_66fee5c2": "Gettone di ricevuta d'ingresso",
+  "s_66fee5c2": "Token di ricevuta della partecipazione",
   "s_671af821": "Le nuove password non corrispondono.",
   "s_67675701": "Set di dati/fonte",
   "s_67d3349d": "Questo riepilogo viene generato automaticamente dal set di regole e potrebbe essere impreciso. Fare riferimento alle regole ufficiali pubblicate del concorso per i requisiti autorevoli.",
@@ -1007,5 +1007,11 @@
   "s_ffb0ff72": "Formato",
   "s_ffda6982": "Le regole dettagliate del concorso non sono ancora disponibili.",
   "s_ffeb6c21": "diviso per",
-  "s_fff3c460": "Uscita di trasmissione massima: fino al limite legale applicabile."
+  "s_fff3c460": "Uscita di trasmissione massima: fino al limite legale applicabile.",
+  "s_a45ec9f0": "Account dei partecipanti registrati",
+  "s_2c74274d": "La registrazione è facoltativa. Crea un account con email, nominativo e password, poi verifica l’indirizzo prima di accedere. Puoi inviare log come ospite in qualsiasi momento.",
+  "s_367d6caa": "Rivendica i log degli ospiti",
+  "s_939cd132": "Inserisci il token di ricevuta di un log ospite inviato con uno dei tuoi nominativi. Il token prova l’accesso a quella partecipazione; i log ospite corrispondenti a quel nominativo saranno aggiunti al tuo account.",
+  "s_a92fb3de": "Rivendica i log",
+  "s_5fbb3fde": "Log ospite associati a {callsign}: {count}."
 }

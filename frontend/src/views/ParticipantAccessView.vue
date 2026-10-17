@@ -18,6 +18,7 @@ import {
   getParticipantEntries,
   requestParticipantMagicLink,
   signOutParticipant,
+  claimParticipantEntries,
   type ParticipantEntry,
 } from '../api/participantIdentity'
 import { formatUtcDateTime } from '../i18n'
@@ -37,6 +38,8 @@ const displayName = ref('')
 const profileCallsigns = ref<Array<{ id: number; callsign: string; is_primary: boolean }>>([])
 const profileName = ref('')
 const newEmail = ref('')
+const claimReceipt = ref('')
+const claimSuccess = ref<{ callsign: string; count: number } | null>(null)
 
 async function requestLink() {
   busy.value = true
@@ -128,6 +131,25 @@ async function changeEmail() {
     newEmail.value = ''
   } catch (cause) {
     error.value = cause instanceof ApiError ? cause.message : 'The email change could not be started.'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function claimGuestLogs() {
+  busy.value = true
+  error.value = ''
+  message.value = ''
+  claimSuccess.value = null
+  try {
+    const result = await claimParticipantEntries(claimReceipt.value.trim())
+    claimReceipt.value = ''
+    claimSuccess.value = { callsign: result.callsign, count: result.claimed_entries }
+    await loadEntries()
+  } catch (cause) {
+    error.value = cause instanceof ApiError
+      ? cause.message
+      : 'Guest logs could not be claimed. Check the receipt token and try again.'
   } finally {
     busy.value = false
   }
@@ -232,6 +254,7 @@ onMounted(async () => {
     <h1 id="participant-access-heading">{{ $tr('Participant access') }}</h1>
     <p v-if="error" role="alert" class="form-error">{{ $tr(error) }}</p>
     <p v-if="message" role="status">{{ $tr(message) }}</p>
+    <p v-if="claimSuccess" role="status">{{ $tr('Guest logs linked to {callsign}: {count}.', { callsign: claimSuccess.callsign, count: claimSuccess.count }) }}</p>
 
     <div v-if="signedIn">
       <h2>{{ $tr('Your callsigns') }}</h2>
@@ -251,6 +274,15 @@ onMounted(async () => {
         <input id="new-participant-email" v-model.trim="newEmail" type="email" required maxlength="320" autocomplete="email" />
         <button class="secondary-button" type="submit" :disabled="busy">{{ $tr('Send confirmations') }}</button>
       </form>
+      <section class="claim-guest-logs" aria-labelledby="claim-guest-logs-heading">
+        <h2 id="claim-guest-logs-heading">{{ $tr('Claim guest logs') }}</h2>
+            <p>{{ $tr('Enter the entry receipt token from a guest log submitted with one of your callsigns. The token proves access to that entry; matching guest logs for that callsign will be added to your account.') }}</p>
+        <form id="claim-guest-logs-form" class="inline-form" @submit.prevent="claimGuestLogs">
+          <label for="guest-entry-receipt">{{ $tr('Entry receipt token') }}</label>
+          <input id="guest-entry-receipt" v-model="claimReceipt" type="password" required minlength="20" maxlength="200" autocomplete="off" />
+          <button class="secondary-button" type="submit" :disabled="busy">{{ $tr('Claim logs') }}</button>
+        </form>
+      </section>
       <div class="section-heading-row">
         <h2>{{ $tr('Your entries') }}</h2>
         <button
@@ -302,7 +334,7 @@ onMounted(async () => {
       </div>
       <p>
         {{
-          $tr(mode === 'register' ? 'Register with your email, callsign, and password. You must verify the email before signing in.' : mode === 'login' ? 'Sign in to manage your account and entries.' : mode === 'reset' ? 'Choose a new password for your account.' : mode === 'forgot' ? 'Enter your account email to receive a password reset link.' :
+          $tr(mode === 'register' ? 'Registration is optional. Create an account with your email, callsign, and password, then verify your email before signing in. You can submit logs as a guest at any time.' : mode === 'login' ? 'Sign in to manage your account and entries.' : mode === 'reset' ? 'Choose a new password for your account.' : mode === 'forgot' ? 'Enter your account email to receive a password reset link.' :
             'Enter your verified participant email address to receive a short-lived sign-in link.',
           )
         }}

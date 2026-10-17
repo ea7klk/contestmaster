@@ -112,6 +112,17 @@ export async function getParticipantEntries() {
   return apiRequest<{ items: ParticipantEntry[] }>('/participants/auth/entries')
 }
 
+export async function claimParticipantEntries(receiptToken: string) {
+  return apiRequest<{
+    status: 'claimed'
+    callsign: string
+    claimed_entries: number
+  }>('/participants/auth/claim-entries', {
+    method: 'POST',
+    body: JSON.stringify({ receipt_token: receiptToken }),
+  })
+}
+
 export async function signOutParticipant() {
   return apiRequest<{ status: string }>('/participants/auth/logout', {
     method: 'POST',

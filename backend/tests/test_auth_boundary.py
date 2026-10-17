@@ -430,10 +430,15 @@ def test_global_administrator_can_manage_participant_accounts(identity_database)
         email="manager-user-admin@example.test",
     )
     with identity_database.begin() as session:
-        participant = Participant(display_name="Participant")
-        session.add(participant)
+        participant = Participant(
+            display_name="Registered participant",
+            password_hash=hash_password("registered participant test password"),
+        )
+        guest = Participant(display_name="Guest-only submitter")
+        session.add_all([participant, guest])
         session.flush()
         participant_id = participant.id
+        guest_id = guest.id
 
     admin = TestClient(app)
     assert (
@@ -446,6 +451,13 @@ def test_global_administrator_can_manage_participant_accounts(identity_database)
     listed = admin.get("/api/v1/auth/admin/participants")
     assert listed.status_code == 200
     assert listed.json()["items"][0]["id"] == participant_id
+    assert listed.json()["total"] == 1
+    assert admin.get("/api/v1/auth/admin/participants?q=Guest-only").json() == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 50,
+    }
     updated = admin.patch(
         f"/api/v1/auth/admin/participants/{participant_id}",
         headers={"X-CSRF-Token": admin.cookies.get("contestmaster_csrf")},
@@ -453,6 +465,14 @@ def test_global_administrator_can_manage_participant_accounts(identity_database)
     )
     assert updated.status_code == 200
     assert updated.json()["is_active"] is False
+    hidden_update = admin.patch(
+        f"/api/v1/auth/admin/participants/{guest_id}",
+        headers={"X-CSRF-Token": admin.cookies.get("contestmaster_csrf")},
+        json={"is_active": False},
+    )
+    assert hidden_update.status_code == 404
+    with identity_database() as session:
+        assert session.get(Participant, guest_id).is_active is True
 
     manager = TestClient(app)
     with identity_database() as session:

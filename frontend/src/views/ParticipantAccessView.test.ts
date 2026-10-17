@@ -43,6 +43,7 @@ describe('ParticipantAccessView', () => {
     await wrapper.get('#participant-callsign').setValue('EA7ABC')
     await wrapper.get('#participant-display-name').setValue('Radio Operator')
     await wrapper.get('#participant-password').setValue('a sufficiently long password')
+    expect(wrapper.text()).toContain('Registration is optional')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledOnce()
@@ -163,5 +164,86 @@ describe('ParticipantAccessView', () => {
     expect(router.currentRoute.value.query).toEqual({})
     expect(wrapper.text()).toContain('Spring Sprint')
     expect(wrapper.text()).toContain('ea7klk')
+  })
+
+  it('claims guest logs with a receipt token and refreshes the entry list', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      if (url.endsWith('/participants/auth/entries')) {
+        const claimed = calls.some((call) => call.url.endsWith('/participants/auth/claim-entries'))
+        return new Response(JSON.stringify({ items: claimed ? [{
+          id: 12,
+          contest_id: 3,
+          contest_name: 'Summer Test',
+          contest_slug: 'summer-test',
+          entry_key: 'ea7abc',
+          status: 'accepted',
+          submitted_at: '2026-07-01T00:00:00Z',
+        }] : [] }), { status: 200 })
+      }
+      if (url.endsWith('/participants/auth/me')) {
+        return new Response(JSON.stringify({
+          id: 7,
+          email: 'pilot@example.test',
+          display_name: 'Pilot',
+          callsigns: [{ id: 1, callsign: 'EA7ABC', is_primary: true }],
+          emails: [{ email: 'pilot@example.test', is_primary: true, verified: true }],
+        }), { status: 200 })
+      }
+      expect(url).toContain('/participants/auth/claim-entries')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        receipt_token: 'my-private-entry-receipt-token',
+      })
+      return new Response(JSON.stringify({
+        status: 'claimed',
+        callsign: 'EA7ABC',
+        claimed_entries: 1,
+      }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { wrapper } = await mountParticipant('/participant/entries')
+    await flushPromises()
+    await wrapper.get('#guest-entry-receipt').setValue('my-private-entry-receipt-token')
+    await wrapper.get('#claim-guest-logs-form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Guest logs linked to EA7ABC: 1')
+    expect(wrapper.text()).toContain('Summer Test')
+    expect((wrapper.get('#guest-entry-receipt').element as HTMLInputElement).value).toBe('')
+    await expectAccessible(wrapper.element)
+  })
+
+  it('retains the receipt input and reports an inaccessible or invalid claim safely', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/participants/auth/entries')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 })
+      }
+      if (url.endsWith('/participants/auth/me')) {
+        return new Response(JSON.stringify({
+          id: 7,
+          email: 'pilot@example.test',
+          display_name: 'Pilot',
+          callsigns: [{ id: 1, callsign: 'EA7ABC', is_primary: true }],
+          emails: [],
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({
+        error: { message: 'Entry not found or access is no longer valid.' },
+      }), { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { wrapper } = await mountParticipant('/participant/entries')
+    await flushPromises()
+    await wrapper.get('#guest-entry-receipt').setValue('invalid-receipt-token-value')
+    await wrapper.get('#claim-guest-logs-form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('Entry not found')
+    expect((wrapper.get('#guest-entry-receipt').element as HTMLInputElement).value)
+      .toBe('invalid-receipt-token-value')
+    await expectAccessible(wrapper.element)
   })
 })

@@ -386,7 +386,7 @@
   "s_6676f3cc": "Valeurs de bande autorisées{condition} : {bands} ; les valeurs de fréquence doivent se situer dans ces bandes.",
   "s_66a63782": "Compte activé pour le participant {id}",
   "s_66de7a09": "Descriptif",
-  "s_66fee5c2": "Jeton de reçu d'entrée",
+  "s_66fee5c2": "Jeton de reçu de la participation",
   "s_671af821": "Les nouveaux mots de passe ne correspondent pas.",
   "s_67675701": "Ensemble de données/source",
   "s_67d3349d": "Ce résumé est automatiquement généré à partir du jeu de règles et peut être imprécis. Reportez-vous aux règles officielles publiées du concours pour connaître les exigences faisant autorité.",
@@ -1007,5 +1007,11 @@
   "s_ffb0ff72": "Formater",
   "s_ffda6982": "Les règles détaillées du concours ne sont pas encore disponibles.",
   "s_ffeb6c21": "divisé par",
-  "s_fff3c460": "Sortie de transmission maximale : jusqu'à la limite légale applicable."
+  "s_fff3c460": "Sortie de transmission maximale : jusqu'à la limite légale applicable.",
+  "s_a45ec9f0": "Comptes de participants inscrits",
+  "s_2c74274d": "L’inscription est facultative. Créez un compte avec votre adresse e-mail, votre indicatif et un mot de passe, puis confirmez votre adresse avant de vous connecter. Vous pouvez envoyer des logs en tant qu’invité à tout moment.",
+  "s_367d6caa": "Récupérer les logs invités",
+  "s_939cd132": "Saisissez le jeton de reçu d’un log invité envoyé sous l’un de vos indicatifs. Ce jeton prouve l’accès à cette participation ; les logs invités correspondants de cet indicatif seront ajoutés à votre compte.",
+  "s_a92fb3de": "Récupérer les logs",
+  "s_5fbb3fde": "Logs invités associés à {callsign} : {count}."
 }

@@ -1007,5 +1007,11 @@
   "s_ffb0ff72": "Format",
   "s_ffda6982": "Detailed contest rules are not available yet.",
   "s_ffeb6c21": "divided by",
-  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit."
+  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit.",
+  "s_a45ec9f0": "Registered participant accounts",
+  "s_2c74274d": "Registration is optional. Create an account with your email, callsign, and password, then verify your email before signing in. You can submit logs as a guest at any time.",
+  "s_367d6caa": "Claim guest logs",
+  "s_939cd132": "Enter the entry receipt token from a guest log submitted with one of your callsigns. The token proves access to that entry; matching guest logs for that callsign will be added to your account.",
+  "s_a92fb3de": "Claim logs",
+  "s_5fbb3fde": "Guest logs linked to {callsign}: {count}."
 }

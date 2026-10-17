@@ -386,7 +386,7 @@
   "s_6676f3cc": "Zulässige Bandwerte{condition}: {bands}; Frequenzwerte müssen innerhalb dieser Bänder liegen.",
   "s_66a63782": "Konto für Teilnehmer {id} aktiviert",
   "s_66de7a09": "Beschreibung",
-  "s_66fee5c2": "Eintrittsquittungsmarke",
+  "s_66fee5c2": "Empfangstoken des Eintrags",
   "s_671af821": "Die neuen Passwörter stimmen nicht überein.",
   "s_67675701": "Datensatz/Quelle",
   "s_67d3349d": "Diese Zusammenfassung wird automatisch aus dem Regelsatz generiert und kann ungenau sein. Die maßgeblichen Anforderungen finden Sie in den offiziell veröffentlichten Regeln des Wettbewerbs.",
@@ -1007,5 +1007,11 @@
   "s_ffb0ff72": "Formatieren",
   "s_ffda6982": "Detaillierte Wettbewerbsregeln liegen noch nicht vor.",
   "s_ffeb6c21": "geteilt durch",
-  "s_fff3c460": "Maximale Sendeleistung: bis zur geltenden gesetzlichen Grenze."
+  "s_fff3c460": "Maximale Sendeleistung: bis zur geltenden gesetzlichen Grenze.",
+  "s_a45ec9f0": "Registrierte Teilnehmerkonten",
+  "s_2c74274d": "Eine Registrierung ist freiwillig. Erstelle ein Konto mit E-Mail-Adresse, Rufzeichen und Passwort und bestätige deine E-Mail-Adresse vor der Anmeldung. Logs kannst du jederzeit als Gast einreichen.",
+  "s_367d6caa": "Gast-Logs übernehmen",
+  "s_939cd132": "Gib das Empfangstoken eines Gast-Logs ein, das mit einem deiner Rufzeichen eingereicht wurde. Das Token weist den Zugriff auf diesen Eintrag nach; passende Gast-Logs dieses Rufzeichens werden deinem Konto zugeordnet.",
+  "s_a92fb3de": "Logs übernehmen",
+  "s_5fbb3fde": "Gast-Logs für {callsign} zugeordnet: {count}."
 }

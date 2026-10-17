@@ -386,7 +386,7 @@
   "s_6676f3cc": "Valores de banda permitidos{condition}: {bands}; Los valores de frecuencia deben estar dentro de estas bandas.",
   "s_66a63782": "Cuenta habilitada para el participante {id}",
   "s_66de7a09": "Descripción",
-  "s_66fee5c2": "Token de recibo de entrada",
+  "s_66fee5c2": "Token de recibo de la participación",
   "s_671af821": "Las contraseñas nuevas no coinciden.",
   "s_67675701": "Conjunto de datos/fuente",
   "s_67d3349d": "Este resumen se genera automáticamente a partir del conjunto de reglas y puede ser impreciso. Consulte las reglas oficiales publicadas del concurso para conocer los requisitos autorizados.",
@@ -1007,5 +1007,11 @@
   "s_ffb0ff72": "Formato",
   "s_ffda6982": "Las reglas detalladas del concurso aún no están disponibles.",
   "s_ffeb6c21": "dividido por",
-  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable."
+  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable.",
+  "s_a45ec9f0": "Cuentas de participantes registrados",
+  "s_2c74274d": "Registrarse es opcional. Crea una cuenta con tu correo electrónico, indicativo y contraseña, y verifica el correo antes de iniciar sesión. Puedes enviar logs como invitado en cualquier momento.",
+  "s_367d6caa": "Reclamar logs de invitado",
+  "s_939cd132": "Introduce el token de recibo de un log de invitado enviado con uno de tus indicativos. El token demuestra el acceso a esa participación; los logs de invitado coincidentes de ese indicativo se añadirán a tu cuenta.",
+  "s_a92fb3de": "Reclamar logs",
+  "s_5fbb3fde": "Logs de invitado vinculados a {callsign}: {count}."
 }

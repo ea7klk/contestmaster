@@ -6,7 +6,7 @@ import UserAdminView from './UserAdminView.vue'
 afterEach(() => vi.unstubAllGlobals())
 
 describe('UserAdminView', () => {
-  it('creates a contest administrator and displays privileged and participant accounts', async () => {
+  it('creates a contest administrator and displays privileged and registered participant accounts', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)

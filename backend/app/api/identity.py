@@ -509,8 +509,9 @@ def list_participant_accounts(
 ) -> dict[str, object]:
     if page < 1 or not 1 <= page_size <= 100:
         raise HTTPException(status_code=422, detail="Page must be positive and page_size 1–100.")
-    statement = select(Participant)
-    count_statement = select(func.count()).select_from(Participant)
+    registered = Participant.password_hash.is_not(None)
+    statement = select(Participant).where(registered)
+    count_statement = select(func.count()).select_from(Participant).where(registered)
     if q and q.strip():
         pattern = f"%{q.strip()}%"
         participant_ids = (
@@ -580,7 +581,7 @@ def update_participant_account(
     request: Request,
 ) -> dict[str, object]:
     participant = session.get(Participant, participant_id)
-    if participant is None:
+    if participant is None or participant.password_hash is None:
         raise HTTPException(status_code=404, detail="Participant account not found.")
     for key, value in payload.model_dump(exclude_unset=True).items():
         if value is not None:

@@ -76,7 +76,7 @@ onMounted(load)
       </tbody></table></div>
     </section>
     <section aria-labelledby="participant-list-heading">
-      <h2 id="participant-list-heading">{{ $tr('Participant accounts') }}</h2>
+      <h2 id="participant-list-heading">{{ $tr('Registered participant accounts') }}</h2>
       <div class="table-scroll user-admin-table-scroll"><table class="user-admin-table participant-admin-table"><colgroup><col class="participant-column-name" /><col class="participant-column-callsigns" /><col class="participant-column-emails" /><col class="participant-column-password" /><col class="participant-column-enabled" /><col class="participant-column-actions" /></colgroup><thead><tr><th>{{ $tr('Participant') }}</th><th>{{ $tr('Callsigns') }}</th><th>{{ $tr('Email addresses') }}</th><th>{{ $tr('Password account') }}</th><th>{{ $tr('Enabled') }}</th><th>{{ $tr('Actions') }}</th></tr></thead><tbody>
         <tr v-for="participant in participants" :key="participant.id"><td><input v-model="participant.display_name" :aria-label="$tr('Display name for participant {id}', { id: participant.id })" /></td><td>{{ participant.callsigns.join(', ') }}</td><td>{{ participant.emails.map((email) => `${email.email}${email.verified ? '' : ' (unverified)'}`).join(', ') }}</td><td>{{ participant.has_password ? $tr('Yes') : $tr('No') }}</td><td><input v-model="participant.is_active" type="checkbox" :aria-label="$tr('Account enabled for participant {id}', { id: participant.id })" /></td><td><button class="secondary-button" type="button" :disabled="busy" @click="saveParticipant(participant)">{{ $tr('Save') }}</button></td></tr>
       </tbody></table></div>

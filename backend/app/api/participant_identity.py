@@ -23,12 +23,15 @@ from backend.app.api.auth import (
     normalize_email,
     verify_password,
 )
+from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
 from backend.app.email_delivery import send_email, send_participant_magic_link
 from backend.app.models import (
     Contest,
     Entry,
+    EntryAccessGrant,
+    EntryRevision,
     Participant,
     ParticipantCallsign,
     ParticipantEmail,
@@ -36,6 +39,7 @@ from backend.app.models import (
     ParticipantMagicLink,
     ParticipantPasswordReset,
     ParticipantSession,
+    Station,
 )
 from backend.app.rate_limit import enforce_rate_limit, request_identity
 
@@ -77,6 +81,10 @@ class PasswordResetRequest(BaseModel):
 
 class CallsignRequest(BaseModel):
     callsign: str = Field(min_length=3, max_length=32)
+
+
+class ClaimGuestEntriesRequest(BaseModel):
+    receipt_token: str = Field(min_length=20, max_length=200)
 
 
 class EmailChangeRequest(BaseModel):
@@ -572,6 +580,134 @@ def remove_participant_callsign(
     session.delete(item)
     session.commit()
     return Response(status_code=204)
+
+
+@router.post("/claim-entries")
+def claim_guest_entries(
+    payload: ClaimGuestEntriesRequest,
+    request: Request,
+    actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    """Claim guest submissions only after proving access to a matching entry receipt."""
+    enforce_rate_limit(
+        request,
+        "participant-claim-entries",
+        identity=str(actor.participant_id),
+        limit=20,
+        window_seconds=3600,
+        message="Too many entry-claim attempts. Retry later.",
+    )
+    now = datetime.now(UTC)
+    grant = session.scalar(
+        select(EntryAccessGrant).where(
+            EntryAccessGrant.token_hash == _hash_token(payload.receipt_token.strip())
+        )
+    )
+    if (
+        grant is None
+        or grant.revoked_at is not None
+        or (grant.expires_at is not None and grant.expires_at <= now)
+    ):
+        raise HTTPException(
+            status_code=404, detail="Entry not found or access is no longer valid."
+        )
+
+    entry = session.get(Entry, grant.entry_id)
+    station = session.scalar(
+        select(Station)
+        .join(EntryRevision, EntryRevision.id == Station.entry_revision_id)
+        .where(EntryRevision.entry_id == grant.entry_id)
+        .order_by(EntryRevision.revision_number.desc())
+        .limit(1)
+    )
+    if entry is None or station is None or not station.callsign_normalized:
+        raise HTTPException(
+            status_code=404, detail="Entry not found or access is no longer valid."
+        )
+
+    callsign = station.callsign_normalized
+    participant_callsign = session.scalar(
+        select(ParticipantCallsign).where(
+            ParticipantCallsign.participant_id == actor.participant_id,
+            ParticipantCallsign.callsign_normalized == callsign,
+        )
+    )
+    if participant_callsign is None:
+        raise HTTPException(
+            status_code=404, detail="Entry not found or access is no longer valid."
+        )
+
+    current_owner = session.get(Participant, entry.participant_id)
+    if current_owner is None:
+        raise HTTPException(
+            status_code=404, detail="Entry not found or access is no longer valid."
+        )
+    if current_owner.id == actor.participant_id:
+        return {
+            "status": "claimed",
+            "callsign": participant_callsign.callsign_submitted,
+            "claimed_entries": 0,
+        }
+    if current_owner.password_hash is not None:
+        raise HTTPException(
+            status_code=404, detail="Entry not found or access is no longer valid."
+        )
+
+    latest_revision_id = (
+        select(EntryRevision.id)
+        .where(EntryRevision.entry_id == Entry.id)
+        .order_by(EntryRevision.revision_number.desc())
+        .limit(1)
+        .correlate(Entry)
+        .scalar_subquery()
+    )
+    guest_entries_for_callsign = (
+        select(Entry.id)
+        .join(Participant, Participant.id == Entry.participant_id)
+        .join(EntryRevision, EntryRevision.id == latest_revision_id)
+        .join(Station, Station.entry_revision_id == EntryRevision.id)
+        .where(
+            Participant.password_hash.is_(None),
+            Station.callsign_normalized == callsign,
+            select(EntryAccessGrant.id)
+            .where(
+                EntryAccessGrant.entry_id == Entry.id,
+                EntryAccessGrant.revoked_at.is_(None),
+                (EntryAccessGrant.expires_at.is_(None) | (EntryAccessGrant.expires_at > now)),
+            )
+            .correlate(Entry)
+            .exists(),
+        )
+    )
+    result = session.execute(
+        update(Entry)
+        .where(Entry.id.in_(guest_entries_for_callsign))
+        .values(participant_id=actor.participant_id)
+        .execution_options(synchronize_session=False)
+    )
+    claimed_entries = result.rowcount or 0
+    participant_callsign.verified_at = participant_callsign.verified_at or now
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.guest_entries_claimed",
+        target_type="participant",
+        target_id=actor.participant_id,
+        metadata={
+            "participant_id": actor.participant_id,
+            "callsign": participant_callsign.callsign_submitted,
+            "claimed_entry_count": claimed_entries,
+            "access_channel": "participant_session",
+        },
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return {
+        "status": "claimed",
+        "callsign": participant_callsign.callsign_submitted,
+        "claimed_entries": claimed_entries,
+    }
 
 
 @router.post("/email-change", status_code=202)
