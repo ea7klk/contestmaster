@@ -33,6 +33,9 @@ describe('UserAdminView', () => {
     for (const fieldId of ['new-user-name', 'new-user-email', 'new-user-display', 'new-user-password', 'new-user-role']) {
       expect(wrapper.get(`#${fieldId}`).element.closest('label')).not.toBeNull()
     }
+    const passwordChangeOption = wrapper.get('.user-admin-force-password')
+    expect(passwordChangeOption.attributes('for')).toBe('new-user-force-password')
+    expect(passwordChangeOption.get('input[type="checkbox"]').attributes('id')).toBe('new-user-force-password')
     expect(wrapper.findAll('.user-admin-table-scroll')).toHaveLength(2)
     expect(wrapper.findAll('.user-admin-table colgroup')).toHaveLength(2)
     expect(wrapper.text()).toContain('operator@example.test')

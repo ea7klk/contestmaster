@@ -116,21 +116,26 @@ onMounted(load)
 
 .user-admin-form-grid .user-admin-force-password {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.6rem;
-  align-self: center;
-}
-
-.user-admin-force-password input {
-  width: auto;
-  flex: 0 0 auto;
-  margin: 0.2rem 0 0;
+  align-self: end;
+  min-height: 2.6rem;
+  line-height: 1.35;
 }
 
 .user-admin-form-grid input,
 .user-admin-form-grid select {
   width: 100%;
   min-width: 0;
+}
+
+.user-admin-form-grid .user-admin-force-password input[type='checkbox'] {
+  width: 1.125rem;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  flex: 0 0 1.125rem;
+  margin: 0;
+  padding: 0;
 }
 
 .user-admin-form-actions {
