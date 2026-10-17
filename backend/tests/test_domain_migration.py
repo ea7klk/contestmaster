@@ -61,6 +61,21 @@ def _run_python(database_url: str, code: str) -> None:
         raise AssertionError(result.stderr)
 
 
+def _insert_legacy_system_user(engine, *, username: str, email: str, role: str) -> int:
+    with engine.begin() as connection:
+        result = connection.execute(
+            text(
+                "INSERT INTO system_users "
+                "(username, email_normalized, display_name, role, password_hash, is_active, "
+                "created_at, updated_at) "
+                "VALUES (:username, :email, :display, :role, 'test-hash', 1, "
+                "'2026-01-01T00:00:00.000000Z', '2026-01-01T00:00:00.000000Z')"
+            ),
+            {"username": username, "email": email, "display": username, "role": role},
+        )
+        return result.lastrowid
+
+
 def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) -> None:
     database_url = f"sqlite:///{tmp_path / 'baseline.sqlite3'}"
 
@@ -110,10 +125,20 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "iaru_regions" not in tables
     assert "itu_radio_regions" not in tables
     assert "operating_catalog_items" not in tables
+    system_user_columns = {
+        column["name"]: column for column in inspect(engine).get_columns("system_users")
+    }
+    assert system_user_columns["must_change_password"]["default"].strip("'") in {
+        "0",
+        "false",
+    }
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0024_guest_email_access_and_notices"
+            "0025_initial_password_change"
         )
+        assert connection.scalar(
+            text("SELECT count(*) FROM system_users WHERE must_change_password != 0")
+        ) == 0
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
             connection.scalar(text("SELECT count(*) FROM band_catalog_items WHERE is_active = 1"))
@@ -245,21 +270,23 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 7
-    assert revisions[0].revision == "0024_guest_email_access_and_notices"
-    assert revisions[0].down_revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[1].revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[1].down_revision == "0022_recurring_contest_series"
-    assert revisions[2].revision == "0022_recurring_contest_series"
-    assert revisions[2].down_revision == "0021_authorized_ruleset_deletion"
-    assert revisions[3].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[3].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[4].revision == "0020_authorized_contest_deletion"
-    assert revisions[4].down_revision == "0019_contest_periodicity"
-    assert revisions[5].revision == "0019_contest_periodicity"
-    assert revisions[5].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[6].down_revision is None
-    assert revisions[6].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 8
+    assert revisions[0].revision == "0025_initial_password_change"
+    assert revisions[0].down_revision == "0024_guest_email_access_and_notices"
+    assert revisions[1].revision == "0024_guest_email_access_and_notices"
+    assert revisions[1].down_revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[2].revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[2].down_revision == "0022_recurring_contest_series"
+    assert revisions[3].revision == "0022_recurring_contest_series"
+    assert revisions[3].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[4].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[4].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[5].revision == "0020_authorized_contest_deletion"
+    assert revisions[5].down_revision == "0019_contest_periodicity"
+    assert revisions[6].revision == "0019_contest_periodicity"
+    assert revisions[6].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[7].down_revision is None
+    assert revisions[7].revision == "0018_remove_unscored_country_data"
 
 
 def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
@@ -267,18 +294,12 @@ def test_recurring_series_migration_preserves_existing_contest_references(tmp_pa
     _alembic(database_url, "upgrade", "0021_authorized_ruleset_deletion")
 
     engine = build_engine(database_url)
-    with Session(engine) as session:
-        manager = SystemUser(
-            username="migration-series-manager",
-            email_normalized="migration-series-manager@example.test",
-            display_name="Migration Series Manager",
-            role=SystemRole.CONTEST_MANAGER,
-            password_hash="test-hash",
-            is_active=True,
-        )
-        session.add(manager)
-        session.commit()
-        manager_id = manager.id
+    manager_id = _insert_legacy_system_user(
+        engine,
+        username="migration-series-manager",
+        email="migration-series-manager@example.test",
+        role="contest_manager",
+    )
 
     with engine.begin() as connection:
         contest_result = connection.execute(
@@ -458,18 +479,12 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
         "command.upgrade(config, '0017_contest_free_band_defaults')",
     )
     engine = build_engine(database_url)
-    with Session(engine) as session:
-        session.add(
-            SystemUser(
-                username="legacy-admin",
-                email_normalized="legacy-admin@example.test",
-                display_name="Legacy Admin",
-                role=SystemRole.GLOBAL_ADMINISTRATOR,
-                password_hash="test-hash",
-                is_active=True,
-            )
-        )
-        session.commit()
+    _insert_legacy_system_user(
+        engine,
+        username="legacy-admin",
+        email="legacy-admin@example.test",
+        role="global_administrator",
+    )
     engine.dispose()
     _run_python(
         database_url, "from backend.app.migrations import upgrade_database; upgrade_database()"
@@ -479,10 +494,11 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0024_guest_email_access_and_notices"
+            "0025_initial_password_change"
         )
     with Session(engine) as session:
-        assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
+        legacy_user = session.query(SystemUser).filter_by(username="legacy-admin").one()
+        assert legacy_user.must_change_password is False
     engine.dispose()
 
 
@@ -498,7 +514,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0024_guest_email_access_and_notices"
+            "0025_initial_password_change"
         )
     engine.dispose()
 
@@ -515,17 +531,13 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
         "command.upgrade(config, '0018_remove_unscored_country_data')",
     )
     engine = build_engine(database_url)
+    actor_id = _insert_legacy_system_user(
+        engine,
+        username="shared-baseline-admin",
+        email="shared-baseline@example.test",
+        role="global_administrator",
+    )
     with Session(engine) as session:
-        actor = SystemUser(
-            username="shared-baseline-admin",
-            email_normalized="shared-baseline@example.test",
-            display_name="Shared Baseline Admin",
-            role=SystemRole.GLOBAL_ADMINISTRATOR,
-            password_hash="test-hash",
-            is_active=True,
-        )
-        session.add(actor)
-        session.flush()
         legacy_configuration = {
             "schema_version": 1,
             "rules": [
@@ -557,11 +569,10 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
                 "version": "2025",
                 "types": json.dumps(["schedule"]),
                 "configuration": json.dumps(legacy_configuration),
-                "creator": actor.id,
+                "creator": actor_id,
                 "created": datetime.now(UTC).isoformat(),
             },
         ).lastrowid
-        actor_id = actor.id
         session.commit()
 
     # The pre-squash Contest table has no `periodicity` column yet, so use a
@@ -602,7 +613,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0024_guest_email_access_and_notices"
+            "0025_initial_password_change"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

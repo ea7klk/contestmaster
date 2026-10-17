@@ -73,6 +73,11 @@ export const router = createRouter({
       component: () => import('./views/SignInView.vue'),
     },
     {
+      path: '/change-password',
+      name: 'system-change-password',
+      component: () => import('./views/SystemPasswordChangeView.vue'),
+    },
+    {
       path: '/participant/access',
       name: 'participant-access',
       component: () => import('./views/ParticipantAccessView.vue'),

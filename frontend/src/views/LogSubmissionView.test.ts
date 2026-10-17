@@ -296,7 +296,7 @@ describe('LogSubmissionView', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.get('#guest-contact-email').exists()).toBe(true)
+    expect(wrapper.findAll('#guest-contact-email')).toHaveLength(1)
     expect(wrapper.text()).toContain('These are separate choices.')
     await wrapper.get('#guest-contact-email').setValue('guest@example.test')
     await wrapper.get('#guest-results-notices').setValue(true)

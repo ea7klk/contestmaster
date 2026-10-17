@@ -7,6 +7,7 @@ export interface PrivilegedUser {
   display_name: string
   role: 'global_administrator' | 'contest_admin' | 'contest_manager'
   is_active?: boolean
+  must_change_password: boolean
 }
 
 export async function signIn(email: string, password: string) {
@@ -42,6 +43,7 @@ export async function createSystemUser(input: {
   display_name: string
   password: string
   role: 'global_administrator' | 'contest_admin'
+  must_change_password: boolean
 }) {
   return apiRequest<SystemUserRecord>('/auth/admin/users', {
     method: 'POST',
@@ -65,6 +67,13 @@ export async function requestSystemPasswordReset(email: string) {
 export async function resetSystemPassword(token: string, password: string) {
   return apiRequest<{ status: string }>('/auth/reset-password', {
     method: 'POST', body: JSON.stringify({ token, password }),
+  })
+}
+
+export async function changeSystemPassword(currentPassword: string, newPassword: string) {
+  return apiRequest<{ status: string; user: PrivilegedUser }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   })
 }
 

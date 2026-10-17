@@ -28,13 +28,17 @@ async function submit() {
       message.value = 'Your password has been updated. You can now sign in.'
       mode.value = 'login'
     } else {
-      await signIn(email.value.trim(), password.value)
+      const result = await signIn(email.value.trim(), password.value)
+      const requestedPath = typeof route.query.next === 'string' &&
+        route.query.next.startsWith('/') &&
+        !route.query.next.startsWith('//') &&
+        !route.query.next.startsWith('/change-password')
+        ? route.query.next
+        : '/manage/contests'
       await router.replace(
-        typeof route.query.next === 'string' &&
-          route.query.next.startsWith('/') &&
-          !route.query.next.startsWith('//')
-          ? route.query.next
-          : '/manage/contests',
+        result.user.must_change_password
+          ? { path: '/change-password', query: { next: requestedPath } }
+          : requestedPath,
       )
     }
   } catch (error) {

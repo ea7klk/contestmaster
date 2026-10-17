@@ -40,9 +40,14 @@ describe('UserAdminView', () => {
     await wrapper.get('#new-user-email').setValue('manager@example.test')
     await wrapper.get('#new-user-display').setValue('Manager')
     await wrapper.get('#new-user-password').setValue('a sufficiently long test password')
+    await wrapper.get('#new-user-force-password').setValue(true)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(calls.some(({ init }) => init?.method === 'POST')).toBe(true)
+    const createRequest = calls.find(({ init }) => init?.method === 'POST')
+    expect(createRequest).toBeDefined()
+    expect(JSON.parse(String(createRequest?.init?.body))).toMatchObject({
+      must_change_password: true,
+    })
     expect(wrapper.get('[role="status"]').text()).toContain('account was created')
     await expectAccessible(wrapper.element)
   })

@@ -38,6 +38,7 @@ class Principal:
     email: str
     display_name: str
     role: SystemRole
+    must_change_password: bool = False
 
 
 def _hash_token(token: str) -> str:
@@ -173,7 +174,27 @@ def require_authenticated_user(
     user = session.get(SystemUser, session_record.user_id)
     if user is None or not user.is_active:
         raise unauthorized
-    return Principal(user.id, user.username, user.email_normalized, user.display_name, user.role)
+    principal = Principal(
+        user.id,
+        user.username,
+        user.email_normalized,
+        user.display_name,
+        user.role,
+        user.must_change_password,
+    )
+    if user.must_change_password:
+        auth_path = f"{get_settings().api_prefix.rstrip('/')}/auth"
+        allowed_during_password_change = {
+            ("GET", f"{auth_path}/me"),
+            ("POST", f"{auth_path}/change-password"),
+            ("POST", f"{auth_path}/logout"),
+        }
+        if (request.method, request.url.path) not in allowed_during_password_change:
+            raise HTTPException(
+                status_code=403,
+                detail="You must change your password before using this account.",
+            )
+    return principal
 
 
 def require_global_administrator(

@@ -60,6 +60,9 @@ class SystemUser(Base):
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     role: Mapped[SystemRole] = mapped_column(enum_column(SystemRole, "system_role"), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"
     )

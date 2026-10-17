@@ -8,6 +8,32 @@ import { i18n } from './i18n'
 afterEach(() => vi.unstubAllGlobals())
 
 describe('App privileged navigation', () => {
+  it('redirects an existing flagged session to password change before continuing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      id: 8,
+      username: 'manager',
+      email: 'manager@example.test',
+      display_name: 'Contest Manager',
+      role: 'contest_admin',
+      must_change_password: true,
+    }), { status: 200 })))
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/manage/contests', component: { template: '<p>manage</p>' } },
+        { path: '/change-password', component: { template: '<p>change password</p>' } },
+      ],
+    })
+    await router.push('/manage/contests')
+    await router.isReady()
+    const wrapper = mount(App, { global: { plugins: [router] } })
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/change-password')
+    expect(router.currentRoute.value.query.next).toBe('/manage/contests')
+    wrapper.unmount()
+  })
+
   it('shows the active staff account and sends sign-out through the session API', async () => {
     const originalCookie = Object.getOwnPropertyDescriptor(document, 'cookie')
     Object.defineProperty(document, 'cookie', {

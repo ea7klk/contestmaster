@@ -24,6 +24,7 @@ from backend.app.api.auth import (
     issue_session,
     normalize_email,
     set_session_cookies,
+    verify_password,
 )
 from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.audit import record_audit_event
@@ -59,6 +60,11 @@ class PasswordResetConsume(BaseModel):
     password: str = Field(min_length=12, max_length=1024)
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+
+
 class UserCreateRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -69,6 +75,7 @@ class UserCreateRequest(BaseModel):
     role: str = Field(
         default="contest_admin", pattern="^(contest_admin|contest_manager|global_administrator)$"
     )
+    must_change_password: bool = False
     audit_reason: str | None = Field(default=None, max_length=2000)
 
 
@@ -102,6 +109,7 @@ def _user_response(user: SystemUser) -> dict[str, object]:
         if user.role is SystemRole.GLOBAL_ADMINISTRATOR
         else "contest_admin",
         "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
     }
 
 
@@ -141,6 +149,53 @@ def login(
     return {"user": _user_response(user), "csrf_token": csrf_token}
 
 
+@router.post("/change-password", responses=API_ERROR_RESPONSES)
+def change_system_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    response: Response,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    user = session.get(SystemUser, actor.user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Authentication is required.")
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="The current password is incorrect.")
+    if verify_password(payload.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=422, detail="The new password must differ from the current password."
+        )
+    try:
+        user.password_hash = hash_password(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    user.must_change_password = False
+    now = datetime.now(UTC)
+    for existing in session.scalars(
+        select(SystemSession).where(
+            SystemSession.user_id == user.id, SystemSession.revoked_at.is_(None)
+        )
+    ):
+        existing.revoked_at = now
+    session_token, csrf_token, _record = issue_session(session, user)
+    record_audit_event(
+        session,
+        actor_user_id=user.id,
+        action="system_user.password_changed",
+        target_type="system_user",
+        target_id=user.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    set_session_cookies(response, session_token, csrf_token)
+    return {
+        "status": "password_updated",
+        "user": _user_response(user),
+        "csrf_token": csrf_token,
+    }
+
+
 @router.post("/logout", responses=API_ERROR_RESPONSES)
 def logout(
     request: Request,
@@ -175,6 +230,7 @@ def current_user(actor: AuthenticatedUser) -> dict[str, object]:
         "role": "global_administrator"
         if actor.role is SystemRole.GLOBAL_ADMINISTRATOR
         else "contest_admin",
+        "must_change_password": actor.must_change_password,
     }
 
 
@@ -266,6 +322,7 @@ def consume_system_password_reset(
             status_code=400, detail="The password reset link is invalid or expired."
         )
     user.password_hash = hash_password(payload.password)
+    user.must_change_password = False
     record.consumed_at = now
     for previous in session.scalars(
         select(SystemPasswordReset).where(
@@ -306,6 +363,7 @@ def create_contest_manager(
             else SystemRole.CONTEST_MANAGER
         ),
         password_hash=password_hash,
+        must_change_password=payload.must_change_password,
     )
     session.add(user)
     try:

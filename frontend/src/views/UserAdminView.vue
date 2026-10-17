@@ -9,7 +9,7 @@ const search = ref('')
 const busy = ref(false)
 const error = ref('')
 const message = ref('')
-const draft = ref({ username: '', email: '', display_name: '', password: '', role: 'contest_admin' as 'contest_admin' | 'global_administrator' })
+const draft = ref({ username: '', email: '', display_name: '', password: '', role: 'contest_admin' as 'contest_admin' | 'global_administrator', must_change_password: false })
 
 async function load() {
   busy.value = true
@@ -35,7 +35,7 @@ async function create() {
   message.value = ''
   try {
     await createSystemUser(draft.value)
-    draft.value = { username: '', email: '', display_name: '', password: '', role: 'contest_admin' }
+    draft.value = { username: '', email: '', display_name: '', password: '', role: 'contest_admin', must_change_password: false }
     message.value = 'The account was created.'
     await load()
   } catch (cause) { error.value = cause instanceof ApiError ? cause.message : 'The account could not be created.' }
@@ -65,6 +65,7 @@ onMounted(load)
         <label for="new-user-display">{{ $tr('Display name') }}<input id="new-user-display" v-model.trim="draft.display_name" required maxlength="160" /></label>
         <label for="new-user-password">{{ $tr('Temporary password (at least 12 characters)') }}<input id="new-user-password" v-model="draft.password" type="password" required minlength="12" autocomplete="new-password" /></label>
         <label for="new-user-role">{{ $tr('Role') }}<select id="new-user-role" v-model="draft.role"><option value="contest_admin">{{ $tr('Contest admin') }}</option><option value="global_administrator">{{ $tr('Global administrator') }}</option></select></label>
+        <label class="user-admin-force-password" for="new-user-force-password"><input id="new-user-force-password" v-model="draft.must_change_password" type="checkbox" /><span>{{ $tr('Require password change at first sign-in') }}</span></label>
       </div>
       <div class="user-admin-form-actions"><button class="primary-button" type="submit" :disabled="busy">{{ $tr('Create account') }}</button></div>
     </form>
@@ -111,6 +112,19 @@ onMounted(load)
   display: grid;
   gap: 0.4rem;
   font-weight: 650;
+}
+
+.user-admin-form-grid .user-admin-force-password {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  align-self: center;
+}
+
+.user-admin-force-password input {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0.2rem 0 0;
 }
 
 .user-admin-form-grid input,

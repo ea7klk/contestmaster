@@ -5,6 +5,7 @@ import {
   type ContestSummaryItem,
 } from './publicContestDescription'
 import { setLocale, supportedLocales } from '../i18n'
+import type { RulesetDraft } from '../api/rulesets'
 
 function summaryText(item: ContestSummaryItem): string {
   return typeof item === 'string'
@@ -18,7 +19,7 @@ function summaryIntroduction(item: ContestSummaryItem): string {
 
 describe('describeContestRuleset', () => {
   it('generates a two-QSO Cabrillo sample using the contest ruleset', () => {
-    const ruleset = {
+    const ruleset: RulesetDraft = {
       schema_version: 2,
       ruleset_key: 'sample-cabrillo',
       version: '2026',
@@ -67,7 +68,7 @@ describe('describeContestRuleset', () => {
           },
         },
       ],
-    } as const
+    }
     const contest = {
       name: 'Autumn Test',
       slug: 'autumn-test',

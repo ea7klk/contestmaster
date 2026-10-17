@@ -45,6 +45,15 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 async function refreshIdentity() {
   try {
     staffUser.value = await getCurrentUser()
+    if (
+      staffUser.value.must_change_password &&
+      route.path !== '/change-password'
+    ) {
+      await router.replace({
+        path: '/change-password',
+        query: { next: route.fullPath },
+      })
+    }
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 401) {
       staffUser.value = null

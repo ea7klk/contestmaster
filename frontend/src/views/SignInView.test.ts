@@ -11,6 +11,7 @@ async function mountSignIn(path = '/sign-in?next=/manage/contests') {
     routes: [
       { path: '/sign-in', component: SignInView },
       { path: '/reset-password', component: SignInView },
+      { path: '/change-password', component: { template: '<p>change password</p>' } },
       {
         path: '/manage/contests',
         component: { template: '<p>manager home</p>' },
@@ -43,6 +44,7 @@ describe('SignInView', () => {
               email: 'manager@example.test',
               display_name: 'Contest Manager',
               role: 'contest_manager',
+              must_change_password: false,
             },
             csrf_token: 'csrf-secret',
           }),
@@ -59,6 +61,28 @@ describe('SignInView', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(router.currentRoute.value.path).toBe('/manage/contests')
+  })
+
+  it('routes an account with a required first-login password change to the change screen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      user: {
+        id: 8,
+        username: 'manager',
+        email: 'manager@example.test',
+        display_name: 'Contest Manager',
+        role: 'contest_admin',
+        must_change_password: true,
+      },
+      csrf_token: 'csrf-secret',
+    }), { status: 200 })))
+    const { wrapper, router } = await mountSignIn('/sign-in?next=/admin/users')
+    await wrapper.get('input[name="email"]').setValue('manager@example.test')
+    await wrapper.get('input[name="password"]').setValue('initial password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/change-password')
+    expect(router.currentRoute.value.query.next).toBe('/admin/users')
   })
 
   it('shows a server error accessibly without navigating', async () => {

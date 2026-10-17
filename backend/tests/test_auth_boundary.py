@@ -49,7 +49,8 @@ def identity_database(monkeypatch):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     monkeypatch.setattr(
-        "backend.app.api.auth.get_settings", lambda: SimpleNamespace(secure_cookies=False)
+        "backend.app.api.auth.get_settings",
+        lambda: SimpleNamespace(secure_cookies=False, api_prefix="/api/v1"),
     )
 
     def override_session():
@@ -70,6 +71,7 @@ def add_user(
     role=SystemRole.GLOBAL_ADMINISTRATOR,
     username="admin",
     email="admin@example.test",
+    must_change_password=False,
 ):
     with factory.begin() as session:
         user = SystemUser(
@@ -78,6 +80,7 @@ def add_user(
             display_name=username,
             role=role,
             password_hash=hash_password("Correct horse battery staple"),
+            must_change_password=must_change_password,
         )
         session.add(user)
         session.flush()
@@ -180,6 +183,72 @@ def test_login_issues_http_only_session_and_csrf_cookie_then_me_returns_role(ide
     me = client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["email"] == "admin@example.test"
+    assert me.json()["must_change_password"] is False
+
+
+def test_first_login_password_change_is_required_and_completes_with_a_new_session(
+    identity_database,
+):
+    add_user(identity_database)
+    admin = TestClient(app)
+    assert admin.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+    ).status_code == 200
+    created = admin.post(
+        "/api/v1/auth/admin/users",
+        headers={"X-CSRF-Token": admin.cookies.get("contestmaster_csrf")},
+        json={
+            "username": "first-login-user",
+            "email": "first-login@example.test",
+            "display_name": "First Login User",
+            "password": "Initial account password",
+            "role": "contest_admin",
+            "must_change_password": True,
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["must_change_password"] is True
+
+    client = TestClient(app)
+    signed_in = client.post(
+        "/api/v1/auth/login",
+        json={"email": "first-login@example.test", "password": "Initial account password"},
+    )
+    assert signed_in.status_code == 200
+    assert signed_in.json()["user"]["must_change_password"] is True
+    assert client.get("/api/v1/auth/me").json()["must_change_password"] is True
+    assert client.get("/api/v1/contests").status_code == 403
+
+    invalid_change = client.post(
+        "/api/v1/auth/change-password",
+        headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
+        json={
+            "current_password": "wrong current password",
+            "new_password": "new secure account password",
+        },
+    )
+    assert invalid_change.status_code == 400
+
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
+        json={
+            "current_password": "Initial account password",
+            "new_password": "new secure account password",
+        },
+    )
+    assert changed.status_code == 200
+    assert changed.json()["user"]["must_change_password"] is False
+    assert client.get("/api/v1/auth/me").json()["must_change_password"] is False
+    assert client.get("/api/v1/contests").status_code == 200
+    with identity_database() as session:
+        user_id = created.json()["id"]
+        user = session.get(SystemUser, user_id)
+        sessions = list(session.query(SystemSession).filter(SystemSession.user_id == user_id))
+        assert user is not None and user.must_change_password is False
+        assert sum(item.revoked_at is None for item in sessions) == 1
+        assert sum(item.revoked_at is not None for item in sessions) == 1
 
 
 def test_login_rejects_invalid_credentials_without_creating_session(identity_database):
@@ -294,7 +363,7 @@ def test_global_admin_can_create_manager_but_manager_cannot(identity_database):
 def test_global_password_reset_revokes_sessions_and_last_admin_cannot_be_disabled(
     identity_database, monkeypatch
 ):
-    admin_id = add_user(identity_database)
+    admin_id = add_user(identity_database, must_change_password=True)
     delivered: list[str] = []
     monkeypatch.setattr(
         identity_api,
@@ -337,13 +406,12 @@ def test_global_password_reset_revokes_sessions_and_last_admin_cannot_be_disable
         ).status_code
         == 400
     )
-    assert (
-        client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@example.test", "password": "a replacement password for admin"},
-        ).status_code
-        == 200
+    signed_in = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.test", "password": "a replacement password for admin"},
     )
+    assert signed_in.status_code == 200
+    assert signed_in.json()["user"]["must_change_password"] is False
     rejected = client.patch(
         f"/api/v1/auth/admin/users/{admin_id}",
         headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
