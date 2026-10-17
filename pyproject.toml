@@ -23,7 +23,7 @@ contestmaster-email = "backend.app.email_cli:main"
 [dependency-groups]
 dev = [
     "httpx2>=2,<3",
-    "pytest>=8.3,<9",
+    "pytest>=8.3,<10",
     "ruff>=0.9,<1",
 ]
 
