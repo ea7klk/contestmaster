@@ -49,6 +49,8 @@ describe('RuleSchemaEditor', () => {
   it('renders category mapping dimensions and choices as constrained dropdowns', async () => {
     const schema: JsonSchema = {
       type: 'object',
+      description:
+        "External values map to choices declared by this contest's dimensions.",
       patternProperties: { '^[a-z][a-z0-9_.-]*$': { type: 'string' } },
     }
     const wrapper = mount(RuleSchemaEditor, {
@@ -67,6 +69,9 @@ describe('RuleSchemaEditor', () => {
       },
     })
 
+    expect(wrapper.text()).toContain(
+      "External values map to choices declared by this contest's dimensions.",
+    )
     await wrapper.get('button.secondary-button').trigger('click')
     expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual({
       power: 'low',

@@ -379,6 +379,27 @@ def test_format_mapping_binds_category_values_to_the_selected_wwrof_header():
         RulesetDefinition.model_validate(payload)
 
 
+def test_format_mapping_destinations_must_be_declared_contest_dimension_choices():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+
+    format_rule["category_mappings"][0]["category_values"] = {"operator": "unconfigured"}
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any(
+        "Unknown category value operator=unconfigured" in str(issue["message"])
+        for issue in error.value.errors
+    )
+
+    format_rule["category_mappings"][0]["category_values"] = {"unconfigured_dimension": "single"}
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any(
+        "Unknown category value unconfigured_dimension=single" in str(issue["message"])
+        for issue in error.value.errors
+    )
+
+
 def test_ruleset_persistence_rejects_omitted_cabrillo_qso_columns_before_saving():
     payload = valid_payload()
     format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")

@@ -106,15 +106,29 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
         assert contest["log_submission_cutoff_at"].startswith("2099-")
         ruleset = RulesetDefinition.model_validate(package["ruleset"])
         validate_ruleset(ruleset)
+        category_choices = {
+            dimension.key: {choice.key for choice in dimension.choices}
+            for configured in ruleset.rules
+            if configured.rule.kind == "categories"
+            for dimension in configured.rule.dimensions
+        }
+        for configured in ruleset.rules:
+            if configured.rule.kind != "format_mapping":
+                continue
+            for mapping in configured.rule.category_mappings:
+                assert mapping.external_field
+                assert mapping.category_values
+                assert all(
+                    dimension in category_choices and choice in category_choices[dimension]
+                    for dimension, choice in mapping.category_values.items()
+                )
         formats = [rule.rule.format for rule in ruleset.rules if rule.rule.kind == "format_mapping"]
         assert formats == [expected_format]
         if expected_format == "cabrillo":
             format_rule = next(
                 rule.rule for rule in ruleset.rules if rule.rule.kind == "format_mapping"
             )
-            assert format_rule.qso_columns[: len(DEFAULT_QSO_COLUMNS)] == list(
-                DEFAULT_QSO_COLUMNS
-            )
+            assert format_rule.qso_columns[: len(DEFAULT_QSO_COLUMNS)] == list(DEFAULT_QSO_COLUMNS)
             assert format_rule.qso_columns[len(DEFAULT_QSO_COLUMNS) :] in ([], ["transmitter"])
             assert len(format_rule.qso_columns) == len(set(format_rule.qso_columns))
             assert format_rule.header_fields == {
@@ -172,11 +186,21 @@ def test_all_documented_ruleset_drafts_validate():
     for path in sorted((ROOT.parent / "ruleset-drafts").glob("*.json")):
         definition = RulesetDefinition.model_validate(json.loads(path.read_text(encoding="utf-8")))
         validate_ruleset(definition)
+        category_choices = {
+            dimension.key: {choice.key for choice in dimension.choices}
+            for configured in definition.rules
+            if configured.rule.kind == "categories"
+            for dimension in configured.rule.dimensions
+        }
         for configured in definition.rules:
-            if configured.rule.kind == "format_mapping" and configured.rule.format == "cabrillo":
+            if configured.rule.kind != "format_mapping":
+                continue
+            for mapping in configured.rule.category_mappings:
+                assert mapping.external_field, path.name
+                assert mapping.category_values, path.name
                 assert all(
-                    mapping.external_field
-                    for mapping in configured.rule.category_mappings
+                    dimension in category_choices and choice in category_choices[dimension]
+                    for dimension, choice in mapping.category_values.items()
                 ), path.name
 
 

@@ -436,7 +436,12 @@ class CategoryMapping(StrictModel):
         "CATEGORY-TIME",
         "CATEGORY-TRANSMITTER",
         "CATEGORY-OVERLAY",
-    ]
+    ] = Field(
+        description=(
+            "External category tag in the uploaded log. For Cabrillo, use the WWROF v3 "
+            "CATEGORY-* tags; this identifies the source value and is not a contest dimension."
+        )
+    )
     external_value: Literal[
         "ASSISTED",
         "NON-ASSISTED",
@@ -505,8 +510,21 @@ class CategoryMapping(StrictModel):
         "YOUTH",
         "NOVICE-TECH",
         "YL",
-    ] = Field(description="A category value defined by the WWROF Cabrillo v3 header specification.")
-    category_values: dict[Identifier, Identifier] = Field(min_length=1, max_length=40)
+    ] = Field(
+        description=(
+            "External category value accepted by the selected WWROF Cabrillo v3 tag. "
+            "Map it to a contest-defined dimension choice below."
+        )
+    )
+    category_values: dict[Identifier, Identifier] = Field(
+        min_length=1,
+        max_length=40,
+        description=(
+            "Destination in this contest: each key must be a configured category dimension "
+            "and each value one of that dimension's declared choices. These destinations "
+            "are contest-specific, not a separate predefined category list."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -600,7 +618,14 @@ CabrilloQsoColumn = Literal[
 class FormatMappingRule(StrictModel):
     kind: Literal["format_mapping"]
     format: Literal["cabrillo", "adif", "csv", "native"]
-    category_mappings: list[CategoryMapping] = Field(default_factory=list, max_length=500)
+    category_mappings: list[CategoryMapping] = Field(
+        default_factory=list,
+        max_length=500,
+        description=(
+            "Translate external category tags and values found in an uploaded log into "
+            "the choices declared by this contest's category dimensions."
+        ),
+    )
     header_fields: dict[Literal["callsign", "contest"], Literal["CALLSIGN", "CONTEST"]] = Field(
         default_factory=dict,
         max_length=2,
