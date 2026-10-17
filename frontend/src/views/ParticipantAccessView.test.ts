@@ -169,6 +169,61 @@ describe('ParticipantAccessView', () => {
     )
   })
 
+  it('promotes an attached callsign and protects the active primary from removal', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/participants/auth/entries')) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 })
+      }
+      if (url.endsWith('/participants/auth/me')) {
+        return new Response(
+          JSON.stringify({
+            id: 7,
+            email: 'pilot@example.test',
+            display_name: 'Pilot',
+            callsigns: [
+              { id: 1, callsign: 'EA7ABC', is_primary: true },
+              { id: 2, callsign: 'K1XYZ', is_primary: false },
+            ],
+            emails: [],
+          }),
+          { status: 200 },
+        )
+      }
+      expect(url).toContain('/participants/auth/callsigns/2/primary')
+      expect(init?.method).toBe('PATCH')
+      return new Response(
+        JSON.stringify({ id: 2, callsign: 'K1XYZ', is_primary: true }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { wrapper } = await mountParticipant('/participant/entries')
+    await flushPromises()
+
+    const primaryRow = () =>
+      wrapper
+        .findAll('.participant-callsigns li')
+        .find((item) => item.text().includes('K1XYZ'))!
+    expect(wrapper.text()).toContain('EA7ABC')
+    expect(primaryRow().text()).toContain('Set as primary')
+    await primaryRow().get('button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="status"]').text()).toContain(
+      'Primary callsign updated.',
+    )
+    expect(primaryRow().text()).toContain('Primary')
+    expect(primaryRow().find('button').exists()).toBe(false)
+    expect(
+      wrapper
+        .findAll('.participant-callsigns li')
+        .find((item) => item.text().includes('EA7ABC'))
+        ?.text(),
+    ).toContain('Set as primary')
+    await expectAccessible(wrapper.element)
+  })
+
   it('consumes the emailed token, removes it from the URL, and lists scoped entries', async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {

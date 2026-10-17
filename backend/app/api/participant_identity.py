@@ -565,6 +565,38 @@ def add_participant_callsign(
     return {"id": item.id, "callsign": item.callsign_submitted, "is_primary": False}
 
 
+@router.patch("/callsigns/{callsign_id}/primary")
+def promote_participant_callsign(
+    callsign_id: int,
+    actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    item = session.scalar(
+        select(ParticipantCallsign).where(
+            ParticipantCallsign.participant_id == actor.participant_id,
+            ParticipantCallsign.id == callsign_id,
+        )
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Callsign not found.")
+    participant = session.get(Participant, actor.participant_id)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Participant account not found.")
+
+    for callsign in session.scalars(
+        select(ParticipantCallsign).where(
+            ParticipantCallsign.participant_id == actor.participant_id,
+            ParticipantCallsign.is_primary.is_(True),
+        )
+    ):
+        callsign.is_primary = callsign.id == item.id
+    item.is_primary = True
+    participant.callsign_submitted = item.callsign_submitted
+    participant.callsign_normalized = item.callsign_normalized
+    session.commit()
+    return {"id": item.id, "callsign": item.callsign_submitted, "is_primary": True}
+
+
 @router.delete("/callsigns/{callsign_id}", status_code=204)
 def remove_participant_callsign(
     callsign_id: int,

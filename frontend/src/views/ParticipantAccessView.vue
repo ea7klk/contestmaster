@@ -10,6 +10,7 @@ import {
   resetParticipantPassword,
   getParticipantProfile,
   addParticipantCallsign,
+  promoteParticipantCallsign,
   removeParticipantCallsign,
   updateParticipantProfile,
   requestParticipantEmailChange,
@@ -22,7 +23,10 @@ import {
   type ParticipantEntry,
 } from '../api/participantIdentity'
 import { formatUtcDateTime } from '../i18n'
-import { setParticipantSession } from '../state/participantSession'
+import {
+  participantSession,
+  setParticipantSession,
+} from '../state/participantSession'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,6 +138,33 @@ async function removeCallsign(item: {
       cause instanceof ApiError
         ? cause.message
         : 'The callsign could not be removed.'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function promoteCallsign(item: { id: number; callsign: string }) {
+  busy.value = true
+  error.value = ''
+  message.value = ''
+  try {
+    const promoted = await promoteParticipantCallsign(item.id)
+    profileCallsigns.value = profileCallsigns.value.map((candidate) => ({
+      ...candidate,
+      is_primary: candidate.id === promoted.id,
+    }))
+    if (participantSession.value) {
+      setParticipantSession({
+        ...participantSession.value,
+        callsigns: profileCallsigns.value,
+      })
+    }
+    message.value = 'Primary callsign updated.'
+  } catch (cause) {
+    error.value =
+      cause instanceof ApiError
+        ? cause.message
+        : 'The primary callsign could not be changed.'
   } finally {
     busy.value = false
   }
@@ -362,15 +393,24 @@ onMounted(async () => {
               {{ $tr('Primary') }}
             </span>
           </span>
-          <button
-            v-if="!item.is_primary"
-            type="button"
-            class="text-button"
-            :disabled="busy"
-            @click="removeCallsign(item)"
-          >
-            {{ $tr('Remove') }}
-          </button>
+          <div v-if="!item.is_primary" class="participant-callsign-actions">
+            <button
+              type="button"
+              class="text-button"
+              :disabled="busy"
+              @click="promoteCallsign(item)"
+            >
+              {{ $tr('Set as primary') }}
+            </button>
+            <button
+              type="button"
+              class="text-button"
+              :disabled="busy"
+              @click="removeCallsign(item)"
+            >
+              {{ $tr('Remove') }}
+            </button>
+          </div>
         </li>
       </ul>
       <form class="inline-form" @submit.prevent="addCallsign">
@@ -831,6 +871,14 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   background: var(--color-brand-wash);
+}
+
+.participant-callsign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .participant-primary-label,

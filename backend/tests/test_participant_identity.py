@@ -274,6 +274,47 @@ def test_participant_registration_requires_email_verification_and_supports_passw
         headers={"X-CSRF-Token": csrf},
     )
     assert added.status_code == 201
+    with participant_database.begin() as session:
+        other = Participant(display_name="Another pilot")
+        session.add(other)
+        session.flush()
+        other_callsign = ParticipantCallsign(
+            participant_id=other.id,
+            callsign_submitted="K2RST",
+            callsign_normalized="K2RST",
+            is_primary=True,
+        )
+        session.add(other_callsign)
+        session.flush()
+        other_callsign_id = other_callsign.id
+
+    not_owned = client.patch(
+        f"/api/v1/participants/auth/callsigns/{other_callsign_id}/primary",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert not_owned.status_code == 404
+
+    promoted = client.patch(
+        f"/api/v1/participants/auth/callsigns/{added.json()['id']}/primary",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert promoted.status_code == 200
+    assert promoted.json() == {
+        "id": added.json()["id"],
+        "callsign": "K1XYZ",
+        "is_primary": True,
+    }
+    assert [
+        (item["callsign"], item["is_primary"])
+        for item in client.get("/api/v1/participants/auth/me").json()["callsigns"]
+    ] == [("K1XYZ", True), ("EA7ABC", False)]
+    assert (
+        client.delete(
+            f"/api/v1/participants/auth/callsigns/{added.json()['id']}",
+            headers={"X-CSRF-Token": csrf},
+        ).status_code
+        == 409
+    )
     assert (
         client.patch(
             "/api/v1/participants/auth/me",
@@ -284,14 +325,15 @@ def test_participant_registration_requires_email_verification_and_supports_passw
     )
     assert (
         client.delete(
-            f"/api/v1/participants/auth/callsigns/{added.json()['id']}",
+            "/api/v1/participants/auth/callsigns/1",
             headers={"X-CSRF-Token": csrf},
         ).status_code
         == 204
     )
     assert (
         client.delete(
-            "/api/v1/participants/auth/callsigns/1", headers={"X-CSRF-Token": csrf}
+            f"/api/v1/participants/auth/callsigns/{added.json()['id']}",
+            headers={"X-CSRF-Token": csrf},
         ).status_code
         == 409
     )
@@ -304,9 +346,10 @@ def test_participant_registration_requires_email_verification_and_supports_passw
         json={"email": "radio@example.test", "password": "correct horse battery staple"},
     )
     assert signed_in.status_code == 200
+    assert signed_in.json()["participant"]["callsign"] == "K1XYZ"
     assert [
         item["callsign"] for item in client.get("/api/v1/participants/auth/me").json()["callsigns"]
-    ] == ["EA7ABC"]
+    ] == ["K1XYZ"]
 
 
 def test_participant_password_reset_is_single_use_and_revokes_sessions(

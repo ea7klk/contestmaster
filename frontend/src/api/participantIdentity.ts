@@ -71,6 +71,13 @@ export async function addParticipantCallsign(callsign: string) {
   )
 }
 
+export async function promoteParticipantCallsign(callsignId: number) {
+  return apiRequest<{ id: number; callsign: string; is_primary: true }>(
+    `/participants/auth/callsigns/${callsignId}/primary`,
+    { method: 'PATCH' },
+  )
+}
+
 export async function removeParticipantCallsign(callsignId: number) {
   return apiRequest<void>(`/participants/auth/callsigns/${callsignId}`, { method: 'DELETE' })
 }
