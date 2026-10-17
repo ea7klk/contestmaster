@@ -719,6 +719,7 @@
   "s_b85dbc06": "Multiplicador",
   "s_b8866fbd": "Entre logs",
   "s_b8965b2a": "Confirmar la contraseña nueva",
+  "s_b8dde628": "El conjunto de reglas guardado tiene una plantilla incompleta de columnas QSO de Cabrillo. Este ejemplo usa las columnas estándar de Cabrillo; los registros podrían rechazarse hasta que un administrador del concurso corrija el conjunto de reglas.",
   "s_b961ffe2": "Hay ejes separados de clasificación de entradas, como operador, potencia, banda, modo o asistencia. Sus elecciones son los valores que los participantes pueden seleccionar y juntos determinan las categorías de resultados. Las claves estables se utilizan en reglas y datos guardados; Las etiquetas se muestran a los participantes. Las etiquetas integradas siguen sus ajustes preestablecidos; Las etiquetas personalizadas se pueden cambiar sin cambiar la clave estable. Marque una dimensión requerida solo si el patrocinador requiere que el participante elija una. “Requiere declaración” significa que la elección necesita una declaración de entrada, como una sección o clase de estación. Utilice grupos mutuamente excluyentes sólo para combinaciones que el patrocinador no permita.",
   "s_b963b2c4": "Estas opciones son independientes. Los avisos solo se envían después de publicar los resultados y contienen un enlace a la clasificación pública.",
   "s_b990a024": "Si la cuenta cumple los requisitos, recibirás pronto un correo para restablecer la contraseña.",

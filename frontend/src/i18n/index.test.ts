@@ -93,6 +93,24 @@ describe('localization foundation', () => {
     await setLocale('en', undefined)
   })
 
+  it('translates the warning for incomplete saved Cabrillo templates', async () => {
+    const source =
+      'The saved ruleset has an incomplete Cabrillo QSO column template. This example uses standard Cabrillo columns; log uploads may be rejected until a contest manager fixes the ruleset.'
+    const expected = {
+      en: source,
+      de: 'Der gespeicherte Regelsatz enthält eine unvollständige Cabrillo-QSO-Spaltenvorlage. Dieses Beispiel verwendet die standardmäßigen Cabrillo-Spalten; Log-Uploads können abgelehnt werden, bis ein Contest-Manager den Regelsatz korrigiert.',
+      fr: 'Le jeu de règles enregistré possède un modèle de colonnes QSO Cabrillo incomplet. Cet exemple utilise les colonnes Cabrillo standard ; les journaux peuvent être rejetés tant qu’un responsable du concours n’a pas corrigé le jeu de règles.',
+      es: 'El conjunto de reglas guardado tiene una plantilla incompleta de columnas QSO de Cabrillo. Este ejemplo usa las columnas estándar de Cabrillo; los registros podrían rechazarse hasta que un administrador del concurso corrija el conjunto de reglas.',
+      it: 'Il regolamento salvato contiene un modello incompleto di colonne QSO Cabrillo. Questo esempio usa le colonne Cabrillo standard; i log potrebbero essere rifiutati finché un responsabile del contest non corregge il regolamento.',
+    } as const
+
+    for (const locale of supportedLocales) {
+      await setLocale(locale, undefined)
+      expect(translateText(source)).toBe(expected[locale])
+    }
+    await setLocale('en', undefined)
+  })
+
   it('uses locale-aware UTC timestamps and integer-only number formatting', async () => {
     await setLocale('de', undefined)
     expect(formatUtcDateTime('2026-10-17T14:05:00Z')).toContain('UTC')

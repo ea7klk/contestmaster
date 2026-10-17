@@ -8,6 +8,7 @@ import { renderContestMarkdown } from './contestMarkdown'
 import {
   describeContestRuleset,
   generateCabrilloExample,
+  hasIncompleteCabrilloQsoColumns,
   type ContestSummaryItem,
   type SummaryWithBullets,
 } from './publicContestDescription'
@@ -36,6 +37,9 @@ const cabrilloExample = computed(() => {
     ends_at: current.ends_at,
   })
 })
+const cabrilloExampleUsesStandardColumns = computed(() =>
+  hasIncompleteCabrilloQsoColumns(contest.value?.ruleset ?? null),
+)
 function hasBullets(item: ContestSummaryItem): item is SummaryWithBullets {
   return typeof item !== 'string'
 }
@@ -128,6 +132,13 @@ onMounted(async () => {
           <h3 id="cabrillo-example-title">
             Cabrillo example with two valid QSO lines
           </h3>
+          <p v-if="cabrilloExampleUsesStandardColumns" class="notice">
+            {{
+              $tr(
+                'The saved ruleset has an incomplete Cabrillo QSO column template. This example uses standard Cabrillo columns; log uploads may be rejected until a contest manager fixes the ruleset.',
+              )
+            }}
+          </p>
           <pre><code>{{ cabrilloExample }}</code></pre>
         </section>
       </section>

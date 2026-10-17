@@ -122,6 +122,32 @@ const cabrilloQsoColumnAliases: Record<string, string> = {
   exch_rcvd: 'exchange_received',
 }
 
+function configuredCabrilloQsoColumns(formatRule: JsonRecord): string[] {
+  return stringList(formatRule.qso_columns).map(
+    (column) =>
+      cabrilloQsoColumnAliases[column.toLowerCase()] ?? column.toLowerCase(),
+  )
+}
+
+export function hasIncompleteCabrilloQsoColumns(
+  ruleset: RulesetDraft | null,
+): boolean {
+  if (!ruleset || !Array.isArray(ruleset.rules)) return false
+  const formatConfig = ruleset.rules.find(
+    (configured) =>
+      isRecord(configured) &&
+      isRecord(configured.rule) &&
+      configured.rule.kind === 'format_mapping' &&
+      stringValue(configured.rule.format).toLowerCase() === 'cabrillo',
+  )
+  if (!formatConfig || !isRecord(formatConfig.rule)) return false
+  const columns = configuredCabrilloQsoColumns(formatConfig.rule)
+  return (
+    columns.length > 0 &&
+    !defaultCabrilloQsoColumns.every((column) => columns.includes(column))
+  )
+}
+
 const sampleFrequencyByBand: Record<string, number> = {
   '160m': 1810,
   '80m': 3560,
@@ -411,11 +437,9 @@ export function generateCabrilloExample(
     headerLines.push(`${header}: ${value}`)
   }
 
-  const configuredColumns = stringList(formatConfig.rule.qso_columns).map(
-    (column) =>
-      cabrilloQsoColumnAliases[column.toLowerCase()] ?? column.toLowerCase(),
-  )
-  const columns = configuredColumns.length
+  const configuredColumns = configuredCabrilloQsoColumns(formatConfig.rule)
+  const columns = configuredColumns.length &&
+    defaultCabrilloQsoColumns.every((column) => configuredColumns.includes(column))
     ? configuredColumns
     : defaultCabrilloQsoColumns
   const extraColumns = columns.filter(

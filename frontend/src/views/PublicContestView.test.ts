@@ -6,6 +6,7 @@ import { expectAccessible } from '../test/a11y'
 import { setLocale } from '../i18n'
 import type { RulesetDraft } from '../api/rulesets'
 import cqWwSsbDraft from '../../../documentation/ruleset-drafts/cq-ww-ssb.json'
+import rsgbFt4Draft from '../../../documentation/ruleset-drafts/rsgb-ft4-international-activity-day.json'
 import PublicContestView from './PublicContestView.vue'
 
 const details = {
@@ -119,6 +120,46 @@ describe('PublicContestView', () => {
 
     const example = wrapper.get('.cabrillo-example')
     expect(example.get('pre code').text().match(/^QSO: \d+ PH /gm)).toHaveLength(2)
+  })
+
+  it('shows a standard sample and warning for the copied database ruleset', async () => {
+    const ruleset = structuredClone(rsgbFt4Draft) as unknown as RulesetDraft
+    const format = ruleset.rules.find(
+      (configured) => configured.rule.kind === 'format_mapping',
+    )
+    if (!format || format.rule.kind !== 'format_mapping')
+      throw new Error('Expected a Cabrillo format mapping in the fixture')
+    format.rule.qso_columns = [
+      'band',
+      'mode',
+      'callsign',
+      'time_on',
+      'exchange_sent',
+      'exchange_received',
+    ]
+    format.rule.category_mappings = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ ...details, ruleset }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('.cabrillo-example pre code').text()).toContain(' DG ')
+    expect(wrapper.get('.cabrillo-example .notice').text()).toContain(
+      'incomplete Cabrillo QSO column template',
+    )
   })
 
   it('updates generated summaries when the selected language changes', async () => {

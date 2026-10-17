@@ -719,6 +719,7 @@
   "s_b85dbc06": "Multiplicateur",
   "s_b8866fbd": "Entre logs",
   "s_b8965b2a": "Confirmer le nouveau mot de passe",
+  "s_b8dde628": "Le jeu de règles enregistré possède un modèle de colonnes QSO Cabrillo incomplet. Cet exemple utilise les colonnes Cabrillo standard ; les journaux peuvent être rejetés tant qu’un responsable du concours n’a pas corrigé le jeu de règles.",
   "s_b961ffe2": "sont des axes de classification d'entrée distincts, tels que l'opérateur, la puissance, la bande, le mode ou l'assistance. Leurs choix constituent les valeurs que les participants peuvent sélectionner et, ensemble, ils déterminent les catégories de résultats. Les clés stables sont utilisées dans les règles et les données enregistrées ; des étiquettes sont présentées aux participants. Les étiquettes intégrées suivent leurs préréglages ; les étiquettes personnalisées peuvent être modifiées sans changer la clé stable. Marquez une dimension obligatoire uniquement si le sponsor demande à un participant d'en choisir une. « Nécessite une déclaration » signifie que le choix nécessite une déclaration d'entrée telle qu'une section ou une classe de station. Utilisez des groupes mutuellement exclusifs uniquement pour les combinaisons interdites par le sponsor.",
   "s_b963b2c4": "Ces choix sont indépendants. Les notifications ne sont envoyées qu'après la publication des résultats publics et contiennent un lien vers le classement public.",
   "s_b990a024": "Si le compte est éligible, un e-mail de réinitialisation du mot de passe arrivera bientôt.",
