@@ -104,7 +104,7 @@ def build_logs() -> dict[str, str]:
             )
         operator = "MULTI-OP"
         power = _power(station_index)
-        overlay = "ROOKIE" if station_index % 5 == 0 else "NONE"
+        overlay = "ROOKIE" if station_index % 5 == 0 else None
         lines = [
             "START-OF-LOG: 3.0",
             "CREATED-BY: Contestmaster advanced synthetic fixture",
@@ -116,7 +116,7 @@ def build_logs() -> dict[str, str]:
             "CATEGORY-BAND: ALL",
             "CATEGORY-MODE: CW",
             "CATEGORY-TRANSMITTER: TWO",
-            f"CATEGORY-OVERLAY: {overlay}",
+            *([f"CATEGORY-OVERLAY: {overlay}"] if overlay else []),
             *qso_lines,
             "END-OF-LOG:",
             "",

@@ -22,11 +22,40 @@ function catalogResponse() {
       description: `${key} rule`,
       execution: 'automatic',
       required: true,
-      schema: {
-        type: 'object',
-        properties: { kind: { const: key, type: 'string' } },
-        required: ['kind'],
-      },
+      schema:
+        key === 'format_mapping'
+          ? {
+              type: 'object',
+              properties: {
+                kind: { const: key, type: 'string' },
+                format: { type: 'string', enum: ['cabrillo', 'adif'] },
+                qso_columns: {
+                  type: 'array',
+                  items: {
+                    type: 'string',
+                    enum: [
+                      'frequency',
+                      'mode',
+                      'date',
+                      'time',
+                      'callsign_sent',
+                      'rst_sent',
+                      'exchange_sent',
+                      'callsign_received',
+                      'rst_received',
+                      'exchange_received',
+                      'transmitter',
+                    ],
+                  },
+                },
+              },
+              required: ['kind', 'format'],
+            }
+          : {
+              type: 'object',
+              properties: { kind: { const: key, type: 'string' } },
+              required: ['kind'],
+            },
     })),
   }
 }
@@ -41,6 +70,45 @@ afterEach(() => {
 })
 
 describe('RulesetComposerView', () => {
+  it('seeds a new Cabrillo mapping with the complete WWROF QSO default order', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+
+    const qsoColumns = wrapper
+      .findAll('.schema-array-item select')
+      .map((select) => (select.element as HTMLSelectElement).value)
+    expect(qsoColumns).toEqual([
+      'frequency',
+      'mode',
+      'date',
+      'time',
+      'callsign_sent',
+      'rst_sent',
+      'exchange_sent',
+      'callsign_received',
+      'rst_received',
+      'exchange_received',
+    ])
+  })
+
   it('keeps the Published rules URL optional marker within its aligned label row', async () => {
     vi.stubGlobal(
       'fetch',
@@ -475,7 +543,9 @@ describe('RulesetComposerView', () => {
     )
     expect(wrapper.get('.error-list').text()).toContain('WWROF field')
     expect(wrapper.get('.error-list').text()).toContain('qso_columns')
-    expect(wrapper.get('.validation-guidance').text()).toContain('contradiction')
+    expect(wrapper.get('.validation-guidance').text()).toContain(
+      'contradiction',
+    )
     expect(wrapper.get('.error-list').text()).toContain('rules[7]')
     expect(wrapper.find('.validation-panel').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Save validated ruleset version')
@@ -692,5 +762,65 @@ describe('RulesetComposerView', () => {
       (wrapper.findAll('.metadata-panel input')[1]?.element as HTMLInputElement)
         .value,
     ).toBe('2026')
+  })
+
+  it('fills missing mandatory WWROF columns when editing an older saved version', async () => {
+    const configuration = {
+      schema_version: 2,
+      ruleset_key: 'legacy-cabrillo',
+      version: '2025',
+      rules: requiredRules.map((kind) => ({
+        id: kind,
+        rule:
+          kind === 'format_mapping'
+            ? { kind, format: 'cabrillo', qso_columns: ['frequency', 'mode'] }
+            : { kind },
+      })),
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        if (path.endsWith('/rulesets/versions/21'))
+          return new Response(
+            JSON.stringify({ id: 21, ruleset_id: 3, configuration }),
+            { status: 200 },
+          )
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+
+    const wrapper = mount(RulesetComposerView, {
+      props: { editVersionId: '21' },
+    })
+    await flushPromises()
+
+    expect(
+      wrapper
+        .findAll('.schema-array-item select')
+        .map((select) => (select.element as HTMLSelectElement).value),
+    ).toEqual([
+      'frequency',
+      'mode',
+      'date',
+      'time',
+      'callsign_sent',
+      'rst_sent',
+      'exchange_sent',
+      'callsign_received',
+      'rst_received',
+      'exchange_received',
+    ])
   })
 })

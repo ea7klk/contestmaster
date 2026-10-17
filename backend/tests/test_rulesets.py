@@ -121,7 +121,7 @@ def valid_payload() -> dict[str, object]:
                     ],
                     "category_mappings": [
                         {
-                            "external_value": "SINGLE",
+                            "external_value": "SINGLE-OP",
                             "category_values": {"operator": "single"},
                         }
                     ],
@@ -284,7 +284,7 @@ def test_ruleset_can_enable_multiple_distinct_log_formats_only_once_each():
                 "kind": "format_mapping",
                 "format": "adif",
                 "category_mappings": [
-                    {"external_value": "SINGLE", "category_values": {"operator": "single"}}
+                    {"external_value": "SINGLE-OP", "category_values": {"operator": "single"}}
                 ],
             },
         }
@@ -336,6 +336,33 @@ def test_ruleset_validation_rejects_omitted_cabrillo_qso_columns():
         and "WWROF field" in issue["message"]
         for issue in error.value.errors
     )
+
+
+def test_format_mapping_rejects_duplicate_qso_columns_at_schema_boundary():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"].append("frequency")
+
+    with pytest.raises(ValidationError, match="duplicate fields"):
+        RulesetDefinition.model_validate(payload)
+
+
+def test_format_mapping_rejects_non_wwrof_category_values():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["category_mappings"][0]["external_value"] = "SINGLE OPERATOR"
+
+    with pytest.raises(ValidationError):
+        RulesetDefinition.model_validate(payload)
+
+
+def test_format_mapping_binds_category_values_to_the_selected_wwrof_header():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["category_mappings"][0]["external_field"] = "CATEGORY-POWER"
+
+    with pytest.raises(ValidationError, match="not a valid WWROF value"):
+        RulesetDefinition.model_validate(payload)
 
 
 def test_ruleset_persistence_rejects_omitted_cabrillo_qso_columns_before_saving():

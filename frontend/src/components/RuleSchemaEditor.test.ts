@@ -4,6 +4,133 @@ import type { JsonSchema } from '../api/rulesets'
 import RuleSchemaEditor from './RuleSchemaEditor.vue'
 
 describe('RuleSchemaEditor', () => {
+  it('offers WWROF QSO fields without allowing a duplicate selection', async () => {
+    const columns = [
+      'frequency',
+      'mode',
+      'date',
+      'time',
+      'callsign_sent',
+      'rst_sent',
+      'exchange_sent',
+      'callsign_received',
+      'rst_received',
+      'exchange_received',
+      'transmitter',
+    ]
+    const schema: JsonSchema = {
+      type: 'array',
+      title: 'QSO columns',
+      items: { type: 'string', enum: columns },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: columns.slice(0, 10),
+        path: 'rules-0-qso_columns',
+      },
+    })
+
+    const selects = wrapper.findAll('.schema-array-item select')
+    expect(selects).toHaveLength(10)
+    expect(
+      selects.map((select) => (select.element as HTMLSelectElement).value),
+    ).toEqual(columns.slice(0, 10))
+    const frequencyOption = selects[1]!.find('option[value="frequency"]')
+    expect((frequencyOption.element as HTMLOptionElement).disabled).toBe(true)
+    await wrapper.get('button.secondary-button').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual([
+      ...columns.slice(0, 10),
+      'transmitter',
+    ])
+  })
+
+  it('renders category mapping dimensions and choices as constrained dropdowns', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      patternProperties: { '^[a-z][a-z0-9_.-]*$': { type: 'string' } },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: {},
+        path: 'rules-0-category_mappings-0-category_values',
+        categoryDimensions: [
+          {
+            key: 'power',
+            label: 'Power',
+            choices: [{ key: 'low', label: 'Low power' }],
+          },
+        ],
+      },
+    })
+
+    await wrapper.get('button.secondary-button').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual({
+      power: 'low',
+    })
+    await wrapper.setProps({ modelValue: { power: 'low' } })
+    const keySelect = wrapper.get('.schema-map-key select')
+    expect(
+      keySelect.findAll('option').map((option) => option.text()),
+    ).toContain('Power (power)')
+    const valueSelect = wrapper.get('.schema-map-value select')
+    expect(
+      valueSelect.findAll('option').map((option) => option.text()),
+    ).toContain('Low power (low)')
+  })
+
+  it('limits category value choices to the selected WWROF category header', () => {
+    const schema: JsonSchema = {
+      type: 'string',
+      enum: ['CW', 'HIGH', 'LOW', 'QRP', 'SSB'],
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: 'LOW',
+        path: 'rules-0-category_mappings-0-external_value',
+        categoryHeader: 'CATEGORY-POWER',
+      },
+    })
+
+    expect(
+      wrapper
+        .get('select')
+        .findAll('option')
+        .map((option) => option.text()),
+    ).toEqual(['HIGH', 'LOW', 'QRP'])
+  })
+
+  it('restricts standard header aliases to their matching WWROF tags', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      propertyNames: { enum: ['callsign', 'contest'] },
+      additionalProperties: { type: 'string', enum: ['CALLSIGN', 'CONTEST'] },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: {},
+        path: 'rules-0-header_fields',
+      },
+    })
+
+    await wrapper.get('button.secondary-button').trigger('click')
+    await wrapper.setProps({ modelValue: { callsign: 'CALLSIGN' } })
+    expect(wrapper.get('.schema-map-key select').element).toBeDefined()
+    expect(
+      wrapper
+        .get('.schema-map-value select')
+        .findAll('option')
+        .map((option) => option.text()),
+    ).toEqual(['CALLSIGN'])
+  })
+
   it('renders one checkbox for each boolean setting, without a Configure toggle', async () => {
     const schema: JsonSchema = {
       type: 'object',

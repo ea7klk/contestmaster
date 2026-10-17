@@ -14,8 +14,25 @@ const props = withDefaults(
     path?: string
     depth?: number
     hiddenProperties?: string[]
+    categoryDimensions?: Array<{
+      key: string
+      label: string
+      choices: Array<{ key: string; label: string }>
+    }>
+    categoryHeader?: string
+    arraySiblings?: unknown[]
+    headerKey?: string
   }>(),
-  { label: '', path: '', depth: 0, hiddenProperties: () => [] },
+  {
+    label: '',
+    path: '',
+    depth: 0,
+    hiddenProperties: () => [],
+    categoryDimensions: () => [],
+    categoryHeader: '',
+    arraySiblings: () => [],
+    headerKey: '',
+  },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
@@ -133,6 +150,11 @@ const objectValue = computed(() =>
     ? (props.modelValue as Record<string, unknown>)
     : {},
 )
+const categoryHeader = computed(() =>
+  typeof objectValue.value.external_field === 'string'
+    ? objectValue.value.external_field
+    : props.categoryHeader,
+)
 const arrayValue = computed(() =>
   Array.isArray(props.modelValue) ? props.modelValue : [],
 )
@@ -146,7 +168,76 @@ const primitiveSchema = computed(() => {
   return effectiveSchema.value
 })
 const primitiveType = computed(() => primitiveSchema.value.type ?? 'string')
-const enumOptions = computed(() => primitiveSchema.value.enum ?? [])
+const enumOptions = computed(() => {
+  const values = primitiveSchema.value.enum ?? []
+  if (props.path.includes('-header_fields-') && props.headerKey) {
+    const expected = props.headerKey === 'callsign' ? 'CALLSIGN' : 'CONTEST'
+    return values.filter((value) => value === expected)
+  }
+  if (!props.path.endsWith('-external_value') || !props.categoryHeader)
+    return values
+  const allowed: Record<string, string[]> = {
+    'CATEGORY-ASSISTED': ['ASSISTED', 'NON-ASSISTED'],
+    'CATEGORY-BAND': [
+      'ALL',
+      '160M',
+      '80M',
+      '40M',
+      '20M',
+      '15M',
+      '10M',
+      '6M',
+      '4M',
+      '2M',
+      '222',
+      '432',
+      '902',
+      '1.2G',
+      '2.3G',
+      '3.4G',
+      '5.7G',
+      '10G',
+      '24G',
+      '47G',
+      '75G',
+      '122G',
+      '134G',
+      '241G',
+      'Light',
+      'VHF-3-BAND',
+      'VHF-FM-ONLY',
+    ],
+    'CATEGORY-MODE': ['CW', 'DIGI', 'FM', 'RTTY', 'SSB', 'MIXED'],
+    'CATEGORY-OPERATOR': ['SINGLE-OP', 'MULTI-OP', 'CHECKLOG'],
+    'CATEGORY-POWER': ['HIGH', 'LOW', 'QRP'],
+    'CATEGORY-STATION': [
+      'DISTRIBUTED',
+      'FIXED',
+      'MOBILE',
+      'PORTABLE',
+      'ROVER',
+      'ROVER-LIMITED',
+      'ROVER-UNLIMITED',
+      'EXPEDITION',
+      'HQ',
+      'SCHOOL',
+      'EXPLORER',
+    ],
+    'CATEGORY-TIME': ['6-HOURS', '8-HOURS', '12-HOURS', '24-HOURS'],
+    'CATEGORY-TRANSMITTER': ['ONE', 'TWO', 'LIMITED', 'UNLIMITED', 'SWL'],
+    'CATEGORY-OVERLAY': [
+      'CLASSIC',
+      'ROOKIE',
+      'TB-WIRES',
+      'YOUTH',
+      'NOVICE-TECH',
+      'YL',
+    ],
+  }
+  return values.filter((value) =>
+    allowed[props.categoryHeader]?.includes(String(value)),
+  )
+})
 const inputValue = computed(() =>
   props.modelValue == null ? '' : String(props.modelValue),
 )
@@ -213,10 +304,61 @@ function updateArrayItem(index: number, value: unknown) {
 
 function addArrayItem() {
   if (arrayValue.value.length >= (effectiveSchema.value.maxItems ?? 500)) return
+  if (props.path.endsWith('-qso_columns')) {
+    const fields = [
+      'frequency',
+      'mode',
+      'date',
+      'time',
+      'callsign_sent',
+      'rst_sent',
+      'exchange_sent',
+      'callsign_received',
+      'rst_received',
+      'exchange_received',
+      'transmitter',
+    ]
+    const next = fields.find((field) => !arrayValue.value.includes(field))
+    if (!next) return
+    setValue([...arrayValue.value, next])
+    return
+  }
   setValue([
     ...arrayValue.value,
     initialValue(effectiveSchema.value.items ?? {}),
   ])
+}
+
+function isQsoColumnList() {
+  return props.path.endsWith('-qso_columns')
+}
+
+function qsoColumnSelectedElsewhere(index: number, value: unknown) {
+  return (
+    props.path.includes('-qso_columns-') &&
+    props.arraySiblings.some(
+      (item, itemIndex) => itemIndex !== index && item === value,
+    )
+  )
+}
+
+function currentQsoColumnIndex() {
+  const match = /-qso_columns-(\d+)$/.exec(props.path)
+  return match ? Number(match[1]) : -1
+}
+
+function moveArrayItem(index: number, offset: number) {
+  const target = index + offset
+  if (!isQsoColumnList() || target < 0 || target >= arrayValue.value.length)
+    return
+  if (
+    (arrayValue.value[index] === 'transmitter' && offset < 0) ||
+    (arrayValue.value[target] === 'transmitter' && offset > 0)
+  )
+    return
+  const next = [...arrayValue.value]
+  ;[next[index], next[target]] = [next[target], next[index]]
+  setValue(next)
 }
 
 function removeArrayItem(index: number) {
@@ -229,6 +371,22 @@ function mapRows() {
 
 function addMapRow() {
   const values = objectValue.value
+  if (props.path.endsWith('-category_values')) {
+    const dimension = props.categoryDimensions.find(
+      (item) => !Object.hasOwn(values, item.key),
+    )
+    if (!dimension) return
+    setValue({ ...values, [dimension.key]: dimension.choices[0]?.key ?? '' })
+    return
+  }
+  if (props.path.endsWith('-header_fields')) {
+    const header = ['callsign', 'contest'].find(
+      (item) => !Object.hasOwn(values, item),
+    )
+    if (!header) return
+    setValue({ ...values, [header]: header.toUpperCase() })
+    return
+  }
   let key = 'value'
   let suffix = 2
   while (Object.hasOwn(values, key)) {
@@ -236,6 +394,18 @@ function addMapRow() {
     suffix += 1
   }
   setValue({ ...values, [key]: initialValue(mapValueSchema.value) })
+}
+
+function categoryForDimension(key: string) {
+  return props.categoryDimensions.find((item) => item.key === key)
+}
+
+function isCategoryValuesMap() {
+  return props.path.endsWith('-category_values')
+}
+
+function isHeaderFieldsMap() {
+  return props.path.endsWith('-header_fields')
 }
 
 function selectUnionType(type: string) {
@@ -354,6 +524,8 @@ function onEnumInput(event: Event) {
               :path="`${path}-${key}`"
               :depth="depth + 1"
               :hidden-properties="hiddenProperties"
+              :category-dimensions="categoryDimensions"
+              :category-header="categoryHeader"
               @update:model-value="updateProperty(key, $event)"
             />
           </template>
@@ -377,9 +549,31 @@ function onEnumInput(event: Event) {
           :label="`${fieldLabel} ${index + 1}`"
           :path="`${path}-${index}`"
           :depth="depth + 1"
+          :array-siblings="arrayValue"
+          :category-dimensions="categoryDimensions"
+          :category-header="categoryHeader"
           @update:model-value="updateArrayItem(index, $event)"
         />
+        <div v-if="isQsoColumnList()" class="schema-array-order">
+          <button
+            type="button"
+            class="quiet-button"
+            :disabled="index === 0"
+            @click="moveArrayItem(index, -1)"
+          >
+            {{ $tr('Move up') }}
+          </button>
+          <button
+            type="button"
+            class="quiet-button"
+            :disabled="index === arrayValue.length - 1"
+            @click="moveArrayItem(index, 1)"
+          >
+            {{ $tr('Move down') }}
+          </button>
+        </div>
         <button
+          v-if="!isQsoColumnList() || item === 'transmitter'"
           type="button"
           class="quiet-button"
           @click="removeArrayItem(index)"
@@ -408,7 +602,39 @@ function onEnumInput(event: Event) {
       >
         <div class="schema-map-key">
           <label :for="`${path}-${index}-key`">{{ $tr('Key') }}</label>
+          <select
+            v-if="isCategoryValuesMap()"
+            :id="`${path}-${index}-key`"
+            :value="key"
+            @change="
+              renameMapKey(key, ($event.target as HTMLSelectElement).value)
+            "
+          >
+            <option
+              v-for="dimension in categoryDimensions"
+              :key="dimension.key"
+              :value="dimension.key"
+              :disabled="
+                dimension.key !== key &&
+                Object.hasOwn(objectValue, dimension.key)
+              "
+            >
+              {{ dimension.label }} ({{ dimension.key }})
+            </option>
+          </select>
+          <select
+            v-else-if="isHeaderFieldsMap()"
+            :id="`${path}-${index}-key`"
+            :value="key"
+            @change="
+              renameMapKey(key, ($event.target as HTMLSelectElement).value)
+            "
+          >
+            <option value="callsign">CALLSIGN</option>
+            <option value="contest">CONTEST</option>
+          </select>
           <input
+            v-else
             :id="`${path}-${index}-key`"
             :value="key"
             autocomplete="off"
@@ -418,13 +644,33 @@ function onEnumInput(event: Event) {
           />
         </div>
         <div class="schema-map-value">
+          <label v-if="isCategoryValuesMap()" class="schema-control">
+            {{ displayLabel(`Value for ${key}`) }}
+            <select
+              :value="String(value)"
+              @change="
+                updateMapValue(key, ($event.target as HTMLSelectElement).value)
+              "
+            >
+              <option
+                v-for="choice in categoryForDimension(key)?.choices ?? []"
+                :key="choice.key"
+                :value="choice.key"
+              >
+                {{ choice.label }} ({{ choice.key }})
+              </option>
+            </select>
+          </label>
           <RuleSchemaEditor
+            v-else
             :schema="mapValueSchema"
             :root-schema="rootSchema"
             :model-value="value"
             :label="`Value for ${key}`"
             :path="`${path}-${key}`"
             :depth="depth + 1"
+            :category-dimensions="categoryDimensions"
+            :header-key="isHeaderFieldsMap() ? key : ''"
             @update:model-value="updateMapValue(key, $event)"
           />
         </div>
@@ -470,6 +716,9 @@ function onEnumInput(event: Event) {
             v-for="option in enumOptions"
             :key="String(option)"
             :value="String(option)"
+            :disabled="
+              qsoColumnSelectedElsewhere(currentQsoColumnIndex(), option)
+            "
           >
             {{ enumLabel(option) }}
           </option>

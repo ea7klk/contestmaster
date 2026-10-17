@@ -522,7 +522,7 @@ def test_staging_guest_upload_scoring_publication_and_privacy_workflow(result_db
             "exchange_received",
         ]
         format_rule["category_mappings"] = [
-            {"external_value": "SINGLE OPERATOR", "category_values": {"operator": "single"}}
+            {"external_value": "SINGLE-OP", "category_values": {"operator": "single"}}
         ]
         exchange = next(rule["rule"] for rule in payload["rules"] if rule["id"] == "exchange")
         for field in exchange["fields"]:
@@ -548,7 +548,7 @@ def test_staging_guest_upload_scoring_publication_and_privacy_workflow(result_db
     qso_time = (now - timedelta(minutes=10)).strftime("%H%M")
     log = (
         "START-OF-LOG\nCONTEST: Results Sprint\nCALLSIGN: EA7FLOW\n"
-        "CATEGORY-OPERATOR: SINGLE OPERATOR\n"
+        "CATEGORY-OPERATOR: SINGLE-OP\n"
         f"QSO: 14025 CW {now:%Y-%m-%d} {qso_time} EA7FLOW 599 101 F4XYZ 599 202\n"
         "END-OF-LOG\n"
     )

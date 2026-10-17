@@ -337,13 +337,16 @@ def map_categories(
     values: dict[str, str] = {}
     warnings: list[ImportMessage] = []
     by_external = {
-        str(item["external_value"]).casefold(): item["category_values"] for item in mappings
+        (str(item.get("external_field", "")).upper(), str(item["external_value"]).casefold()): item[
+            "category_values"
+        ]
+        for item in mappings
     }
     for header, candidates in parsed.headers.items():
         if not header.startswith("CATEGORY-"):
             continue
         for value in candidates:
-            mapped = by_external.get(value.casefold())
+            mapped = by_external.get((header.upper(), value.casefold()))
             if mapped is None:
                 warnings.append(
                     ImportMessage(

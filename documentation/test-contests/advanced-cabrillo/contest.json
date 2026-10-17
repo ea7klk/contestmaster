@@ -414,12 +414,6 @@
               }
             },
             {
-              "external_value": "NONE",
-              "category_values": {
-                "overlay": "none"
-              }
-            },
-            {
               "external_value": "CW",
               "category_values": {
                 "mode": "cw"

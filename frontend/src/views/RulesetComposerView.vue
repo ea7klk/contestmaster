@@ -55,6 +55,37 @@ const optionalTypes = computed(() =>
 const usedSingletonKinds = computed(
   () => new Set(rules.value.map((item) => String(item.rule.kind))),
 )
+const categoryDimensions = computed(() => {
+  const categoryRule = rules.value.find(
+    (item) => item.rule.kind === 'categories',
+  )
+  const dimensions = categoryRule?.rule.dimensions
+  if (!Array.isArray(dimensions)) return []
+  return dimensions.flatMap((dimension) => {
+    if (!dimension || typeof dimension !== 'object') return []
+    const record = dimension as Record<string, unknown>
+    if (typeof record.key !== 'string' || !Array.isArray(record.choices))
+      return []
+    return [
+      {
+        key: record.key,
+        label: typeof record.label === 'string' ? record.label : record.key,
+        choices: record.choices.flatMap((choice) => {
+          if (!choice || typeof choice !== 'object') return []
+          const item = choice as Record<string, unknown>
+          return typeof item.key === 'string'
+            ? [
+                {
+                  key: item.key,
+                  label: typeof item.label === 'string' ? item.label : item.key,
+                },
+              ]
+            : []
+        }),
+      },
+    ]
+  })
+})
 function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
   if (schema.$ref) {
     const name = schema.$ref.split('/').at(-1) ?? ''
@@ -103,13 +134,130 @@ function descriptorFor(kind: string) {
 function newRule(kind: string, idNumber: number): ConfiguredRuleDraft | null {
   const descriptor = descriptorFor(kind)
   if (!descriptor) return null
+  const rule = initialValue(descriptor.schema, descriptor.schema) as Record<
+    string,
+    unknown
+  >
+  if (kind === 'format_mapping' && rule.format === 'cabrillo') {
+    rule.qso_columns = [...CABRILLO_REQUIRED_COLUMNS]
+  }
   return {
     id: `${kind.replaceAll('_', '-')}-${idNumber}`,
-    rule: initialValue(descriptor.schema, descriptor.schema) as Record<
-      string,
-      unknown
-    >,
+    rule,
   }
+}
+
+const CABRILLO_REQUIRED_COLUMNS = [
+  'frequency',
+  'mode',
+  'date',
+  'time',
+  'callsign_sent',
+  'rst_sent',
+  'exchange_sent',
+  'callsign_received',
+  'rst_received',
+  'exchange_received',
+]
+const CABRILLO_CATEGORY_HEADERS: Record<string, string[]> = {
+  'CATEGORY-ASSISTED': ['ASSISTED', 'NON-ASSISTED'],
+  'CATEGORY-BAND': [
+    'ALL',
+    '160M',
+    '80M',
+    '40M',
+    '20M',
+    '15M',
+    '10M',
+    '6M',
+    '4M',
+    '2M',
+    '222',
+    '432',
+    '902',
+    '1.2G',
+    '2.3G',
+    '3.4G',
+    '5.7G',
+    '10G',
+    '24G',
+    '47G',
+    '75G',
+    '122G',
+    '134G',
+    '241G',
+    'LIGHT',
+    'VHF-3-BAND',
+    'VHF-FM-ONLY',
+  ],
+  'CATEGORY-MODE': ['CW', 'DIGI', 'FM', 'RTTY', 'SSB', 'MIXED'],
+  'CATEGORY-OPERATOR': ['SINGLE-OP', 'MULTI-OP', 'CHECKLOG'],
+  'CATEGORY-POWER': ['HIGH', 'LOW', 'QRP'],
+  'CATEGORY-STATION': [
+    'DISTRIBUTED',
+    'FIXED',
+    'MOBILE',
+    'PORTABLE',
+    'ROVER',
+    'ROVER-LIMITED',
+    'ROVER-UNLIMITED',
+    'EXPEDITION',
+    'HQ',
+    'SCHOOL',
+    'EXPLORER',
+  ],
+  'CATEGORY-TIME': ['6-HOURS', '8-HOURS', '12-HOURS', '24-HOURS'],
+  'CATEGORY-TRANSMITTER': ['ONE', 'TWO', 'LIMITED', 'UNLIMITED', 'SWL'],
+  'CATEGORY-OVERLAY': [
+    'CLASSIC',
+    'ROOKIE',
+    'TB-WIRES',
+    'YOUTH',
+    'NOVICE-TECH',
+    'YL',
+  ],
+}
+
+function normalizeCabrilloColumns(items: ConfiguredRuleDraft[]) {
+  return items.map((item) => {
+    const rule = { ...item.rule }
+    if (rule.kind === 'format_mapping' && rule.format === 'cabrillo') {
+      const columns = Array.isArray(rule.qso_columns)
+        ? rule.qso_columns.filter(
+            (column): column is string => typeof column === 'string',
+          )
+        : []
+      const uniqueColumns = [...new Set(columns)]
+      const complete = CABRILLO_REQUIRED_COLUMNS.every((column) =>
+        uniqueColumns.includes(column),
+      )
+      const unique = columns.length === uniqueColumns.length
+      rule.qso_columns =
+        complete && unique
+          ? columns
+          : [
+              ...CABRILLO_REQUIRED_COLUMNS,
+              ...(uniqueColumns.includes('transmitter') ? ['transmitter'] : []),
+            ]
+      if (Array.isArray(rule.category_mappings)) {
+        rule.category_mappings = rule.category_mappings.map((rawMapping) => {
+          if (!rawMapping || typeof rawMapping !== 'object') return rawMapping
+          const mapping = rawMapping as Record<string, unknown>
+          if (typeof mapping.external_field === 'string') return mapping
+          const externalValue = String(
+            mapping.external_value ?? '',
+          ).toUpperCase()
+          const externalField = Object.entries(CABRILLO_CATEGORY_HEADERS).find(
+            ([, values]) => values.includes(externalValue),
+          )?.[0]
+          return externalField
+            ? { ...mapping, external_field: externalField }
+            : mapping
+        })
+      }
+    }
+    return { ...item, rule }
+  })
 }
 
 function seedRequiredRules() {
@@ -175,7 +323,12 @@ function setEligibilityCondition(
 }
 
 function updateRule(rule: ConfiguredRuleDraft, value: unknown) {
-  rule.rule = value as Record<string, unknown>
+  const updated = value as Record<string, unknown>
+  rule.rule =
+    updated.kind === 'format_mapping' && updated.format === 'cabrillo'
+      ? (normalizeCabrilloColumns([{ ...rule, rule: updated }])[0]?.rule ??
+        updated)
+      : updated
   clearValidation()
 }
 
@@ -324,7 +477,9 @@ async function loadSavedVersion(
   version.value = definition.version
   sourceUrl.value = definition.source_url ?? ''
   sourceEdition.value = definition.source_edition ?? ''
-  rules.value = definition.rules.map((item) => ({ ...item }))
+  rules.value = normalizeCabrilloColumns(
+    definition.rules.map((item) => ({ ...item })),
+  )
   editingSource.value = `${definition.ruleset_key} version ${definition.version}`
   clearValidation()
   savedMessage.value = `Loaded ${editingSource.value}. Enter a new version identifier to save your changes.`
@@ -399,7 +554,9 @@ async function importDraft(event: Event) {
         return { ...item, rule }
       })
       .map(normalizeImportedRule)
-    rules.value = normalizedRules.map((item) => ({ ...item }))
+    rules.value = normalizeCabrilloColumns(
+      normalizedRules.map((item) => ({ ...item })),
+    )
     if (parsed.schema_version === 1 || removedSchedule) {
       savedMessage.value =
         'Imported a legacy draft. Configure contest dates, periodicity, and submission cutoff in contest configuration.'
@@ -790,6 +947,7 @@ function catalogErrorMessage(reason: unknown) {
                 ? ['allowed_bands', 'allowed_modes']
                 : []
             "
+            :category-dimensions="categoryDimensions"
             :label="`${configured.rule.kind} rule settings`"
             :path="`rules-${index}`"
             @update:model-value="updateRule(configured, $event)"
@@ -1023,7 +1181,10 @@ function catalogErrorMessage(reason: unknown) {
         </button>
       </section>
     </template>
-    <ResourceAdministrators resource-kind="ruleset" :resource-id="activeRulesetId" />
+    <ResourceAdministrators
+      resource-kind="ruleset"
+      :resource-id="activeRulesetId"
+    />
   </section>
 </template>
 

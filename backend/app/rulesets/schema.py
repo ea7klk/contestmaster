@@ -426,16 +426,189 @@ class OperatingConstraintRule(StrictModel):
 
 
 class CategoryMapping(StrictModel):
-    external_value: Annotated[str, StringConstraints(min_length=1, max_length=120)]
+    external_field: Literal[
+        "CATEGORY-ASSISTED",
+        "CATEGORY-BAND",
+        "CATEGORY-MODE",
+        "CATEGORY-OPERATOR",
+        "CATEGORY-POWER",
+        "CATEGORY-STATION",
+        "CATEGORY-TIME",
+        "CATEGORY-TRANSMITTER",
+        "CATEGORY-OVERLAY",
+    ]
+    external_value: Literal[
+        "ASSISTED",
+        "NON-ASSISTED",
+        "ALL",
+        "160M",
+        "80M",
+        "40M",
+        "20M",
+        "15M",
+        "10M",
+        "6M",
+        "4M",
+        "2M",
+        "222",
+        "432",
+        "902",
+        "1.2G",
+        "2.3G",
+        "3.4G",
+        "5.7G",
+        "10G",
+        "24G",
+        "47G",
+        "75G",
+        "122G",
+        "134G",
+        "241G",
+        "Light",
+        "VHF-3-BAND",
+        "VHF-FM-ONLY",
+        "CW",
+        "DIGI",
+        "FM",
+        "RTTY",
+        "SSB",
+        "MIXED",
+        "SINGLE-OP",
+        "MULTI-OP",
+        "CHECKLOG",
+        "HIGH",
+        "LOW",
+        "QRP",
+        "DISTRIBUTED",
+        "FIXED",
+        "MOBILE",
+        "PORTABLE",
+        "ROVER",
+        "ROVER-LIMITED",
+        "ROVER-UNLIMITED",
+        "EXPEDITION",
+        "HQ",
+        "SCHOOL",
+        "EXPLORER",
+        "6-HOURS",
+        "8-HOURS",
+        "12-HOURS",
+        "24-HOURS",
+        "ONE",
+        "TWO",
+        "LIMITED",
+        "UNLIMITED",
+        "SWL",
+        "CLASSIC",
+        "ROOKIE",
+        "TB-WIRES",
+        "YOUTH",
+        "NOVICE-TECH",
+        "YL",
+    ] = Field(description="A category value defined by the WWROF Cabrillo v3 header specification.")
     category_values: dict[Identifier, Identifier] = Field(min_length=1, max_length=40)
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_legacy_category_field(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or value.get("external_field"):
+            return value
+        external_value = str(value.get("external_value", "")).casefold()
+        for header, values in CABRILLO_CATEGORY_VALUES.items():
+            if external_value in {item.casefold() for item in values}:
+                return {**value, "external_field": header}
+        return value
+
+    @model_validator(mode="after")
+    def category_value_matches_header(self) -> CategoryMapping:
+        valid_values = {value.casefold() for value in CABRILLO_CATEGORY_VALUES[self.external_field]}
+        if self.external_value.casefold() not in valid_values:
+            raise ValueError(
+                f"{self.external_value!r} is not a valid WWROF value for {self.external_field}"
+            )
+        return self
+
+
+CABRILLO_CATEGORY_VALUES: dict[str, tuple[str, ...]] = {
+    "CATEGORY-ASSISTED": ("ASSISTED", "NON-ASSISTED"),
+    "CATEGORY-BAND": (
+        "ALL",
+        "160M",
+        "80M",
+        "40M",
+        "20M",
+        "15M",
+        "10M",
+        "6M",
+        "4M",
+        "2M",
+        "222",
+        "432",
+        "902",
+        "1.2G",
+        "2.3G",
+        "3.4G",
+        "5.7G",
+        "10G",
+        "24G",
+        "47G",
+        "75G",
+        "122G",
+        "134G",
+        "241G",
+        "Light",
+        "VHF-3-BAND",
+        "VHF-FM-ONLY",
+    ),
+    "CATEGORY-MODE": ("CW", "DIGI", "FM", "RTTY", "SSB", "MIXED"),
+    "CATEGORY-OPERATOR": ("SINGLE-OP", "MULTI-OP", "CHECKLOG"),
+    "CATEGORY-POWER": ("HIGH", "LOW", "QRP"),
+    "CATEGORY-STATION": (
+        "DISTRIBUTED",
+        "FIXED",
+        "MOBILE",
+        "PORTABLE",
+        "ROVER",
+        "ROVER-LIMITED",
+        "ROVER-UNLIMITED",
+        "EXPEDITION",
+        "HQ",
+        "SCHOOL",
+        "EXPLORER",
+    ),
+    "CATEGORY-TIME": ("6-HOURS", "8-HOURS", "12-HOURS", "24-HOURS"),
+    "CATEGORY-TRANSMITTER": ("ONE", "TWO", "LIMITED", "UNLIMITED", "SWL"),
+    "CATEGORY-OVERLAY": ("CLASSIC", "ROOKIE", "TB-WIRES", "YOUTH", "NOVICE-TECH", "YL"),
+}
+
+
+CabrilloQsoColumn = Literal[
+    "frequency",
+    "mode",
+    "date",
+    "time",
+    "callsign_sent",
+    "rst_sent",
+    "exchange_sent",
+    "callsign_received",
+    "rst_received",
+    "exchange_received",
+    "transmitter",
+]
 
 
 class FormatMappingRule(StrictModel):
     kind: Literal["format_mapping"]
     format: Literal["cabrillo", "adif", "csv", "native"]
     category_mappings: list[CategoryMapping] = Field(default_factory=list, max_length=500)
-    header_fields: dict[Identifier, str] = Field(default_factory=dict, max_length=100)
-    qso_columns: list[Identifier] = Field(default_factory=list, max_length=100)
+    header_fields: dict[Literal["callsign", "contest"], Literal["CALLSIGN", "CONTEST"]] = Field(
+        default_factory=dict,
+        max_length=2,
+        description=(
+            "Select the standard WWROF header tag for the required CALLSIGN or CONTEST value."
+        ),
+    )
+    qso_columns: list[CabrilloQsoColumn] = Field(default_factory=list, max_length=11)
     preserve_unknown_fields: bool = True
 
     @model_validator(mode="after")
@@ -443,6 +616,16 @@ class FormatMappingRule(StrictModel):
         keys = [mapping.external_value.casefold() for mapping in self.category_mappings]
         if len(keys) != len(set(keys)):
             raise ValueError("external category mappings must be unique, case-insensitively")
+        if len(self.qso_columns) != len(set(self.qso_columns)):
+            raise ValueError("QSO columns must not contain duplicate fields")
+        if any(
+            key == "callsign" and value != "CALLSIGN" for key, value in self.header_fields.items()
+        ):
+            raise ValueError("callsign header mapping must use the WWROF CALLSIGN tag")
+        if any(
+            key == "contest" and value != "CONTEST" for key, value in self.header_fields.items()
+        ):
+            raise ValueError("contest header mapping must use the WWROF CONTEST tag")
         return self
 
 

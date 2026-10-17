@@ -97,11 +97,34 @@ def test_category_mapping_is_case_insensitive_and_leaves_unknown_values_for_revi
     parsed = parse_cabrillo(VALID)
     mapped, warnings = map_categories(
         parsed,
-        [{"external_value": "low", "category_values": {"power": "low-power"}}],
+        [
+            {
+                "external_field": "CATEGORY-POWER",
+                "external_value": "LOW",
+                "category_values": {"power": "low-power"},
+            }
+        ],
     )
 
     assert mapped == {"power": "low-power"}
     assert warnings == []
+
+
+def test_category_mapping_does_not_match_same_token_under_a_different_header():
+    parsed = parse_cabrillo(VALID)
+    mapped, warnings = map_categories(
+        parsed,
+        [
+            {
+                "external_field": "CATEGORY-MODE",
+                "external_value": "LOW",
+                "category_values": {"power": "low-power"},
+            }
+        ],
+    )
+
+    assert mapped == {}
+    assert warnings[0].code == "unmapped_category"
 
 
 def test_contest_specific_header_template_maps_required_fields_without_losing_originals():
