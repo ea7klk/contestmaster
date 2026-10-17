@@ -131,6 +131,13 @@ describe('App privileged navigation', () => {
     expect(wrapper.get('.header-upload-action').attributes('href')).toBe(
       '/submit-log',
     )
+    expect(
+      wrapper.get('.header-actions .locale-picker').element.nextElementSibling,
+    ).toBe(wrapper.get('.header-upload-action').element)
+    expect(nav.find('#application-locale').exists()).toBe(false)
+    expect(wrapper.get('label[for="application-locale"]').text()).toBe(
+      'Language',
+    )
 
     await trigger.trigger('click')
     expect(trigger.attributes('aria-label')).toBe('Close main menu')
@@ -188,7 +195,7 @@ describe('App privileged navigation', () => {
     wrapper.unmount()
   })
 
-  it('switches language from the shared navigation and persists the choice', async () => {
+  it('switches language from the top bar and persists the choice', async () => {
     localStorage.clear()
     vi.stubGlobal(
       'fetch',
@@ -214,14 +221,10 @@ describe('App privileged navigation', () => {
     })
     await flushPromises()
 
-    await wrapper.get('.menu-toggle').trigger('click')
     const localePicker = wrapper.get('#application-locale')
     await localePicker.setValue('it')
     await vi.waitFor(() => expect(i18n.global.locale.value).toBe('it'))
     await flushPromises()
-    expect(
-      wrapper.get('#application-locale').attributes('aria-labelledby'),
-    ).toBeUndefined()
     expect(wrapper.get('label[for="application-locale"]').text()).toBe('Lingua')
     expect(wrapper.get('#main-navigation a[href="/"]').text()).toBe(
       'Risultati pubblicati',

@@ -106,9 +106,27 @@ watch(
         <span class="header-caption">{{
           $tr('Amateur radio contest engine')
         }}</span>
-        <RouterLink class="header-upload-action" to="/submit-log">
-          {{ $tr('Submit a log') }}
-        </RouterLink>
+        <div class="header-actions">
+          <div class="locale-picker">
+            <label class="visually-hidden" for="application-locale">{{
+              $tr('Language')
+            }}</label>
+            <select
+              id="application-locale"
+              :value="selectedLocale"
+              @change="changeLocale"
+            >
+              <option lang="en" value="en">{{ $tr('English') }}</option>
+              <option lang="de" value="de">{{ $tr('Deutsch') }}</option>
+              <option lang="fr" value="fr">{{ $tr('Français') }}</option>
+              <option lang="es" value="es">{{ $tr('Español') }}</option>
+              <option lang="it" value="it">{{ $tr('Italiano') }}</option>
+            </select>
+          </div>
+          <RouterLink class="header-upload-action" to="/submit-log">
+            {{ $tr('Submit a log') }}
+          </RouterLink>
+        </div>
       </div>
       <nav
         id="main-navigation"
@@ -119,20 +137,14 @@ watch(
       >
         <RouterLink to="/">{{ $tr('Published results') }}</RouterLink>
         <RouterLink to="/manage/contests">
-{{
-          $tr('Manage contests')
-        }}
-</RouterLink>
+          {{ $tr('Manage contests') }}
+        </RouterLink>
         <RouterLink to="/manage/rulesets">
-{{
-          $tr('Manage rulesets')
-        }}
-</RouterLink>
+          {{ $tr('Manage rulesets') }}
+        </RouterLink>
         <RouterLink to="/participant/access">
-{{
-          $tr('Participant access')
-        }}
-</RouterLink>
+          {{ $tr('Participant access') }}
+        </RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"
           to="/admin/master-data"
@@ -146,10 +158,8 @@ watch(
           {{ $tr('Bands and modes') }}
         </RouterLink>
         <RouterLink v-if="!staffUser" to="/sign-in">
-{{
-          $tr('Staff sign-in')
-        }}
-</RouterLink>
+          {{ $tr('Staff sign-in') }}
+        </RouterLink>
         <button
           v-else
           class="sign-out-button"
@@ -158,20 +168,6 @@ watch(
         >
           {{ $tr('Sign out {name}', { name: staffUser.display_name }) }}
         </button>
-        <div class="locale-picker" @click.stop>
-          <label for="application-locale">{{ $tr('Language') }}</label>
-          <select
-            id="application-locale"
-            :value="selectedLocale"
-            @change="changeLocale"
-          >
-            <option lang="en" value="en">{{ $tr('English') }}</option>
-            <option lang="de" value="de">{{ $tr('Deutsch') }}</option>
-            <option lang="fr" value="fr">{{ $tr('Français') }}</option>
-            <option lang="es" value="es">{{ $tr('Español') }}</option>
-            <option lang="it" value="it">{{ $tr('Italiano') }}</option>
-          </select>
-        </div>
       </nav>
     </header>
     <p v-if="localeError" class="shell-error" role="alert">
