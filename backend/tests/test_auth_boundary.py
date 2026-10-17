@@ -191,10 +191,13 @@ def test_first_login_password_change_is_required_and_completes_with_a_new_sessio
 ):
     add_user(identity_database)
     admin = TestClient(app)
-    assert admin.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@example.test", "password": "Correct horse battery staple"},
-    ).status_code == 200
+    assert (
+        admin.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
     created = admin.post(
         "/api/v1/auth/admin/users",
         headers={"X-CSRF-Token": admin.cookies.get("contestmaster_csrf")},
@@ -371,7 +374,9 @@ def test_global_password_reset_revokes_sessions_and_last_admin_cannot_be_disable
         lambda: SimpleNamespace(frontend_base_url="http://localhost:5173"),
     )
     monkeypatch.setattr(
-        identity_api, "send_email", lambda _email, _subject, _body, link: delivered.append(link)
+        identity_api,
+        "send_email",
+        lambda _email, _subject, _body, link, **_kwargs: delivered.append(link),
     )
     client = TestClient(app)
     assert (

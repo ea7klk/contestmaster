@@ -55,6 +55,7 @@ def test_cors_only_reflects_configured_frontend_origin():
         headers={
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "accept-language",
         },
     )
     denied = client.options(
@@ -64,6 +65,7 @@ def test_cors_only_reflects_configured_frontend_origin():
 
     assert allowed.status_code == 200
     assert allowed.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert "accept-language" in allowed.headers["Access-Control-Allow-Headers"].lower()
     assert "Access-Control-Allow-Origin" not in denied.headers
 
 

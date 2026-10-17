@@ -25,6 +25,7 @@ from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
 from backend.app.email_delivery import send_guest_entry_verification
+from backend.app.email_locale import request_email_locale
 from backend.app.guest_email import prepare_guest_email, verify_guest_email
 from backend.app.logs.adif import parse_adif
 from backend.app.logs.cabrillo import ImportMessage, ParsedLog, map_categories, parse_cabrillo
@@ -84,9 +85,9 @@ def _guest_verification_link(token: str) -> str:
     )
 
 
-def _deliver_guest_verification(email: str, token: str, event_id: str) -> bool:
+def _deliver_guest_verification(email: str, token: str, event_id: str, *, locale: str) -> bool:
     try:
-        send_guest_entry_verification(email, _guest_verification_link(token))
+        send_guest_entry_verification(email, _guest_verification_link(token), locale=locale)
     except Exception as exc:
         logger.warning(
             "guest_email_verification_delivery_failed",
@@ -437,11 +438,12 @@ async def submit_log(
             source="cabrillo_header",
             access_opt_in=True,
             results_opt_in=False,
+            locale=request_email_locale(request),
         )
         session.commit()
         if token:
             guest_email_delivery = _deliver_guest_verification(
-                contact.email_normalized, token, f"entry-{entry.id}"
+                contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
             )
     revision = _latest_revision(session, entry.id)
     score_runs = (
@@ -502,6 +504,7 @@ def set_guest_entry_email(
             source="upload_prompt",
             access_opt_in=payload.entry_access,
             results_opt_in=payload.result_notifications,
+            locale=request_email_locale(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -522,7 +525,7 @@ def set_guest_entry_email(
     delivery_sent = None
     if token is not None:
         delivery_sent = _deliver_guest_verification(
-            contact.email_normalized, token, f"entry-{entry.id}"
+            contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
         )
     return {
         "status": "revoked" if contact.revoked_at else "verification_required",
@@ -592,12 +595,16 @@ def resend_guest_entry_verification(
             source=contact.source,
             access_opt_in=contact.access_opt_in,
             results_opt_in=contact.results_opt_in,
+            locale=request_email_locale(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     session.commit()
     sent = bool(
-        token and _deliver_guest_verification(contact.email_normalized, token, f"entry-{entry.id}")
+        token
+        and _deliver_guest_verification(
+            contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
+        )
     )
     return {"status": "verification_required", "verification_email_sent": sent}
 

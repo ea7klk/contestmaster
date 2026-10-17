@@ -87,8 +87,56 @@ def test_send_email_uses_starttls_authentication_and_optional_test_body():
     assert len(FakeSMTP.sent_messages) == 1
     message = FakeSMTP.sent_messages[0]
     assert message["To"] == "recipient@example.test"
-    assert "This confirms SMTP delivery." in message.get_content()
-    assert "smtp-secret" not in message.get_content()
+    assert message.get_content_type() == "multipart/alternative"
+    plain = message.get_body(preferencelist=("plain",))
+    html = message.get_body(preferencelist=("html",))
+    assert plain is not None and "This confirms SMTP delivery." in plain.get_content()
+    assert html is not None and "Contestmaster" in html.get_content()
+    assert "#511e20" in html.get_content()
+    assert "smtp-secret" not in plain.get_content()
+
+
+@pytest.mark.parametrize(
+    ("locale", "expected"),
+    [
+        ("en", "Sign in to Contestmaster"),
+        ("de", "Bei Contestmaster anmelden"),
+        ("fr", "Se connecter à Contestmaster"),
+        ("es", "Accede a Contestmaster"),
+        ("it", "Accedi a Contestmaster"),
+    ],
+)
+def test_magic_link_email_is_localized_and_has_both_mime_alternatives(locale, expected):
+    email_delivery.send_participant_magic_link(
+        "radio@example.test", "https://example.test/a?x=1&y=2", locale=locale
+    )
+    message = FakeSMTP.sent_messages[-1]
+    assert expected in message.get_body(preferencelist=("plain",)).get_content()
+    assert message.get_body(preferencelist=("html",)) is not None
+
+
+def test_html_email_escapes_dynamic_contest_name_and_link():
+    email_delivery.send_guest_result_notice(
+        "radio@example.test",
+        '<Challenge & "Final">',
+        3,
+        "https://example.test/contest?a=1&b=2",
+        locale="en",
+    )
+    message = FakeSMTP.sent_messages[-1]
+    html = message.get_body(preferencelist=("html",)).get_content()
+    assert "&lt;Challenge &amp; &quot;Final&quot;&gt;" in html
+    assert 'href="https://example.test/contest?a=1&amp;b=2"' in html
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("de-DE", "de"), ("fr, en;q=0.9", "fr"), ("nl-NL", "en"), (None, "en")],
+)
+def test_email_locale_resolution_uses_supported_base_language(raw, expected):
+    from backend.app.email_locale import resolve_email_locale
+
+    assert resolve_email_locale(raw) == expected
 
 
 def test_success_logs_each_smtp_stage_without_private_message_fields(caplog):

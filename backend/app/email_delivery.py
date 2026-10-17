@@ -10,6 +10,7 @@ from time import monotonic
 from pydantic import ValidationError
 
 from backend.app.config import get_settings
+from backend.app.email_templates import render_email
 
 logger = logging.getLogger("contestmaster.email_delivery")
 _EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
@@ -28,28 +29,32 @@ class EmailDeliveryError(RuntimeError):
         self.failure_kind = failure_kind
 
 
-def send_participant_magic_link(email: str, link: str) -> None:
+def send_participant_magic_link(email: str, link: str, *, locale: str = "en") -> None:
     send_email(
         email,
         "Your Contestmaster sign-in link",
         "Use this one-time link to verify your email address and sign in to Contestmaster. "
         "The link expires in 15 minutes and can be used only once.",
         link,
+        locale=locale,
+        template="magic_link",
     )
 
 
-def send_guest_entry_verification(email: str, link: str) -> None:
+def send_guest_entry_verification(email: str, link: str, *, locale: str = "en") -> None:
     send_email(
         email,
         "Verify access to your Contestmaster log",
         "Confirm this address to enable the guest log options you selected. "
         "The link expires in 24 hours and can be used only once.",
         link,
+        locale=locale,
+        template="guest_verify",
     )
 
 
 def send_guest_result_notice(
-    email: str, contest_name: str, publication_number: int, link: str
+    email: str, contest_name: str, publication_number: int, link: str, *, locale: str = "en"
 ) -> None:
     send_email(
         email,
@@ -57,11 +62,23 @@ def send_guest_result_notice(
         f"Contestmaster has published result list {publication_number} for {contest_name}. "
         "Open the public results page to view the standings.",
         link,
+        locale=locale,
+        template="result_notice",
+        template_values={"contest_name": contest_name, "publication_number": publication_number},
     )
 
 
-def send_email(email: str, subject: str, explanation: str, link: str | None = None) -> None:
-    """Deliver one transactional account link through the configured SMTP relay."""
+def send_email(
+    email: str,
+    subject: str,
+    explanation: str,
+    link: str | None = None,
+    *,
+    locale: str = "en",
+    template: str | None = None,
+    template_values: dict[str, str | int] | None = None,
+) -> None:
+    """Deliver a localized multipart message through the configured SMTP relay."""
     try:
         settings = get_settings()
     except ValidationError as exc:
@@ -78,13 +95,17 @@ def send_email(email: str, subject: str, explanation: str, link: str | None = No
     auth_mechanisms: str | None = None
     try:
         message = EmailMessage()
-        message["Subject"] = subject
+        rendered = render_email(
+            template or "generic",
+            locale=locale,
+            link=link,
+            values={"subject": subject, "explanation": explanation, **(template_values or {})},
+        )
+        message["Subject"] = rendered.subject
         message["From"] = settings.email_from_address
         message["To"] = email
-        body = explanation
-        if link:
-            body = f"{body}\n\n{link}"
-        message.set_content(f"{body}\n\nIf you did not request this message, you can ignore it.")
+        message.set_content(rendered.text)
+        message.add_alternative(rendered.html, subtype="html")
 
         stage = "connection"
         _log_delivery_stage(

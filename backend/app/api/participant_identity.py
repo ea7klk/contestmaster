@@ -27,6 +27,7 @@ from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
 from backend.app.email_delivery import send_email, send_participant_magic_link
+from backend.app.email_locale import request_email_locale
 from backend.app.models import (
     Contest,
     Entry,
@@ -255,7 +256,9 @@ def register_participant(
     session.add(link)
     try:
         session.flush()
-        send_participant_magic_link(address, _magic_link_url(raw_token))
+        send_participant_magic_link(
+            address, _magic_link_url(raw_token), locale=request_email_locale(request)
+        )
         session.commit()
     except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
         session.rollback()
@@ -375,6 +378,8 @@ def forgot_participant_password(
                 "Reset your Contestmaster password",
                 "Use this one-time link to reset your password. It expires in 30 minutes.",
                 _account_link("/participant/reset-password", token),
+                locale=request_email_locale(request),
+                template="password_reset",
             )
             session.commit()
         except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
@@ -609,9 +614,7 @@ def claim_guest_entries(
         or grant.revoked_at is not None
         or (grant.expires_at is not None and grant.expires_at <= now)
     ):
-        raise HTTPException(
-            status_code=404, detail="Entry not found or access is no longer valid."
-        )
+        raise HTTPException(status_code=404, detail="Entry not found or access is no longer valid.")
 
     entry = session.get(Entry, grant.entry_id)
     station = session.scalar(
@@ -622,9 +625,7 @@ def claim_guest_entries(
         .limit(1)
     )
     if entry is None or station is None or not station.callsign_normalized:
-        raise HTTPException(
-            status_code=404, detail="Entry not found or access is no longer valid."
-        )
+        raise HTTPException(status_code=404, detail="Entry not found or access is no longer valid.")
 
     callsign = station.callsign_normalized
     participant_callsign = session.scalar(
@@ -634,15 +635,11 @@ def claim_guest_entries(
         )
     )
     if participant_callsign is None:
-        raise HTTPException(
-            status_code=404, detail="Entry not found or access is no longer valid."
-        )
+        raise HTTPException(status_code=404, detail="Entry not found or access is no longer valid.")
 
     current_owner = session.get(Participant, entry.participant_id)
     if current_owner is None:
-        raise HTTPException(
-            status_code=404, detail="Entry not found or access is no longer valid."
-        )
+        raise HTTPException(status_code=404, detail="Entry not found or access is no longer valid.")
     if current_owner.id == actor.participant_id:
         return {
             "status": "claimed",
@@ -650,9 +647,7 @@ def claim_guest_entries(
             "claimed_entries": 0,
         }
     if current_owner.password_hash is not None:
-        raise HTTPException(
-            status_code=404, detail="Entry not found or access is no longer valid."
-        )
+        raise HTTPException(status_code=404, detail="Entry not found or access is no longer valid.")
 
     latest_revision_id = (
         select(EntryRevision.id)
@@ -713,6 +708,7 @@ def claim_guest_entries(
 @router.post("/email-change", status_code=202)
 def begin_participant_email_change(
     payload: EmailChangeRequest,
+    request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
@@ -744,12 +740,16 @@ def begin_participant_email_change(
             "Confirm your Contestmaster email change",
             "Confirm this email change from your current address. It expires in 24 hours.",
             _account_link("/participant/confirm-email-change", old_raw),
+            locale=request_email_locale(request),
+            template="email_change_current",
         )
         send_email(
             target,
             "Confirm your new Contestmaster email",
             "Confirm this address to complete the email change. It expires in 24 hours.",
             _account_link("/participant/confirm-email-change", new_raw),
+            locale=request_email_locale(request),
+            template="email_change_new",
         )
         session.commit()
     except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
@@ -880,7 +880,9 @@ def request_magic_link(
     session.add(link)
     session.flush()
     try:
-        send_participant_magic_link(email_address, _magic_link_url(raw_token))
+        send_participant_magic_link(
+            email_address, _magic_link_url(raw_token), locale=request_email_locale(request)
+        )
         session.commit()
     except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
         session.rollback()

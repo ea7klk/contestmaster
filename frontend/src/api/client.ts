@@ -1,4 +1,4 @@
-import { translateText } from '../i18n'
+import { i18n, translateText } from '../i18n'
 
 export interface ApiIssue {
   location: Array<string | number>
@@ -41,6 +41,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase()
   const headers = new Headers(init.headers)
+  headers.set('Accept-Language', i18n.global.locale.value)
   if (init.body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }

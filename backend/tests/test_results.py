@@ -269,6 +269,7 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(
                 entry_id=run.entry_id,
                 email_normalized="notified@example.test",
                 source="upload_prompt",
+                locale="fr",
                 access_opt_in=False,
                 results_opt_in=True,
                 verified_at=now,
@@ -295,8 +296,8 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(
     )
     monkeypatch.setattr(
         "backend.app.email_outbox.send_guest_result_notice",
-        lambda email, contest_name, number, link: delivered.append(
-            (email, contest_name, number, link)
+        lambda email, contest_name, number, link, **kwargs: delivered.append(
+            (email, contest_name, number, link, kwargs.get("locale"))
         ),
     )
     withheld_run = next(
@@ -327,6 +328,7 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(
             "Results Sprint",
             published.json()["publication_number"],
             "https://contestmaster.example.test/contests/results-sprint",
+            "fr",
         )
     ]
     from backend.app.email_outbox import dispatch_pending_emails
@@ -449,7 +451,7 @@ def test_result_notice_outbox_retries_failures_and_deduplicates(result_db, monke
     )
     attempts = 0
 
-    def flaky_sender(*_args):
+    def flaky_sender(*_args, **_kwargs):
         nonlocal attempts
         attempts += 1
         if attempts == 1:

@@ -127,6 +127,7 @@ def dispatch_pending_emails(
                     counts["cancelled"] += 1
                     continue
                 email = contact.email_normalized
+                locale = contact.locale
                 contest_name = contest.name
                 contest_slug = contest.slug
                 publication_number = publication.publication_number
@@ -135,7 +136,9 @@ def dispatch_pending_emails(
                 session.commit()
             link = f"{settings.frontend_base_url.rstrip('/')}/contests/{contest_slug}"
             try:
-                send_guest_result_notice(email, contest_name, publication_number, link)
+                send_guest_result_notice(
+                    email, contest_name, publication_number, link, locale=locale
+                )
             except Exception as exc:  # SMTP exception text may contain private addresses or data.
                 with session_factory.begin() as session:
                     event = session.scalar(

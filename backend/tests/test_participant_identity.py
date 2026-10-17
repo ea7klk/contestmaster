@@ -69,7 +69,7 @@ def test_magic_link_verifies_email_and_scopes_session_to_participant_entries(
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     with participant_database.begin() as session:
         participant = Participant(display_name="Radio Pilot", callsign_submitted="EA7KLK")
@@ -194,7 +194,7 @@ def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     client = TestClient(app)
     assert (
@@ -216,7 +216,7 @@ def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda *_args: (_ for _ in ()).throw(RuntimeError("smtp unavailable")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("smtp unavailable")),
     )
     failed = client.post(
         "/api/v1/participants/auth/request-link", json={"email": "rollback@example.test"}
@@ -238,7 +238,7 @@ def test_participant_registration_requires_email_verification_and_supports_passw
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     client = TestClient(app)
     registered = client.post(
@@ -316,12 +316,12 @@ def test_participant_password_reset_is_single_use_and_revokes_sessions(
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda _email, link: delivered.append(("verification", link)),
+        lambda _email, link, **_kwargs: delivered.append(("verification", link)),
     )
     monkeypatch.setattr(
         participant_identity,
         "send_email",
-        lambda email, _subject, _body, link: delivered.append((email, link)),
+        lambda email, _subject, _body, link, **_kwargs: delivered.append((email, link)),
     )
     client = TestClient(app)
     assert (
@@ -403,12 +403,12 @@ def test_email_change_requires_both_addresses_and_revokes_sessions(
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda _email, link: delivered.append(("verification", link)),
+        lambda _email, link, **_kwargs: delivered.append(("verification", link)),
     )
     monkeypatch.setattr(
         participant_identity,
         "send_email",
-        lambda email, _subject, _body, link: delivered.append((email, link)),
+        lambda email, _subject, _body, link, **_kwargs: delivered.append((email, link)),
     )
     client = TestClient(app)
     assert (
@@ -505,7 +505,7 @@ def test_magic_link_request_invalidates_an_older_unconsumed_link(participant_dat
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     client = TestClient(app)
     for _ in range(2):
@@ -535,7 +535,7 @@ def test_magic_link_requests_are_rate_limited_per_email(participant_database, mo
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda *_args: None,
+        lambda *_args, **_kwargs: None,
     )
     client = TestClient(app)
     payload = {"email": "limited@example.test"}
@@ -582,7 +582,7 @@ def test_registered_participant_can_claim_open_guest_entries_for_receipted_calls
     monkeypatch.setattr(
         participant_identity,
         "send_participant_magic_link",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     monkeypatch.setattr(participant_identity, "enforce_rate_limit", lambda *_args, **_kwargs: None)
     now = datetime.now(UTC)
@@ -629,9 +629,7 @@ def test_registered_participant_can_claim_open_guest_entries_for_receipted_calls
         session.add_all([*guest_owners.values(), registered_owner])
         session.flush()
         for name, token in receipt_tokens.items():
-            owner_participant = (
-                registered_owner if name == "registered" else guest_owners[name]
-            )
+            owner_participant = registered_owner if name == "registered" else guest_owners[name]
             call = "K1XYZ" if name == "other_call" else "EA7ABC"
             entry = Entry(
                 contest_id=contest.id,
@@ -672,9 +670,7 @@ def test_registered_participant_can_claim_open_guest_entries_for_receipted_calls
                 )
             )
         entry_ids = {
-            name: session.scalar(
-                select(Entry.id).where(Entry.entry_key == f"entry-{name}")
-            )
+            name: session.scalar(select(Entry.id).where(Entry.entry_key == f"entry-{name}"))
             for name in receipt_tokens
         }
 
@@ -743,8 +739,7 @@ def test_registered_participant_can_claim_open_guest_entries_for_receipted_calls
         )
         assert rejected.status_code == 404
         assert (
-            rejected.json()["error"]["message"]
-            == "Entry not found or access is no longer valid."
+            rejected.json()["error"]["message"] == "Entry not found or access is no longer valid."
         )
 
     with participant_database() as session:
@@ -759,9 +754,7 @@ def test_registered_participant_can_claim_open_guest_entries_for_receipted_calls
         assert session.get(Entry, entry_ids["revoked"]).participant_id != claimant.id
         assert session.get(Entry, entry_ids["registered"]).participant_id != claimant.id
         claimed_call = session.scalar(
-            select(ParticipantCallsign).where(
-                ParticipantCallsign.participant_id == claimant.id
-            )
+            select(ParticipantCallsign).where(ParticipantCallsign.participant_id == claimant.id)
         )
         assert claimed_call is not None
         assert claimed_call.verified_at is not None

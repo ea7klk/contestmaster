@@ -105,10 +105,12 @@ def submit(
     *,
     key: str = "request-key-0001",
     filename: str = "entry.log",
+    headers: dict[str, str] | None = None,
 ):
+    request_headers = {"Idempotency-Key": key, **(headers or {})}
     return client.post(
         "/api/v1/public/contests/guest-sprint/logs",
-        headers={"Idempotency-Key": key},
+        headers=request_headers,
         files={"file": (filename, content.encode(), "text/plain")},
     )
 
@@ -188,10 +190,10 @@ def test_valid_cabrillo_email_is_verified_and_grants_only_its_entry(log_database
     delivered: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "backend.app.logs.api.send_guest_entry_verification",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     with TestClient(app) as client:
-        uploaded = submit(client).json()
+        uploaded = submit(client, headers={"Accept-Language": "de"}).json()
         assert uploaded["guest_email_prompt_required"] is False
         assert uploaded["guest_email_verification_sent"] is True
         assert delivered[0][0] == "operator@example.test"
@@ -203,6 +205,7 @@ def test_valid_cabrillo_email_is_verified_and_grants_only_its_entry(log_database
             assert contact is not None
             assert contact.access_opt_in is True
             assert contact.results_opt_in is False
+            assert contact.locale == "de"
             verification = session.scalar(
                 select(GuestEntryEmailVerification).where(
                     GuestEntryEmailVerification.guest_email_id == contact.id
@@ -310,7 +313,7 @@ def test_guest_email_result_notice_requires_separate_opt_in_and_verification(
     delivered: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "backend.app.logs.api.send_guest_entry_verification",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     with TestClient(app) as client:
         uploaded = submit(client).json()
@@ -336,7 +339,7 @@ def test_expired_guest_email_verification_is_rejected(log_database, monkeypatch)
     delivered: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "backend.app.logs.api.send_guest_entry_verification",
-        lambda email, link: delivered.append((email, link)),
+        lambda email, link, **_kwargs: delivered.append((email, link)),
     )
     with TestClient(app) as client:
         uploaded = submit(client).json()
@@ -363,7 +366,7 @@ def test_failed_guest_verification_delivery_keeps_upload_and_allows_resend(
 ):
     send_attempts = 0
 
-    def flaky_delivery(_email, _link):
+    def flaky_delivery(_email, _link, **_kwargs):
         nonlocal send_attempts
         send_attempts += 1
         if send_attempts == 1:

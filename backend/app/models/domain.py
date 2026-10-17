@@ -598,6 +598,9 @@ class GuestEntryEmail(Base):
             "access_opt_in = 1 OR results_opt_in = 1 OR revoked_at IS NOT NULL",
             name="guest_entry_email_has_consent",
         ),
+        CheckConstraint(
+            "locale IN ('en', 'de', 'fr', 'es', 'it')", name="guest_entry_email_locale"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -606,6 +609,9 @@ class GuestEntryEmail(Base):
     )
     email_normalized: Mapped[str] = mapped_column(String(320, collation="NOCASE"), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
+    locale: Mapped[str] = mapped_column(
+        String(2), nullable=False, default="en", server_default="en"
+    )
     access_opt_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )

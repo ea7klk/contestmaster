@@ -134,11 +134,14 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     }
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0025_initial_password_change"
+            "0026_guest_email_locale"
         )
-        assert connection.scalar(
-            text("SELECT count(*) FROM system_users WHERE must_change_password != 0")
-        ) == 0
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM system_users WHERE must_change_password != 0")
+            )
+            == 0
+        )
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
             connection.scalar(text("SELECT count(*) FROM band_catalog_items WHERE is_active = 1"))
@@ -233,6 +236,23 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     engine.dispose()
 
 
+def test_guest_email_locale_migration_adds_supported_language_column(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'guest-email-locale.sqlite3'}"
+    _alembic(database_url, "upgrade", "0025_initial_password_change")
+    _alembic(database_url, "upgrade", "head")
+    _alembic(database_url, "check")
+
+    engine = build_engine(database_url)
+    columns = {
+        column["name"]: column for column in inspect(engine).get_columns("guest_entry_emails")
+    }
+    assert columns["locale"]["nullable"] is False
+    assert columns["locale"]["default"].strip("'") == "en"
+    checks = inspect(engine).get_check_constraints("guest_entry_emails")
+    assert any((item["name"] or "").endswith("guest_entry_email_locale") for item in checks)
+    engine.dispose()
+
+
 def test_contest_deletion_permit_is_added_by_forward_migration(tmp_path) -> None:
     database_url = f"sqlite:///{tmp_path / 'contest-deletion-permit.sqlite3'}"
 
@@ -270,23 +290,25 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 8
-    assert revisions[0].revision == "0025_initial_password_change"
-    assert revisions[0].down_revision == "0024_guest_email_access_and_notices"
-    assert revisions[1].revision == "0024_guest_email_access_and_notices"
-    assert revisions[1].down_revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[2].revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[2].down_revision == "0022_recurring_contest_series"
-    assert revisions[3].revision == "0022_recurring_contest_series"
-    assert revisions[3].down_revision == "0021_authorized_ruleset_deletion"
-    assert revisions[4].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[4].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[5].revision == "0020_authorized_contest_deletion"
-    assert revisions[5].down_revision == "0019_contest_periodicity"
-    assert revisions[6].revision == "0019_contest_periodicity"
-    assert revisions[6].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[7].down_revision is None
-    assert revisions[7].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 9
+    assert revisions[0].revision == "0026_guest_email_locale"
+    assert revisions[0].down_revision == "0025_initial_password_change"
+    assert revisions[1].revision == "0025_initial_password_change"
+    assert revisions[1].down_revision == "0024_guest_email_access_and_notices"
+    assert revisions[2].revision == "0024_guest_email_access_and_notices"
+    assert revisions[2].down_revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[3].revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[3].down_revision == "0022_recurring_contest_series"
+    assert revisions[4].revision == "0022_recurring_contest_series"
+    assert revisions[4].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[5].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[5].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[6].revision == "0020_authorized_contest_deletion"
+    assert revisions[6].down_revision == "0019_contest_periodicity"
+    assert revisions[7].revision == "0019_contest_periodicity"
+    assert revisions[7].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[8].down_revision is None
+    assert revisions[8].revision == "0018_remove_unscored_country_data"
 
 
 def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
@@ -494,7 +516,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0025_initial_password_change"
+            "0026_guest_email_locale"
         )
     with Session(engine) as session:
         legacy_user = session.query(SystemUser).filter_by(username="legacy-admin").one()
@@ -514,7 +536,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0025_initial_password_change"
+            "0026_guest_email_locale"
         )
     engine.dispose()
 
@@ -613,7 +635,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0025_initial_password_change"
+            "0026_guest_email_locale"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

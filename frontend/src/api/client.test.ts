@@ -69,17 +69,18 @@ describe('shared API client', () => {
 
   it('localizes known API error messages in the active interface language', async () => {
     await setLocale('de', undefined)
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(new Headers(init?.headers).get('Accept-Language')).toBe('de')
+        return new Response(
+          JSON.stringify({ error: { message: 'Authentication is required.' } }),
+          { status: 401 },
+        )
+      },
+    )
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              error: { message: 'Authentication is required.' },
-            }),
-            { status: 401 },
-          ),
-      ),
+      fetchMock,
     )
 
     await expect(apiRequest('/auth/me')).rejects.toMatchObject({

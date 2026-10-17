@@ -33,9 +33,12 @@ def prepare_guest_email(
     source: str,
     access_opt_in: bool,
     results_opt_in: bool,
+    locale: str = "en",
 ) -> tuple[GuestEntryEmail, str | None]:
     """Persist separate consent flags and return a raw one-time token only when needed."""
     normalized = normalize_email(email)
+    if locale not in {"en", "de", "fr", "es", "it"}:
+        locale = "en"
     if not (access_opt_in or results_opt_in):
         current = session.scalar(
             select(GuestEntryEmail).where(GuestEntryEmail.entry_id == entry.id)
@@ -80,6 +83,7 @@ def prepare_guest_email(
             entry_id=entry.id,
             email_normalized=normalized,
             source=source,
+            locale=locale,
             access_opt_in=access_opt_in,
             results_opt_in=results_opt_in,
             created_at=now,
@@ -90,6 +94,7 @@ def prepare_guest_email(
     else:
         contact.email_normalized = normalized
         contact.source = source
+        contact.locale = locale
         contact.access_opt_in = access_opt_in
         contact.results_opt_in = results_opt_in
         contact.revoked_at = None

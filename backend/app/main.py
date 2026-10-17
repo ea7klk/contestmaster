@@ -154,6 +154,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Content-Type",
+        "Accept-Language",
         "X-Request-ID",
         "X-CSRF-Token",
         "Idempotency-Key",

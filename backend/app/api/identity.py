@@ -31,6 +31,7 @@ from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
 from backend.app.email_delivery import send_email
+from backend.app.email_locale import request_email_locale
 from backend.app.models import (
     Participant,
     ParticipantCallsign,
@@ -277,6 +278,8 @@ def forgot_system_password(
                 "Reset your Contestmaster password",
                 "Use this one-time link to reset your password. It expires in 30 minutes.",
                 link,
+                locale=request_email_locale(request),
+                template="password_reset",
             )
             session.commit()
         except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
