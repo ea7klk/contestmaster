@@ -200,6 +200,7 @@ def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_d
                         {
                             "key": "operator",
                             "label": "Operator",
+                            "required": False,
                             "choices": [{"key": "single", "label": "Single"}],
                         }
                     ],
@@ -236,7 +237,25 @@ def test_ruleset_validation_requires_active_band_and_mode_catalog_keys(catalog_d
                 "id": "score",
                 "rule": {"kind": "score_formula", "start": {"variable": "points_total"}},
             },
-            {"id": "format", "rule": {"kind": "format_mapping", "format": "cabrillo"}},
+            {
+                "id": "format",
+                "rule": {
+                    "kind": "format_mapping",
+                    "format": "cabrillo",
+                    "qso_columns": [
+                        "frequency",
+                        "mode",
+                        "date",
+                        "time",
+                        "callsign_sent",
+                        "rst_sent",
+                        "exchange_sent",
+                        "callsign_received",
+                        "rst_received",
+                        "exchange_received",
+                    ],
+                },
+            },
         ],
     }
     response = TestClient(app).post("/api/v1/rulesets/validate", json=payload)
