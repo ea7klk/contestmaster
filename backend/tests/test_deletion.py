@@ -22,10 +22,13 @@ from backend.app.models import (
     Contest,
     ContestDeletionPermit,
     ContestStatus,
+    EmailOutbox,
     Entry,
     EntryAccessGrant,
     EntryRevision,
     EntryStatus,
+    GuestEntryEmail,
+    GuestEntryEmailVerification,
     LogSubmissionRequest,
     Participant,
     Qso,
@@ -296,6 +299,44 @@ def deletion_fixture(deletion_database):
         )
         session.add(publication)
         session.flush()
+        guest_email = GuestEntryEmail(
+            entry_id=entry.id,
+            email_normalized="guest@example.test",
+            source="upload_prompt",
+            access_opt_in=True,
+            results_opt_in=True,
+            verified_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(guest_email)
+        session.flush()
+        session.add(
+            EntryAccessGrant(
+                entry_id=entry.id,
+                guest_email_id=guest_email.id,
+                token_hash="g" * 64,
+            )
+        )
+        session.add(
+            GuestEntryEmailVerification(
+                guest_email_id=guest_email.id,
+                token_hash="h" * 64,
+                created_at=now,
+                expires_at=now + timedelta(hours=1),
+            )
+        )
+        session.add(
+            EmailOutbox(
+                event_key=f"published:{publication.id}:guest-email:{guest_email.id}",
+                guest_email_id=guest_email.id,
+                publication_id=publication.id,
+                state="pending",
+                attempt_count=0,
+                available_at=now,
+                created_at=now,
+            )
+        )
         session.add(
             ResultPublicationEntry(
                 publication_id=publication.id,
@@ -367,6 +408,9 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
         for model in (
             EntryRevision,
             EntryAccessGrant,
+            EmailOutbox,
+            GuestEntryEmail,
+            GuestEntryEmailVerification,
             LogSubmissionRequest,
             Station,
             Qso,

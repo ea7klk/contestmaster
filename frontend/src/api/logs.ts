@@ -22,6 +22,8 @@ export interface LogSubmissionResult {
   entry_key?: string
   revision_number?: number
   receipt_token?: string | null
+  guest_email_prompt_required?: boolean
+  guest_email_verification_sent?: boolean | null
   summary: {
     accepted_qsos: number
     rejected_qsos: number
@@ -291,6 +293,50 @@ export function uploadContestLog(
 
 function receiptHeaders(receiptToken?: string): HeadersInit {
   return receiptToken ? { 'X-Entry-Receipt': receiptToken } : {}
+}
+
+export interface GuestEmailPreferences {
+  email: string
+  entry_access: boolean
+  result_notifications: boolean
+}
+
+export function setGuestEntryEmail(
+  entryId: number,
+  preferences: GuestEmailPreferences,
+  receiptToken?: string,
+) {
+  return apiRequest<{
+    status: 'revoked' | 'verification_required'
+    verified: boolean
+    verification_email_sent: boolean | null
+  }>(`/public/entries/${entryId}/guest-email`, {
+    method: 'POST',
+    headers: receiptHeaders(receiptToken),
+    body: JSON.stringify(preferences),
+  })
+}
+
+export function verifyGuestEntryEmail(token: string) {
+  return apiRequest<{
+    status: 'verified'
+    entry_id: number
+    entry_access_token: string | null
+    results_notifications_enabled: boolean
+  }>('/public/guest-email/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function resendGuestEntryEmailVerification(
+  entryId: number,
+  receiptToken?: string,
+) {
+  return apiRequest<{ status: string; verification_email_sent: boolean }>(
+    `/public/entries/${entryId}/guest-email/resend`,
+    { method: 'POST', headers: receiptHeaders(receiptToken) },
+  )
 }
 
 export function getManagedEntry(entryId: number, receiptToken?: string) {

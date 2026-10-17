@@ -36,6 +36,7 @@ from backend.app.contest_series_scheduler import (
     run_edition_generation,
 )
 from backend.app.db import SessionFactory, engine, get_session
+from backend.app.email_outbox import email_outbox_timer
 from backend.app.logging_config import configure_logging
 from backend.app.logs.api import MAX_REQUEST_BYTES
 from backend.app.logs.api import router as log_router
@@ -65,6 +66,7 @@ MAX_JSON_REQUEST_BYTES = 1024 * 1024
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     timer: asyncio.Task[None] | None = None
     contest_timer: asyncio.Task[None] | None = None
+    email_timer: asyncio.Task[None] | None = None
     initial_sync: asyncio.Task[None] | None = None
     initial_edition_generation: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
@@ -96,6 +98,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             ),
             name="contest-edition-timer",
         )
+    email_timer = asyncio.create_task(email_outbox_timer(SessionFactory), name="email-outbox-timer")
     try:
         yield
     finally:
@@ -109,6 +112,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             contest_timer.cancel()
             try:
                 await contest_timer
+            except asyncio.CancelledError:
+                pass
+        if email_timer is not None:
+            email_timer.cancel()
+            try:
+                await email_timer
             except asyncio.CancelledError:
                 pass
         try:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -12,10 +12,14 @@ from backend.app import logs
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
+    AuditEvent,
     Contest,
     Entry,
     EntryAccessGrant,
     EntryRevision,
+    EntryStatus,
+    GuestEntryEmail,
+    GuestEntryEmailVerification,
     LogSubmissionRequest,
     ParticipantEmail,
     Qso,
@@ -178,6 +182,206 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
     assert entry_details.status_code == 200
     assert entry_details.json()["accepted_formats"] == ["cabrillo"]
     assert client.get(f"/api/v1/public/entries/{entry_id}").status_code == 404
+
+
+def test_valid_cabrillo_email_is_verified_and_grants_only_its_entry(log_database, monkeypatch):
+    delivered: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "backend.app.logs.api.send_guest_entry_verification",
+        lambda email, link: delivered.append((email, link)),
+    )
+    with TestClient(app) as client:
+        uploaded = submit(client).json()
+        assert uploaded["guest_email_prompt_required"] is False
+        assert uploaded["guest_email_verification_sent"] is True
+        assert delivered[0][0] == "operator@example.test"
+        token = delivered[0][1].split("token=", 1)[1]
+        with log_database() as session:
+            contact = session.scalar(
+                select(GuestEntryEmail).where(GuestEntryEmail.entry_id == uploaded["entry_id"])
+            )
+            assert contact is not None
+            assert contact.access_opt_in is True
+            assert contact.results_opt_in is False
+            verification = session.scalar(
+                select(GuestEntryEmailVerification).where(
+                    GuestEntryEmailVerification.guest_email_id == contact.id
+                )
+            )
+            assert verification is not None
+            assert verification.token_hash != token
+            assert token not in verification.token_hash
+        verified = client.post("/api/v1/public/guest-email/verify", json={"token": token})
+        assert verified.status_code == 200
+        access_token = verified.json()["entry_access_token"]
+        assert access_token
+        details = client.get(
+            f"/api/v1/public/entries/{uploaded['entry_id']}",
+            headers={"X-Entry-Receipt": access_token},
+        )
+        assert details.status_code == 200
+        amended = client.put(
+            f"/api/v1/public/entries/{uploaded['entry_id']}/log",
+            headers={
+                "X-Entry-Receipt": access_token,
+                "Idempotency-Key": "verified-email-amend-001",
+            },
+            files={"file": ("amended.log", LOG.replace("F4ABC", "F5XYZ").encode(), "text/plain")},
+        )
+        assert amended.status_code == 200, amended.text
+        assert amended.json()["revision_number"] == 2
+        withdrawn = client.post(
+            f"/api/v1/public/entries/{uploaded['entry_id']}/withdraw",
+            headers={"X-Entry-Receipt": access_token},
+        )
+        assert withdrawn.status_code == 200
+        with log_database() as session:
+            updated_entry = session.get(Entry, uploaded["entry_id"])
+            assert updated_entry is not None and updated_entry.status is EntryStatus.WITHDRAWN
+            assert (
+                session.scalar(
+                    select(func.count(AuditEvent.id)).where(AuditEvent.action == "entry.withdrawn")
+                )
+                == 1
+            )
+        second_upload = submit(
+            client,
+            LOG.replace("EA7KLK", "EA7KLM"),
+            key="separate-entry-access-002",
+        ).json()
+        assert (
+            client.get(
+                f"/api/v1/public/entries/{second_upload['entry_id']}",
+                headers={"X-Entry-Receipt": access_token},
+            ).status_code
+            == 404
+        )
+        revoked = client.post(
+            f"/api/v1/public/entries/{uploaded['entry_id']}/guest-email",
+            headers={"X-Entry-Receipt": uploaded["receipt_token"]},
+            json={
+                "email": "operator@example.test",
+                "entry_access": False,
+                "result_notifications": False,
+            },
+        )
+        assert revoked.status_code == 200
+        assert revoked.json()["status"] == "revoked"
+        assert (
+            client.get(
+                f"/api/v1/public/entries/{uploaded['entry_id']}",
+                headers={"X-Entry-Receipt": access_token},
+            ).status_code
+            == 404
+        )
+        assert (
+            client.post("/api/v1/public/guest-email/verify", json={"token": token}).status_code
+            == 400
+        )
+
+
+def test_adif_upload_prompts_for_email_after_acceptance(log_database):
+    enable_digital_ruleset(log_database, formats=("adif",), ruleset_key="guest-adif-email-prompt")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/public/contests/guest-sprint/logs",
+            headers={"Idempotency-Key": "adif-email-prompt-001"},
+            files={"file": ("entry.adi", ADIF_LOG.encode(), "text/plain")},
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["guest_email_prompt_required"] is True
+        assert response.json()["guest_email_verification_sent"] is None
+        with log_database() as session:
+            assert session.query(GuestEntryEmail).count() == 0
+
+
+def test_invalid_cabrillo_email_does_not_reject_log_and_prompts_for_address(log_database):
+    invalid_log = LOG.replace("EMAIL: operator@example.test", "EMAIL: not-an-address")
+    with TestClient(app) as client:
+        response = submit(client, invalid_log, key="invalid-email-prompt-001")
+        assert response.status_code == 201, response.text
+        assert response.json()["guest_email_prompt_required"] is True
+        assert any(item["code"] == "invalid_email" for item in response.json()["warnings"])
+
+
+def test_guest_email_result_notice_requires_separate_opt_in_and_verification(
+    log_database, monkeypatch
+):
+    delivered: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "backend.app.logs.api.send_guest_entry_verification",
+        lambda email, link: delivered.append((email, link)),
+    )
+    with TestClient(app) as client:
+        uploaded = submit(client).json()
+        receipt = uploaded["receipt_token"]
+        response = client.post(
+            f"/api/v1/public/entries/{uploaded['entry_id']}/guest-email",
+            headers={"X-Entry-Receipt": receipt},
+            json={
+                "email": "results@example.test",
+                "entry_access": False,
+                "result_notifications": True,
+            },
+        )
+        assert response.status_code == 200, response.text
+        new_token = delivered[-1][1].split("token=", 1)[1]
+        verified = client.post("/api/v1/public/guest-email/verify", json={"token": new_token})
+        assert verified.status_code == 200
+        assert verified.json()["entry_access_token"] is None
+        assert verified.json()["results_notifications_enabled"] is True
+
+
+def test_expired_guest_email_verification_is_rejected(log_database, monkeypatch):
+    delivered: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "backend.app.logs.api.send_guest_entry_verification",
+        lambda email, link: delivered.append((email, link)),
+    )
+    with TestClient(app) as client:
+        uploaded = submit(client).json()
+        token = delivered[0][1].split("token=", 1)[1]
+        with log_database.begin() as session:
+            verification = session.scalar(select(GuestEntryEmailVerification))
+            assert verification is not None
+            expired_at = datetime.now(UTC) - timedelta(seconds=1)
+            verification.created_at = expired_at - timedelta(hours=1)
+            verification.expires_at = expired_at
+        response = client.post("/api/v1/public/guest-email/verify", json={"token": token})
+        assert response.status_code == 400
+        assert (
+            client.get(
+                f"/api/v1/public/entries/{uploaded['entry_id']}",
+                headers={"X-Entry-Receipt": "invalid-token"},
+            ).status_code
+            == 404
+        )
+
+
+def test_failed_guest_verification_delivery_keeps_upload_and_allows_resend(
+    log_database, monkeypatch
+):
+    send_attempts = 0
+
+    def flaky_delivery(_email, _link):
+        nonlocal send_attempts
+        send_attempts += 1
+        if send_attempts == 1:
+            raise TimeoutError("mail transport unavailable")
+
+    monkeypatch.setattr("backend.app.logs.api.send_guest_entry_verification", flaky_delivery)
+    with TestClient(app) as client:
+        uploaded_response = submit(client)
+        assert uploaded_response.status_code == 201
+        uploaded = uploaded_response.json()
+        assert uploaded["guest_email_verification_sent"] is False
+        retried = client.post(
+            f"/api/v1/public/entries/{uploaded['entry_id']}/guest-email/resend",
+            headers={"X-Entry-Receipt": uploaded["receipt_token"]},
+        )
+        assert retried.status_code == 200
+        assert retried.json()["verification_email_sent"] is True
+        assert send_attempts == 2
 
 
 @pytest.mark.parametrize("version", ["2.0", "3.0"])

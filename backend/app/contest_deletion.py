@@ -10,9 +10,12 @@ from backend.app.models import (
     Contest,
     ContestDeletionPermit,
     ContestMasterDataVersion,
+    EmailOutbox,
     Entry,
     EntryAccessGrant,
     EntryRevision,
+    GuestEntryEmail,
+    GuestEntryEmailVerification,
     LogSubmissionRequest,
     Qso,
     QsoDecision,
@@ -123,6 +126,15 @@ def delete_contest_records(session: Session, contest: Contest) -> dict[str, int]
     )
     session.execute(delete(ScoreRun).where(ScoreRun.id.in_(score_run_ids)))
     session.execute(delete(EntryAccessGrant).where(EntryAccessGrant.entry_id.in_(entry_ids)))
+    session.execute(delete(EmailOutbox).where(EmailOutbox.publication_id.in_(publication_ids)))
+    session.execute(
+        delete(GuestEntryEmailVerification).where(
+            GuestEntryEmailVerification.guest_email_id.in_(
+                select(GuestEntryEmail.id).where(GuestEntryEmail.entry_id.in_(entry_ids))
+            )
+        )
+    )
+    session.execute(delete(GuestEntryEmail).where(GuestEntryEmail.entry_id.in_(entry_ids)))
     session.execute(
         delete(LogSubmissionRequest).where(LogSubmissionRequest.contest_id == contest_id)
     )

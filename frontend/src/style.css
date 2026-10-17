@@ -435,6 +435,34 @@ input[type='radio'] {
   padding: 0.75rem;
   background: var(--color-surface-muted);
 }
+.guest-email-prompt {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface-muted);
+}
+.guest-email-prompt > label:not(.checkbox-row) {
+  display: block;
+  margin: 0.75rem 0 0.35rem;
+  font-weight: 650;
+}
+.guest-email-prompt input[type='email'] {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.4rem;
+}
+.guest-email-prompt .checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.guest-email-prompt .checkbox-row input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
 .import-messages {
   padding-left: 1.5rem;
 }

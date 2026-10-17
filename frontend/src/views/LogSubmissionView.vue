@@ -5,6 +5,8 @@ import { ApiError } from '../api/client'
 import {
   listSubmittableContests,
   newIdempotencyKey,
+  resendGuestEntryEmailVerification,
+  setGuestEntryEmail,
   uploadContestLog,
   type ImportMessage,
   type LogSubmissionResult,
@@ -59,6 +61,14 @@ const result = ref<LogSubmissionResult | null>(null)
 const submissionKey = ref('')
 const router = useRouter()
 const route = useRoute()
+const guestEmail = ref('')
+const guestEmailAccess = ref(false)
+const guestEmailResults = ref(false)
+const guestEmailBusy = ref(false)
+const guestEmailError = ref('')
+const guestEmailMessage = ref('')
+const emailPromptDismissed = ref(false)
+const verificationResendBusy = ref(false)
 
 const allMessages = (messages: ImportMessage[]) => messages
 
@@ -66,6 +76,7 @@ watch(contestSlug, () => {
   file.value = null
   if (fileInput.value) fileInput.value.value = ''
   result.value = null
+  resetGuestEmailPrompt()
   submissionKey.value = ''
   progress.value = 0
 })
@@ -96,8 +107,68 @@ function chooseFile(event: Event) {
   const input = event.target as HTMLInputElement
   file.value = input.files?.[0] ?? null
   result.value = null
+  resetGuestEmailPrompt()
   submissionKey.value = ''
   progress.value = 0
+}
+
+function resetGuestEmailPrompt() {
+  guestEmail.value = ''
+  guestEmailAccess.value = false
+  guestEmailResults.value = false
+  guestEmailBusy.value = false
+  guestEmailError.value = ''
+  guestEmailMessage.value = ''
+  emailPromptDismissed.value = false
+}
+
+async function saveGuestEmail() {
+  if (!result.value?.entry_id || !result.value.receipt_token || guestEmailBusy.value)
+    return
+  guestEmailBusy.value = true
+  guestEmailError.value = ''
+  guestEmailMessage.value = ''
+  try {
+    const response = await setGuestEntryEmail(
+      result.value.entry_id,
+      {
+        email: guestEmail.value,
+        entry_access: guestEmailAccess.value,
+        result_notifications: guestEmailResults.value,
+      },
+      result.value.receipt_token,
+    )
+    guestEmailMessage.value = response.verification_email_sent
+      ? 'A verification link was sent. Your email choices take effect only after you verify the address.'
+      : 'Your choices are saved, but the verification email could not be sent. Use the resend option after email delivery is available.'
+    emailPromptDismissed.value = true
+  } catch (reason) {
+    guestEmailError.value =
+      reason instanceof ApiError ? reason.message : 'The email preferences could not be saved.'
+  } finally {
+    guestEmailBusy.value = false
+  }
+}
+
+async function resendHeaderVerification() {
+  if (!result.value?.entry_id || !result.value.receipt_token || verificationResendBusy.value)
+    return
+  verificationResendBusy.value = true
+  guestEmailError.value = ''
+  try {
+    const response = await resendGuestEntryEmailVerification(
+      result.value.entry_id,
+      result.value.receipt_token,
+    )
+    guestEmailMessage.value = response.verification_email_sent
+      ? 'A new verification link was sent to the Cabrillo EMAIL address.'
+      : 'The verification email could not be sent. Try again after email delivery is available.'
+  } catch (reason) {
+    guestEmailError.value =
+      reason instanceof ApiError ? reason.message : 'The verification email could not be resent.'
+  } finally {
+    verificationResendBusy.value = false
+  }
 }
 
 async function submit() {
@@ -292,6 +363,54 @@ onMounted(loadContests)
           {{ $tr('Manage this entry in this tab') }}
         </button>
       </div>
+      <section
+        v-if="result.status === 'accepted' && result.guest_email_prompt_required && result.entry_id && result.receipt_token && !result.replayed && !emailPromptDismissed"
+        class="guest-email-prompt"
+        aria-labelledby="guest-email-title"
+      >
+        <h3 id="guest-email-title">{{ $tr('Optional email choices') }}</h3>
+        <p>{{ $tr('You do not need an email address or account to submit this log. If you provide an email, verify it before it can be used.') }}</p>
+        <label for="guest-contact-email">{{ $tr('Email address') }}</label>
+        <input id="guest-contact-email" v-model.trim="guestEmail" type="email" maxlength="320" autocomplete="email" />
+        <label class="checkbox-row" for="guest-entry-access">
+          <input id="guest-entry-access" v-model="guestEmailAccess" type="checkbox" />
+          {{ $tr('I want to verify this address so I can amend or withdraw this entry.') }}
+        </label>
+        <label class="checkbox-row" for="guest-results-notices">
+          <input id="guest-results-notices" v-model="guestEmailResults" type="checkbox" />
+          {{ $tr('I want an email when public results are published.') }}
+        </label>
+        <p class="field-hint">{{ $tr('These are separate choices. Result notices are sent only after a public result list is published and contain a link to the public standings.') }}</p>
+        <div class="actions">
+          <button class="primary-button" type="button" :disabled="guestEmailBusy || !guestEmail || (!guestEmailAccess && !guestEmailResults)" @click="saveGuestEmail">
+            {{ guestEmailBusy ? $tr('Saving…') : $tr('Save email choices') }}
+          </button>
+          <button class="secondary-button" type="button" :disabled="guestEmailBusy" @click="emailPromptDismissed = true">
+            {{ $tr('No thanks') }}
+          </button>
+        </div>
+      </section>
+      <section
+        v-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_sent === true"
+        class="guest-email-prompt"
+        aria-labelledby="cabrillo-email-title"
+      >
+        <h3 id="cabrillo-email-title">{{ $tr('Verify your Cabrillo email') }}</h3>
+        <p>{{ $tr('We sent a one-time verification link to the EMAIL address in your Cabrillo file. Verification enables entry access only. Result notices are not enabled by this field.') }}</p>
+      </section>
+      <section
+        v-else-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_sent === false && result.entry_id && result.receipt_token"
+        class="guest-email-prompt"
+        aria-labelledby="cabrillo-email-retry-title"
+      >
+        <h3 id="cabrillo-email-retry-title">{{ $tr('Cabrillo email verification not sent') }}</h3>
+        <p>{{ $tr('The log was accepted. The verification email could not be delivered. You can retry sending it.') }}</p>
+        <button class="secondary-button" type="button" :disabled="verificationResendBusy" @click="resendHeaderVerification">
+          {{ verificationResendBusy ? $tr('Sending…') : $tr('Resend verification email') }}
+        </button>
+      </section>
+      <p v-if="guestEmailMessage" role="status">{{ $tr(guestEmailMessage) }}</p>
+      <p v-if="guestEmailError" class="form-error" role="alert">{{ $tr(guestEmailError) }}</p>
       <ul
         v-if="allMessages(result.errors).length"
         class="import-messages errors"

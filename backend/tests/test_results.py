@@ -17,9 +17,11 @@ from backend.app.models import (
     AuditEvent,
     Contest,
     ContestStatus,
+    EmailOutbox,
     Entry,
     EntryRevision,
     EntryStatus,
+    GuestEntryEmail,
     Participant,
     Qso,
     ResultPublication,
@@ -215,7 +217,9 @@ def test_late_entries_are_included_only_when_ruleset_publication_policy_enables_
         assert publication_policy(session, contest)["include_late"] is True
 
 
-def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(result_db):
+def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(
+    result_db, monkeypatch
+):
     factory, contest_id, manager_id, outsider_id = result_db
     client = manager_client(factory, manager_id)
     outsider = manager_client(factory, outsider_id)
@@ -256,6 +260,45 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(r
         if item["included_by_default"] and item["entry_status"] != "withdrawn"
     ]
     assert len(selected) == 1
+    with factory.begin() as session:
+        run = session.get(ScoreRun, selected[0])
+        assert run is not None
+        now = datetime.now(UTC)
+        session.add(
+            GuestEntryEmail(
+                entry_id=run.entry_id,
+                email_normalized="notified@example.test",
+                source="upload_prompt",
+                access_opt_in=False,
+                results_opt_in=True,
+                verified_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    delivered: list[tuple[str, str, int, str]] = []
+    monkeypatch.setattr(
+        "backend.app.results.api.get_settings",
+        lambda: SimpleNamespace(
+            email_smtp_host="mail.example.test",
+            email_from_address="contestmaster@example.test",
+        ),
+    )
+    monkeypatch.setattr("backend.app.results.api.SessionFactory", factory)
+    monkeypatch.setattr(
+        "backend.app.email_outbox.get_settings",
+        lambda: SimpleNamespace(
+            email_smtp_host="mail.example.test",
+            email_from_address="contestmaster@example.test",
+            frontend_base_url="https://contestmaster.example.test",
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.app.email_outbox.send_guest_result_notice",
+        lambda email, contest_name, number, link: delivered.append(
+            (email, contest_name, number, link)
+        ),
+    )
     withheld_run = next(
         item["score_run_id"]
         for item in review.json()["items"]
@@ -277,6 +320,33 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(r
     assert published.json()["status"] == "published"
     assert published.json()["entry_count"] == 1
     assert published.json()["withheld_count"] == 1
+    assert published.json()["queued_result_notices"] == 1
+    assert delivered == [
+        (
+            "notified@example.test",
+            "Results Sprint",
+            published.json()["publication_number"],
+            "https://contestmaster.example.test/contests/results-sprint",
+        )
+    ]
+    from backend.app.email_outbox import dispatch_pending_emails
+
+    assert dispatch_pending_emails(factory) == {
+        "sent": 0,
+        "cancelled": 0,
+        "failed": 0,
+        "pending": 0,
+    }
+    with factory() as session:
+        event = session.scalar(select(EmailOutbox))
+        assert event is not None and event.state == "sent"
+        assert event.attempt_count == 1
+    from backend.app.email_outbox import queue_publication_notices
+
+    with factory.begin() as session:
+        publication = session.scalar(select(ResultPublication))
+        assert publication is not None
+        assert queue_publication_notices(session, publication) == 0
     assert client.get(f"/api/v1/contests/{contest_id}/results/review").status_code == 200
 
     public_list = client.get("/api/v1/public/contests")
@@ -329,6 +399,95 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(r
         events = {event.action for event in session.scalars(select(AuditEvent))}
         assert "contest.results_generated" in events
         assert "contest.results_published" in events
+
+
+def test_result_notice_outbox_retries_failures_and_deduplicates(result_db, monkeypatch):
+    factory, contest_id, _manager_id, _outsider_id = result_db
+    with factory.begin() as session:
+        entry = session.scalar(select(Entry).where(Entry.contest_id == contest_id))
+        assert entry is not None
+        now = datetime.now(UTC)
+        contact = GuestEntryEmail(
+            entry_id=entry.id,
+            email_normalized="retry@example.test",
+            source="upload_prompt",
+            access_opt_in=False,
+            results_opt_in=True,
+            verified_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(contact)
+        publication = ResultPublication(
+            contest_id=contest_id,
+            publication_number=1,
+            source_digest="b" * 64,
+            entry_count=1,
+            withheld_count=0,
+            published_at=now,
+            is_sealed=True,
+        )
+        session.add(publication)
+        session.flush()
+        event = EmailOutbox(
+            event_key=f"published:{publication.id}:guest-email:{contact.id}",
+            guest_email_id=contact.id,
+            publication_id=publication.id,
+            state="pending",
+            attempt_count=0,
+            available_at=now,
+            created_at=now,
+        )
+        session.add(event)
+    monkeypatch.setattr(
+        "backend.app.email_outbox.get_settings",
+        lambda: SimpleNamespace(
+            email_smtp_host="mail.example.test",
+            email_from_address="contestmaster@example.test",
+            frontend_base_url="https://contestmaster.example.test",
+        ),
+    )
+    attempts = 0
+
+    def flaky_sender(*_args):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TimeoutError("mail transport timeout")
+
+    monkeypatch.setattr("backend.app.email_outbox.send_guest_result_notice", flaky_sender)
+    from backend.app.email_outbox import dispatch_pending_emails
+
+    assert dispatch_pending_emails(factory) == {
+        "sent": 0,
+        "cancelled": 0,
+        "failed": 1,
+        "pending": 0,
+    }
+    with factory.begin() as session:
+        persisted = session.scalar(select(EmailOutbox))
+        assert persisted is not None
+        assert persisted.state == "pending"
+        assert persisted.attempt_count == 1
+        assert persisted.last_error == "TimeoutError"
+        persisted.available_at = datetime.now(UTC) - timedelta(seconds=1)
+    assert dispatch_pending_emails(factory) == {
+        "sent": 1,
+        "cancelled": 0,
+        "failed": 0,
+        "pending": 0,
+    }
+    assert dispatch_pending_emails(factory) == {
+        "sent": 0,
+        "cancelled": 0,
+        "failed": 0,
+        "pending": 0,
+    }
+    assert attempts == 2
+    with factory() as session:
+        persisted = session.scalar(select(EmailOutbox))
+        assert persisted is not None and persisted.state == "sent"
+        assert persisted.attempt_count == 2
 
 
 def test_staging_guest_upload_scoring_publication_and_privacy_workflow(result_db):

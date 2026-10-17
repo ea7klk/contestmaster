@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
 from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -22,6 +24,8 @@ from backend.app.api.participant_identity import ParticipantPrincipal, require_p
 from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
+from backend.app.email_delivery import send_guest_entry_verification
+from backend.app.guest_email import prepare_guest_email, verify_guest_email
 from backend.app.logs.adif import parse_adif
 from backend.app.logs.cabrillo import ImportMessage, ParsedLog, map_categories, parse_cabrillo
 from backend.app.logs.service import (
@@ -38,6 +42,7 @@ from backend.app.models import (
     EntryAccessGrant,
     EntryRevision,
     EntryStatus,
+    GuestEntryEmail,
     LogSubmissionRequest,
     Qso,
     RulesetVersion,
@@ -59,6 +64,36 @@ FORMAT_SUFFIXES = {
     ".adif": "adif",
 }
 _IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+logger = logging.getLogger("contestmaster.guest_email")
+
+
+class GuestEmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    entry_access: bool = False
+    result_notifications: bool = False
+
+
+class GuestEmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+
+
+def _guest_verification_link(token: str) -> str:
+    settings = get_settings()
+    return (
+        f"{settings.frontend_base_url.rstrip('/')}/guest/email/verify?{urlencode({'token': token})}"
+    )
+
+
+def _deliver_guest_verification(email: str, token: str, event_id: str) -> bool:
+    try:
+        send_guest_entry_verification(email, _guest_verification_link(token))
+    except Exception as exc:
+        logger.warning(
+            "guest_email_verification_delivery_failed",
+            extra={"event_id": event_id, "error_type": type(exc).__name__},
+        )
+        return False
+    return True
 
 
 def _message(message: ImportMessage) -> dict[str, object]:
@@ -277,6 +312,7 @@ async def submit_log(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
+    participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
 ) -> dict[str, object]:
     """Accept a complete ruleset-supported log anonymously and atomically."""
     if not _IDEMPOTENCY_PATTERN.fullmatch(idempotency_key):
@@ -312,10 +348,18 @@ async def submit_log(
     category_values, validation = _validate_log(
         parsed, selected_slug, selected_name, category_mappings
     )
-    errors = [message for message in validation if message.code not in {"unmapped_category"}]
+    errors = [
+        message
+        for message in validation
+        if message.code not in {"unmapped_category", "invalid_email"}
+    ]
     warnings = [
         *parsed.warnings,
-        *(message for message in validation if message.code == "unmapped_category"),
+        *(
+            message
+            for message in validation
+            if message.code in {"unmapped_category", "invalid_email"}
+        ),
     ]
     if errors:
         return JSONResponse(
@@ -340,6 +384,15 @@ async def submit_log(
     if is_late and late_policy == "reject":
         raise HTTPException(status_code=409, detail="This contest does not accept late logs.")
     session.execute(text("BEGIN IMMEDIATE"))
+    guest_email_delivery: bool | None = None
+    valid_cabrillo_email: str | None = None
+    if upload_format == "cabrillo":
+        raw_email = parsed.headers.get("EMAIL", [])
+        if raw_email:
+            try:
+                valid_cabrillo_email = normalize_email(raw_email[0])
+            except ValueError:
+                valid_cabrillo_email = None
     try:
         contest = session.get(Contest, contest_id)
         if (
@@ -371,6 +424,25 @@ async def submit_log(
     except IdempotencyConflict as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if (
+        participant is None
+        and upload_format == "cabrillo"
+        and valid_cabrillo_email
+        and not replayed
+    ):
+        contact, token = prepare_guest_email(
+            session,
+            entry=entry,
+            email=valid_cabrillo_email,
+            source="cabrillo_header",
+            access_opt_in=True,
+            results_opt_in=False,
+        )
+        session.commit()
+        if token:
+            guest_email_delivery = _deliver_guest_verification(
+                contact.email_normalized, token, f"entry-{entry.id}"
+            )
     revision = _latest_revision(session, entry.id)
     score_runs = (
         recalculate_after_accepted_upload(
@@ -390,6 +462,9 @@ async def submit_log(
         "entry_key": entry.entry_key,
         "receipt_token": receipt_token or None,
         "receipt_token_replayed": replayed,
+        "guest_email_prompt_required": participant is None
+        and (upload_format == "adif" or valid_cabrillo_email is None),
+        "guest_email_verification_sent": guest_email_delivery,
         "summary": {
             "accepted_qsos": len(parsed.qsos),
             "rejected_qsos": 0,
@@ -400,6 +475,131 @@ async def submit_log(
         "warnings": [_message(message) for message in warnings],
         "score_runs": score_runs,
     }
+
+
+@router.post("/entries/{entry_id}/guest-email")
+def set_guest_entry_email(
+    entry_id: int,
+    payload: GuestEmailRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
+    participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
+) -> dict[str, object]:
+    entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
+    enforce_rate_limit(
+        request,
+        "guest-email-change",
+        limit=5,
+        window_seconds=900,
+        message="Too many email verification requests. Retry later.",
+    )
+    try:
+        contact, token = prepare_guest_email(
+            session,
+            entry=entry,
+            email=payload.email,
+            source="upload_prompt",
+            access_opt_in=payload.entry_access,
+            results_opt_in=payload.result_notifications,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="entry.guest_email_consent_updated",
+        target_type="entry",
+        target_id=entry.id,
+        metadata={
+            "access_opt_in": contact.access_opt_in,
+            "results_opt_in": contact.results_opt_in,
+            "verified": contact.verified_at is not None,
+        },
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    delivery_sent = None
+    if token is not None:
+        delivery_sent = _deliver_guest_verification(
+            contact.email_normalized, token, f"entry-{entry.id}"
+        )
+    return {
+        "status": "revoked" if contact.revoked_at else "verification_required",
+        "verified": contact.verified_at is not None,
+        "verification_email_sent": delivery_sent,
+    }
+
+
+@router.post("/guest-email/verify")
+def verify_guest_entry_email(
+    payload: GuestEmailVerificationRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    try:
+        contact, access_token = verify_guest_email(session, payload.token)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="entry.guest_email_verified",
+        target_type="entry",
+        target_id=contact.entry_id,
+        metadata={
+            "access_opt_in": contact.access_opt_in,
+            "results_opt_in": contact.results_opt_in,
+        },
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return {
+        "status": "verified",
+        "entry_id": contact.entry_id,
+        "entry_access_token": access_token,
+        "results_notifications_enabled": contact.results_opt_in,
+    }
+
+
+@router.post("/entries/{entry_id}/guest-email/resend")
+def resend_guest_entry_verification(
+    entry_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
+    participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
+) -> dict[str, object]:
+    entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
+    enforce_rate_limit(
+        request,
+        "guest-email-verification-resend",
+        limit=3,
+        window_seconds=900,
+        message="Too many verification requests. Retry later.",
+    )
+    contact = session.scalar(select(GuestEntryEmail).where(GuestEntryEmail.entry_id == entry.id))
+    if contact is None or contact.revoked_at is not None or contact.verified_at is not None:
+        raise HTTPException(
+            status_code=404, detail="No pending guest email verification was found."
+        )
+    try:
+        contact, token = prepare_guest_email(
+            session,
+            entry=entry,
+            email=contact.email_normalized,
+            source=contact.source,
+            access_opt_in=contact.access_opt_in,
+            results_opt_in=contact.results_opt_in,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    session.commit()
+    sent = bool(
+        token and _deliver_guest_verification(contact.email_normalized, token, f"entry-{entry.id}")
+    )
+    return {"status": "verification_required", "verification_email_sent": sent}
 
 
 @router.put("/entries/{entry_id}/log", response_model=None)

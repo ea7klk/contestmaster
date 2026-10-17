@@ -566,6 +566,9 @@ class EntryAccessGrant(Base):
     entry_id: Mapped[int] = mapped_column(
         ForeignKey("entries.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    guest_email_id: Mapped[int | None] = mapped_column(
+        ForeignKey("guest_entry_emails.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
@@ -576,6 +579,88 @@ class EntryAccessGrant(Base):
     revoked_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("system_users.id", ondelete="SET NULL")
     )
+
+
+class GuestEntryEmail(Base):
+    """Optional, entry-scoped guest email with separate consent and verification."""
+
+    __tablename__ = "guest_entry_emails"
+    __table_args__ = (
+        UniqueConstraint("entry_id", name="guest_entry_email_entry_unique"),
+        CheckConstraint("length(trim(email_normalized)) > 0", name="guest_entry_email_not_blank"),
+        CheckConstraint(
+            "source IN ('upload_prompt', 'cabrillo_header')", name="guest_entry_email_source"
+        ),
+        CheckConstraint(
+            "access_opt_in = 1 OR results_opt_in = 1 OR revoked_at IS NOT NULL",
+            name="guest_entry_email_has_consent",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("entries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email_normalized: Mapped[str] = mapped_column(String(320, collation="NOCASE"), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    access_opt_in: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    results_opt_in: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class GuestEntryEmailVerification(Base):
+    """Hashed, expiring one-time verification token for an entry guest email."""
+
+    __tablename__ = "guest_entry_email_verifications"
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 64", name="guest_email_token_hash_length"),
+        CheckConstraint("expires_at > created_at", name="guest_email_expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    guest_email_id: Mapped[int] = mapped_column(
+        ForeignKey("guest_entry_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class EmailOutbox(Base):
+    """Durable, de-duplicated post-publication email delivery event."""
+
+    __tablename__ = "email_outbox"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="email_outbox_event_unique"),
+        CheckConstraint(
+            "state IN ('pending', 'sent', 'cancelled', 'dead')", name="email_outbox_state"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    guest_email_id: Mapped[int] = mapped_column(
+        ForeignKey("guest_entry_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    publication_id: Mapped[int] = mapped_column(
+        ForeignKey("result_publications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    available_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    last_error: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
 class LogSubmissionRequest(Base):

@@ -52,6 +52,11 @@ export const router = createRouter({
       component: () => import('./views/LogSubmissionView.vue'),
     },
     {
+      path: '/guest/email/verify',
+      name: 'guest-email-verify',
+      component: () => import('./views/GuestEmailVerificationView.vue'),
+    },
+    {
       path: '/entries/:entryId/manage',
       name: 'entry-management',
       component: () => import('./views/EntryManagementView.vue'),

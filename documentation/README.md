@@ -142,7 +142,7 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as an immutable version. Global Administrators can administer all privileged and participant accounts and all resources. Contest Admin permissions are scoped to permanently owned or assigned contests and rulesets; each creator remains the permanent owner. Participant records are separate from privileged system accounts. Verified participant emails support password login, recovery, two-address email changes, and magic-link access scoped to associated entries. Participant callsigns are separately managed, with the registered primary callsign protected from removal. An entry's submitter_user_id is nullable when a participant uploads as a guest. Guest receipt grants are scoped to one entry and store only a token hash. The original Cabrillo or ADI/ADIF input is retained with each immutable entry revision. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts.
+Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as an immutable version. Global Administrators can administer all privileged and participant accounts and all resources. Contest Admin permissions are scoped to permanently owned or assigned contests and rulesets; each creator remains the permanent owner. Participant records are separate from privileged system accounts. Verified participant emails support password login, recovery, two-address email changes, and magic-link access scoped to associated entries. Participant callsigns are separately managed, with the registered primary callsign protected from removal. An entry's submitter_user_id is nullable when a participant uploads as a guest. Guest receipt grants and optional verified guest email access are scoped to one entry and store only token hashes; result-notice consent is stored separately and requires verified email. Post-publication notices use unique outbox events after a result snapshot commits. The original Cabrillo or ADI/ADIF input is retained with each immutable entry revision. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts.
 
 The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Stable `rulesets` retain permanent ownership across immutable versions. `contest_administrators` and `ruleset_administrators` grant scoped Contest Admin access without changing resource ownership. `participant_callsigns` stores additional callsigns; participant emails, email-change confirmations, password resets, and sessions support account security. Bands and modes remain separate ORM entities. Contest-history delete guards and ruleset-version permits remain active. For SQLite compatibility with pre-existing referenced versions, `ruleset_versions.ruleset_id` is nullable and indexed but does not yet have a database foreign-key constraint; migrations backfill it where possible and API/persistence authorization validates the root association.
 
@@ -187,6 +187,11 @@ erDiagram
     ENTRY ||--o{ RESULT_PUBLICATION_ENTRY : represents
     SCORE_RUN ||--o{ RESULT_PUBLICATION_ENTRY : selected_run
     ENTRY ||--o{ ENTRY_ACCESS_GRANT : grants
+    ENTRY ||--o| GUEST_ENTRY_EMAIL : contacts
+    GUEST_ENTRY_EMAIL ||--o{ GUEST_ENTRY_EMAIL_VERIFICATION : verifies
+    GUEST_ENTRY_EMAIL ||--o{ ENTRY_ACCESS_GRANT : authorizes
+    GUEST_ENTRY_EMAIL ||--o{ EMAIL_OUTBOX : receives
+    RESULT_PUBLICATION ||--o{ EMAIL_OUTBOX : queues
     CONTEST ||--o{ LOG_SUBMISSION_REQUEST : deduplicates
     ENTRY ||--o{ LOG_SUBMISSION_REQUEST : identifies
     ENTRY_REVISION ||--o{ SCORE_RUN : scores
@@ -402,10 +407,39 @@ erDiagram
     ENTRY_ACCESS_GRANT {
         integer id PK
         integer entry_id FK
+        integer guest_email_id FK "nullable"
         text token_hash UK
         text created_at_utc
         text expires_at_utc
         text revoked_at_utc
+    }
+    GUEST_ENTRY_EMAIL {
+        integer id PK
+        integer entry_id FK UK
+        text email_normalized
+        text source
+        integer access_opt_in
+        integer results_opt_in
+        text verified_at_utc "nullable"
+        text revoked_at_utc "nullable"
+    }
+    GUEST_ENTRY_EMAIL_VERIFICATION {
+        integer id PK
+        integer guest_email_id FK
+        text token_hash UK
+        text expires_at_utc
+        text consumed_at_utc "nullable"
+    }
+    EMAIL_OUTBOX {
+        integer id PK
+        text event_key UK
+        integer guest_email_id FK
+        integer publication_id FK
+        text state
+        integer attempt_count
+        text available_at_utc
+        text sent_at_utc "nullable"
+        text last_error "safe exception class only"
     }
     LOG_SUBMISSION_REQUEST {
         integer id PK

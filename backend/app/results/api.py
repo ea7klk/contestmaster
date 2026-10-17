@@ -5,7 +5,16 @@ from __future__ import annotations
 import json
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,7 +23,9 @@ from backend.app.adjudication.scoring import recalculate_contest
 from backend.app.api.auth import AuthenticatedUser, require_contest_access
 from backend.app.api.pagination import Page, page_meta
 from backend.app.audit import record_audit_event
-from backend.app.db import get_session
+from backend.app.config import get_settings
+from backend.app.db import SessionFactory, get_session
+from backend.app.email_outbox import dispatch_pending_emails, queue_publication_notices
 from backend.app.models import (
     Contest,
     ContestStatus,
@@ -178,6 +189,7 @@ def publish_results(
     contest_id: int,
     payload: PublishRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     contest: Annotated[Contest, Depends(require_contest_access)],
     principal: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
@@ -209,10 +221,14 @@ def publish_results(
             },
             request_id=getattr(request.state, "request_id", None),
         )
+        queued_notice_count = queue_publication_notices(session, publication)
         session.commit()
     except ResultPublicationError as exc:
         session.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    settings = get_settings()
+    if queued_notice_count and settings.email_smtp_host and settings.email_from_address:
+        background_tasks.add_task(dispatch_pending_emails, SessionFactory)
     return {
         "id": publication.id,
         "contest_id": contest.id,
@@ -222,6 +238,7 @@ def publish_results(
         "withheld_count": publication.withheld_count,
         "published_at": publication.published_at,
         "status": contest.status.value,
+        "queued_result_notices": queued_notice_count,
     }
 
 

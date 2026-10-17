@@ -229,4 +229,88 @@ describe('LogSubmissionView', () => {
     expect(wrapper.get('#result-title').text()).toBe('Log needs correction')
     expect(wrapper.text()).toContain('Line 12: QSO record is incomplete.')
   })
+
+  it('offers independent optional access and result email choices after acceptance', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/guest-email')) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          email: 'guest@example.test',
+          entry_access: false,
+          result_notifications: true,
+        })
+        return new Response(
+          JSON.stringify({
+            status: 'verification_required',
+            verified: false,
+            verification_email_sent: true,
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 1,
+              name: 'Digital Sprint',
+              slug: 'digital-sprint',
+              cutoff_at: '2026-12-01T00:00:00Z',
+              accepted_formats: ['adif'],
+            },
+          ],
+        }),
+        { status: 200 },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    class AcceptedAdifRequest {
+      upload = { onprogress: null }
+      status = 201
+      responseText = JSON.stringify({
+        ...responseBody,
+        guest_email_prompt_required: true,
+        guest_email_verification_sent: null,
+      })
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      open() {}
+      setRequestHeader() {}
+      send() {
+        this.onload?.()
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', AcceptedAdifRequest)
+    const wrapper = mount(LogSubmissionView, {
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+    await wrapper.get('#upload-contest').setValue('digital-sprint')
+    const input = wrapper.get<HTMLInputElement>('#log-file')
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['<EOR>'], 'entry.adi', { type: 'text/plain' })],
+    })
+    await input.trigger('change')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('#guest-contact-email').exists()).toBe(true)
+    expect(wrapper.text()).toContain('These are separate choices.')
+    await wrapper.get('#guest-contact-email').setValue('guest@example.test')
+    await wrapper.get('#guest-results-notices').setValue(true)
+    const saveEmailChoices = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Save email choices'))
+    expect(saveEmailChoices).toBeDefined()
+    await saveEmailChoices?.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('A verification link was sent.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/public/entries/8/guest-email',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    await expectAccessible(wrapper.element)
+  })
 })

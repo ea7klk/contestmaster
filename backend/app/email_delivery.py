@@ -17,6 +17,28 @@ def send_participant_magic_link(email: str, link: str) -> None:
     )
 
 
+def send_guest_entry_verification(email: str, link: str) -> None:
+    send_email(
+        email,
+        "Verify access to your Contestmaster log",
+        "Confirm this address to enable the guest log options you selected. "
+        "The link expires in 24 hours and can be used only once.",
+        link,
+    )
+
+
+def send_guest_result_notice(
+    email: str, contest_name: str, publication_number: int, link: str
+) -> None:
+    send_email(
+        email,
+        f"{contest_name}: results are published",
+        f"Contestmaster has published result list {publication_number} for {contest_name}. "
+        "Open the public results page to view the standings.",
+        link,
+    )
+
+
 def send_email(email: str, subject: str, explanation: str, link: str) -> None:
     """Deliver one transactional account link through the configured SMTP relay."""
     settings = get_settings()

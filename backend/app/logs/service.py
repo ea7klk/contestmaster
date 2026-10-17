@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from backend.app.api.auth import normalize_email
 from backend.app.logs.cabrillo import ParsedLog
 from backend.app.models import (
     Contest,
@@ -198,9 +199,14 @@ def create_guest_entry(
 
     call = _header(parsed, "CALLSIGN") or ""
     email_address = _header(parsed, "EMAIL")
+    if email_address:
+        try:
+            email_address = normalize_email(email_address)
+        except ValueError:
+            email_address = None
     participant: Participant | None = None
     if email_address:
-        normalized_email = email_address.strip().casefold()
+        normalized_email = email_address
         email_row = session.scalar(
             select(ParticipantEmail).where(ParticipantEmail.email_normalized == normalized_email)
         )
