@@ -155,6 +155,35 @@ a:hover {
   color: var(--color-brand-900);
   background: var(--color-brand-wash-strong);
 }
+.participant-header-action {
+  min-height: 2.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--color-header-circle);
+  border-radius: 0.45rem;
+  color: var(--color-surface);
+  background: transparent;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.participant-header-action:hover:not(:disabled) {
+  border-color: var(--color-surface);
+  color: var(--color-brand-900);
+  background: var(--color-brand-wash-strong);
+}
+.participant-header-action:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+.participant-header-callsign {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.025em;
+}
 .menu-toggle {
   width: 2.75rem;
   height: 2.75rem;
@@ -492,12 +521,20 @@ input[type='radio'] {
   .header-actions {
     width: 100%;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.45rem;
   }
   .header-caption {
     display: none;
   }
   .header-upload-action {
     min-height: 2.4rem;
+    padding-inline: 0.65rem;
+    font-size: 0.86rem;
+  }
+  .participant-header-action {
+    min-height: 2.4rem;
+    gap: 0.3rem;
     padding-inline: 0.65rem;
     font-size: 0.86rem;
   }
@@ -517,7 +554,8 @@ input[type='radio'] {
 @media (prefers-reduced-motion: no-preference) {
   .site-navigation,
   .site-navigation a,
-  .header-upload-action {
+  .header-upload-action,
+  .participant-header-action {
     transition:
       background-color 120ms ease,
       color 120ms ease;

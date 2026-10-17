@@ -1013,5 +1013,6 @@
   "s_367d6caa": "Gast-Logs übernehmen",
   "s_939cd132": "Gib das Empfangstoken eines Gast-Logs ein, das mit einem deiner Rufzeichen eingereicht wurde. Das Token weist den Zugriff auf diesen Eintrag nach; passende Gast-Logs dieses Rufzeichens werden deinem Konto zugeordnet.",
   "s_a92fb3de": "Logs übernehmen",
-  "s_5fbb3fde": "Gast-Logs für {callsign} zugeordnet: {count}."
+  "s_5fbb3fde": "Gast-Logs für {callsign} zugeordnet: {count}.",
+  "s_d72c8000": "Abmelden"
 }

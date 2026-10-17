@@ -1013,5 +1013,6 @@
   "s_367d6caa": "Claim guest logs",
   "s_939cd132": "Enter the entry receipt token from a guest log submitted with one of your callsigns. The token proves access to that entry; matching guest logs for that callsign will be added to your account.",
   "s_a92fb3de": "Claim logs",
-  "s_5fbb3fde": "Guest logs linked to {callsign}: {count}."
+  "s_5fbb3fde": "Guest logs linked to {callsign}: {count}.",
+  "s_d72c8000": "Log Off"
 }

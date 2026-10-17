@@ -4,24 +4,47 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { expectAccessible } from './test/a11y'
 import { i18n } from './i18n'
+import { setParticipantSession } from './state/participantSession'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  setParticipantSession(null)
+})
 
 describe('App privileged navigation', () => {
   it('redirects an existing flagged session to password change before continuing', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      id: 8,
-      username: 'manager',
-      email: 'manager@example.test',
-      display_name: 'Contest Manager',
-      role: 'contest_admin',
-      must_change_password: true,
-    }), { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith('/participants/auth/me')) {
+          return new Response(
+            JSON.stringify({
+              error: { message: 'Authentication is required.' },
+            }),
+            { status: 401 },
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            id: 8,
+            username: 'manager',
+            email: 'manager@example.test',
+            display_name: 'Contest Manager',
+            role: 'contest_admin',
+            must_change_password: true,
+          }),
+          { status: 200 },
+        )
+      }),
+    )
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/manage/contests', component: { template: '<p>manage</p>' } },
-        { path: '/change-password', component: { template: '<p>change password</p>' } },
+        {
+          path: '/change-password',
+          component: { template: '<p>change password</p>' },
+        },
       ],
     })
     await router.push('/manage/contests')
@@ -43,6 +66,14 @@ describe('App privileged navigation', () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
+        if (path.endsWith('/participants/auth/me')) {
+          return new Response(
+            JSON.stringify({
+              error: { message: 'Authentication is required.' },
+            }),
+            { status: 401 },
+          )
+        }
         if (path.endsWith('/auth/me')) {
           return new Response(
             JSON.stringify({
@@ -90,7 +121,7 @@ describe('App privileged navigation', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Staff sign-in')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     wrapper.unmount()
     if (originalCookie)
       Object.defineProperty(document, 'cookie', originalCookie)
@@ -157,9 +188,15 @@ describe('App privileged navigation', () => {
     expect(wrapper.get('.header-upload-action').attributes('href')).toBe(
       '/submit-log',
     )
+    expect(wrapper.get('.participant-header-action').attributes('href')).toBe(
+      '/participant/access',
+    )
     expect(
       wrapper.get('.header-actions .locale-picker').element.nextElementSibling,
     ).toBe(wrapper.get('.header-upload-action').element)
+    expect(
+      wrapper.get('.header-upload-action').element.nextElementSibling,
+    ).toBe(wrapper.get('.participant-header-action').element)
     expect(nav.find('#application-locale').exists()).toBe(false)
     expect(wrapper.get('label[for="application-locale"]').text()).toBe(
       'Language',
@@ -185,22 +222,113 @@ describe('App privileged navigation', () => {
     wrapper.unmount()
   })
 
+  it('shows the primary callsign in the participant log-off control and ends that session', async () => {
+    const originalCookie = Object.getOwnPropertyDescriptor(document, 'cookie')
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      value: 'contestmaster_participant_csrf=participant-csrf',
+    })
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/participants/auth/me')) {
+          return new Response(
+            JSON.stringify({
+              id: 21,
+              email: 'operator@example.test',
+              display_name: 'Operator',
+              callsign: 'EA7ABC',
+              callsigns: [
+                { id: 1, callsign: 'EA7ABC', is_primary: true },
+                { id: 2, callsign: 'EA7XYZ', is_primary: false },
+              ],
+            }),
+            { status: 200 },
+          )
+        }
+        if (path.endsWith('/participants/auth/logout')) {
+          expect(init?.method).toBe('POST')
+          expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe(
+            'participant-csrf',
+          )
+          return new Response(JSON.stringify({ status: 'signed_out' }), {
+            status: 200,
+          })
+        }
+        return new Response(
+          JSON.stringify({
+            error: { message: 'Authentication is required.' },
+          }),
+          { status: 401 },
+        )
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<p>Home</p>' } },
+        {
+          path: '/:pathMatch(.*)*',
+          component: { template: '<p>Not found</p>' },
+        },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(App, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const participantAction = wrapper.get('.participant-header-action')
+    expect(participantAction.element.tagName).toBe('BUTTON')
+    expect(participantAction.text()).toContain('EA7ABC')
+    expect(participantAction.text()).toContain('Log Off')
+    expect(participantAction.text()).not.toContain('EA7XYZ')
+    expect(participantAction.element.previousElementSibling).toBe(
+      wrapper.get('.header-upload-action').element,
+    )
+    await expectAccessible(wrapper.element)
+    await participantAction.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(wrapper.get('.participant-header-action').element.tagName).toBe('A')
+    expect(wrapper.get('.participant-header-action').attributes('href')).toBe(
+      '/participant/access',
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/participants/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    wrapper.unmount()
+    if (originalCookie)
+      Object.defineProperty(document, 'cookie', originalCookie)
+    else Reflect.deleteProperty(document, 'cookie')
+  })
+
   it('keeps master-data administration links exclusive to global administrators', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith('/participants/auth/me')) {
+          return new Response(
             JSON.stringify({
-              id: 1,
-              username: 'admin',
-              email: 'admin@example.test',
-              display_name: 'Global Admin',
-              role: 'global_administrator',
+              error: { message: 'Authentication is required.' },
             }),
-            { status: 200 },
-          ),
-      ),
+            { status: 401 },
+          )
+        }
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            username: 'admin',
+            email: 'admin@example.test',
+            display_name: 'Global Admin',
+            role: 'global_administrator',
+          }),
+          { status: 200 },
+        )
+      }),
     )
     const router = createRouter({
       history: createMemoryHistory(),

@@ -3,18 +3,33 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from './api/client'
 import { getCurrentUser, signOut, type PrivilegedUser } from './api/identity'
+import { signOutParticipant } from './api/participantIdentity'
 import SiteFooter from './components/SiteFooter.vue'
 import { i18n, setLocale, supportedLocales, type SupportedLocale } from './i18n'
+import {
+  participantSession,
+  refreshParticipantSession,
+  setParticipantSession,
+} from './state/participantSession'
 
 const route = useRoute()
 const router = useRouter()
 const staffUser = ref<PrivilegedUser | null>(null)
 const signOutError = ref('')
 const localeError = ref('')
+const participantSignOutError = ref('')
+const participantSigningOut = ref(false)
 const menuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
 const selectedLocale = computed(
   () => i18n.global.locale.value as SupportedLocale,
+)
+const participantCallsign = computed(
+  () =>
+    participantSession.value?.callsigns?.find((item) => item.is_primary)
+      ?.callsign ??
+    participantSession.value?.callsign ??
+    '',
 )
 
 async function changeLocale(event: Event) {
@@ -77,8 +92,26 @@ async function handleSignOut() {
   }
 }
 
+async function handleParticipantSignOut() {
+  participantSignOutError.value = ''
+  participantSigningOut.value = true
+  try {
+    await signOutParticipant()
+    setParticipantSession(null)
+    await router.replace('/')
+  } catch (error) {
+    participantSignOutError.value =
+      error instanceof ApiError
+        ? error.message
+        : 'Participant sign-out could not be completed.'
+  } finally {
+    participantSigningOut.value = false
+  }
+}
+
 onMounted(() => {
   refreshIdentity()
+  refreshParticipantSession()
   document.addEventListener('keydown', handleGlobalKeydown)
 })
 onBeforeUnmount(() =>
@@ -89,6 +122,7 @@ watch(
   () => {
     closeMenu()
     refreshIdentity()
+    refreshParticipantSession()
   },
 )
 </script>
@@ -135,6 +169,27 @@ watch(
           <RouterLink class="header-upload-action" to="/submit-log">
             {{ $tr('Submit a log') }}
           </RouterLink>
+          <RouterLink
+            v-if="!participantSession"
+            class="participant-header-action"
+            to="/participant/access"
+          >
+            {{ $tr('Participant access') }}
+          </RouterLink>
+          <button
+            v-else
+            class="participant-header-action"
+            type="button"
+            :disabled="participantSigningOut"
+            :aria-label="`${$tr('Log Off')} ${participantCallsign}`"
+            @click="handleParticipantSignOut"
+          >
+            <span class="participant-header-callsign">{{
+              participantCallsign
+            }}</span>
+            <span aria-hidden="true">·</span>
+            {{ $tr(participantSigningOut ? 'Working…' : 'Log Off') }}
+          </button>
         </div>
       </div>
       <nav
@@ -190,6 +245,9 @@ watch(
     </p>
     <p v-if="signOutError" class="shell-error" role="alert">
       {{ $tr(signOutError) }}
+    </p>
+    <p v-if="participantSignOutError" class="shell-error" role="alert">
+      {{ $tr(participantSignOutError) }}
     </p>
     <main id="main-content" class="main-content">
       <RouterView />

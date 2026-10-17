@@ -1013,5 +1013,6 @@
   "s_367d6caa": "Reclamar logs de invitado",
   "s_939cd132": "Introduce el token de recibo de un log de invitado enviado con uno de tus indicativos. El token demuestra el acceso a esa participación; los logs de invitado coincidentes de ese indicativo se añadirán a tu cuenta.",
   "s_a92fb3de": "Reclamar logs",
-  "s_5fbb3fde": "Logs de invitado vinculados a {callsign}: {count}."
+  "s_5fbb3fde": "Logs de invitado vinculados a {callsign}: {count}.",
+  "s_d72c8000": "Cerrar sesión"
 }

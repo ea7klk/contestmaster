@@ -2,9 +2,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectAccessible } from '../test/a11y'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { setParticipantSession } from '../state/participantSession'
 import ParticipantAccessView from './ParticipantAccessView.vue'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  setParticipantSession(null)
+})
 
 async function mountParticipant(path: string) {
   const router = createRouter({

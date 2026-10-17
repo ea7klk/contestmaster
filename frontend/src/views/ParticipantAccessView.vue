@@ -22,6 +22,7 @@ import {
   type ParticipantEntry,
 } from '../api/participantIdentity'
 import { formatUtcDateTime } from '../i18n'
+import { setParticipantSession } from '../state/participantSession'
 
 const route = useRoute()
 const router = useRouter()
@@ -221,6 +222,7 @@ async function loadEntries() {
     const result = await getParticipantEntries()
     entries.value = result.items
     const profile = await getParticipantProfile()
+    setParticipantSession(profile)
     profileCallsigns.value = profile.callsigns ?? []
     profileName.value = profile.display_name ?? ''
     signedIn.value = true
@@ -242,6 +244,7 @@ async function handleSignOut() {
   error.value = ''
   try {
     await signOutParticipant()
+    setParticipantSession(null)
     signedIn.value = false
     entries.value = []
     await router.replace('/participant/access')

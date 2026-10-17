@@ -1013,5 +1013,6 @@
   "s_367d6caa": "Récupérer les logs invités",
   "s_939cd132": "Saisissez le jeton de reçu d’un log invité envoyé sous l’un de vos indicatifs. Ce jeton prouve l’accès à cette participation ; les logs invités correspondants de cet indicatif seront ajoutés à votre compte.",
   "s_a92fb3de": "Récupérer les logs",
-  "s_5fbb3fde": "Logs invités associés à {callsign} : {count}."
+  "s_5fbb3fde": "Logs invités associés à {callsign} : {count}.",
+  "s_d72c8000": "Déconnexion"
 }
