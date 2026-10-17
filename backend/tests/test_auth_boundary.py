@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -18,6 +18,7 @@ from backend.app.api.auth import (
     require_authenticated_user,
     verify_password,
 )
+from backend.app.contest_series import generate_due_editions
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
@@ -686,6 +687,21 @@ def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(ident
     )
     assert other_login.status_code == 200
     assert other_client.get(f"/api/v1/contests/series/{series_id}/exceptions").status_code == 404
+    generated = generate_due_editions(identity_database, now=datetime(2027, 2, 8, tzinfo=UTC))
+    assert generated["generated"] == 1
+    with identity_database() as session:
+        edition_id = session.scalar(
+            select(Contest.id).where(
+                Contest.series_id == series_id,
+                Contest.is_series_anchor.is_(False),
+            )
+        )
+    assert edition_id is not None
+    generated_edition = client.get(f"/api/v1/contests/{edition_id}")
+    assert generated_edition.status_code == 200
+    assert generated_edition.json()["name"] == "Annual Sprint — 2027-05-08"
+    assert generated_edition.json()["series_name"] == "Annual Sprint"
+
     duplicate_destination = client.post(
         f"/api/v1/contests/series/{series_id}/exceptions",
         headers=csrf,
