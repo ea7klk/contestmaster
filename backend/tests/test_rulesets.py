@@ -618,6 +618,34 @@ def test_duplicate_qso_can_supply_multiplier_without_points():
     assert result.multiplier_count == 2
 
 
+def test_credit_override_does_not_award_points_or_bonus_to_duplicate_qso():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["count_for_multipliers"] = True
+    bonus_rule = next(item for item in payload["rules"] if item["id"] == "entry-bonus")
+    bonus_rule["rule"]["basis"] = "per_eligible_qso"
+    entry = sample_entry()
+    second_qso = entry.qsos[1].model_copy(update={"entity": "VE"})
+    entry = entry.model_copy(update={"qsos": [entry.qsos[0], second_qso]})
+
+    result = score_entry(
+        validate_ruleset(payload),
+        entry,
+        contest_starts_at=START,
+        contest_ends_at=END,
+        qso_overrides={2: {"status": "credited"}},
+    )
+
+    duplicate_score = next(item for item in result.qso_scores if item.qso_id == 2)
+    assert duplicate_score.status == "credited"
+    assert duplicate_score.points == 0
+    assert duplicate_score.bonus_points == 0
+    assert len(duplicate_score.multiplier_keys) == 1
+    assert result.points_total == 2
+    assert result.bonus_points == 5
+    assert result.multiplier_count == 2
+
+
 def test_duplicate_multiplier_option_does_not_bypass_other_eligibility_rules():
     payload = valid_payload()
     duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")

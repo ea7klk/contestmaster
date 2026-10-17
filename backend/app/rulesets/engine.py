@@ -434,12 +434,15 @@ def score_entry(
             if override_status not in {"credited", "not_credited", "needs_review"}:
                 raise RuleExecutionError("QSO decision override has an unsupported status")
             status = override_status
-            multiplier_eligible = override_status == "credited"
+            multiplier_eligible = override_status == "credited" and (
+                not duplicate_detected
+                or (eligible_before_duplicates and duplicate_multiplier_allowed)
+            )
             reasons.append(str(override.get("reason_code", "review_override")))
 
         points = 0
         qso_multiplier_keys: list[str] = []
-        if status == "credited":
+        if status == "credited" and not duplicate_detected:
             for configured_rule in point_rules:
                 rule = configured_rule.rule
                 if not isinstance(rule, PointRule) or not _condition_applies(
@@ -475,7 +478,7 @@ def score_entry(
         if multiplier_eligible:
             multiplier_keys.update(qso_multiplier_keys)
 
-        if status == "credited":
+        if status == "credited" and not duplicate_detected:
             eligible_contexts.append((qso, context))
 
         results[qso.qso_id] = {
