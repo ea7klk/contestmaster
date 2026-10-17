@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.db import get_session
-from backend.app.models import Contest, SystemRole, SystemSession, SystemUser
+from backend.app.models import (
+    Contest,
+    ContestAdministrator,
+    Ruleset,
+    RulesetAdministrator,
+    SystemRole,
+    SystemSession,
+    SystemUser,
+)
 
 SESSION_COOKIE = "contestmaster_session"
 CSRF_COOKIE = "contestmaster_csrf"
@@ -184,13 +192,28 @@ def require_contest_access(
     contest = session.get(Contest, contest_id)
     if contest is None:
         raise HTTPException(status_code=404, detail="Contest not found.")
-    if (
-        principal.role is not SystemRole.GLOBAL_ADMINISTRATOR
-        and contest.owner_user_id != principal.user_id
-    ):
+    if not can_manage_contest(session, contest, principal):
         # Do not reveal the existence of contests owned by another manager.
         raise HTTPException(status_code=404, detail="Contest not found.")
     return contest
+
+
+def can_manage_contest(session: Session, contest: Contest, principal: Principal) -> bool:
+    if principal.role is SystemRole.GLOBAL_ADMINISTRATOR:
+        return True
+    if contest.owner_user_id == principal.user_id:
+        return True
+    return session.get(ContestAdministrator, (contest.id, principal.user_id)) is not None
+
+
+def can_manage_ruleset(session: Session, ruleset: Ruleset | None, principal: Principal) -> bool:
+    if ruleset is None:
+        return False
+    if principal.role is SystemRole.GLOBAL_ADMINISTRATOR:
+        return True
+    if ruleset.owner_user_id == principal.user_id:
+        return True
+    return session.get(RulesetAdministrator, (ruleset.id, principal.user_id)) is not None
 
 
 AuthenticatedUser = Annotated[Principal, Depends(require_authenticated_user)]

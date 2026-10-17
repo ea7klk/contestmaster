@@ -303,9 +303,7 @@ def test_entry_log_resubmission_rejects_format_not_enabled_by_ruleset(log_databa
 
 
 @pytest.mark.parametrize("format_state", ["no_ruleset", "unsupported_only"])
-def test_entry_revision_rejects_contest_without_supported_format(
-    log_database, format_state
-):
+def test_entry_revision_rejects_contest_without_supported_format(log_database, format_state):
     client = TestClient(app)
     created = submit(client, key="revision-format-base")
     assert created.status_code == 201
@@ -508,10 +506,7 @@ def test_verified_participant_identity_is_associated_and_can_use_its_session(log
 
 def test_anonymous_log_upload_has_no_per_ip_rate_limit(log_database):
     client = TestClient(app)
-    accepted = [
-        submit(client, key=f"request-key-{index:04d}").status_code
-        for index in range(65)
-    ]
+    accepted = [submit(client, key=f"request-key-{index:04d}").status_code for index in range(65)]
 
     assert all(status in {200, 201} for status in accepted)
 

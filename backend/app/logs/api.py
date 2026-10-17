@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.auth import normalize_email
 from backend.app.api.participant_identity import ParticipantPrincipal, require_participant
+from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
 from backend.app.logs.adif import parse_adif
@@ -58,6 +59,8 @@ FORMAT_SUFFIXES = {
     ".adif": "adif",
 }
 _IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+
 def _message(message: ImportMessage) -> dict[str, object]:
     return {"line": message.line, "code": message.code, "message": message.message}
 
@@ -685,6 +688,35 @@ def get_entry(
 ) -> dict[str, object]:
     entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
     return _entry_output(session, entry)
+
+
+@router.post("/entries/{entry_id}/withdraw")
+def withdraw_entry(
+    entry_id: int,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
+    participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
+) -> dict[str, object]:
+    """Allow the entry owner to withdraw through their receipt or participant account."""
+    entry = _entry_and_authorize(entry_id, request, session, receipt, participant)
+    if entry.status is EntryStatus.WITHDRAWN:
+        return {"status": "withdrawn"}
+    entry.status = EntryStatus.WITHDRAWN
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="entry.withdrawn",
+        target_type="entry",
+        target_id=entry.id,
+        metadata={
+            "access_channel": "participant_session" if participant is not None else "entry_receipt",
+            "participant_id": participant.participant_id if participant is not None else None,
+        },
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return {"status": "withdrawn"}
 
 
 @router.get("/entries/{entry_id}/revisions/{revision_id}/download")

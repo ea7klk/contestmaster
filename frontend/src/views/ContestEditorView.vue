@@ -18,6 +18,7 @@ import {
 } from '../api/contests'
 import { getCurrentUser } from '../api/identity'
 import { formatUtcDateTime, formatUtcMonth } from '../i18n'
+import ResourceAdministrators from '../components/ResourceAdministrators.vue'
 
 const props = defineProps<{ contestId?: string }>()
 const router = useRouter()
@@ -87,6 +88,7 @@ const exceptionAction = ref<'skip' | 'move'>('skip')
 const exceptionMovedToDate = ref('')
 const savingException = ref(false)
 const deletingSeries = ref(false)
+const activeContestId = ref<number | null>(null)
 const editingId = computed(() => {
   if (props.contestId === undefined) return null
   const id = Number(props.contestId)
@@ -322,6 +324,7 @@ async function load() {
     }
     if (editingId.value !== null) {
       const contest = await getContest(editingId.value)
+      activeContestId.value = contest.id
       Object.assign(form, contestForm(contest))
       if (form.series_id !== null) await refreshSeriesExceptions()
     }
@@ -356,12 +359,15 @@ async function save() {
   statusMessage.value = ''
   try {
     const draft = toDraft(form)
-    if (editingId.value === null) {
+    if (editingId.value === null && activeContestId.value === null) {
       const contest = await createContest(draft)
+      activeContestId.value = contest.id
       statusMessage.value = `Contest ${contest.name} created as a draft.`
-      Object.assign(form, emptyForm())
     } else {
-      await updateContest(editingId.value, draft)
+      const targetId = editingId.value ?? activeContestId.value
+      if (targetId === null) throw new Error('The contest could not be identified.')
+      await updateContest(targetId, draft)
+      activeContestId.value = targetId
       statusMessage.value = 'Contest details saved.'
     }
   } catch (error) {
@@ -810,6 +816,7 @@ watch(
           }}
         </button>
       </form>
+      <ResourceAdministrators resource-kind="contest" :resource-id="activeContestId" />
     </template>
   </section>
 </template>

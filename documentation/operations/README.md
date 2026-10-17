@@ -15,11 +15,11 @@ Configuration is read from the process environment or `.env` in the working dire
 | `LOG_LEVEL` | `INFO` | Use `INFO` or `WARNING` in normal operation. | No |
 | `ALLOWED_ORIGINS` | `["http://localhost:5173"]` | Exact HTTPS frontend origins; wildcard origins are rejected. | No |
 | `SECURE_COOKIES` | `true` | Must remain enabled in staging/production; terminate HTTPS before the API. | No |
-| `EMAIL_SMTP_HOST` | unset | Required for staging/production email magic links and account recovery. | No |
+| `EMAIL_SMTP_HOST` | unset | Required for staging/production verification, sign-in, and password recovery. For the Mailcow deployment discussed here, use `mail.conxtor.com`. | No |
 | `EMAIL_SMTP_PORT` | `587` | Set to the provider's submission port. | No |
-| `EMAIL_SMTP_USERNAME` | unset | Set if required by the SMTP provider. | Sometimes |
+| `EMAIL_SMTP_USERNAME` | unset | The full mailbox address provisioned in Mailcow, for example `contestmaster@mail.conxtor.com`. | Sometimes |
 | `EMAIL_SMTP_PASSWORD` | unset | Store in the host's secret facility; rotate at the provider and restart the service. | Yes |
-| `EMAIL_FROM_ADDRESS` | unset | Required in staging/production and authorized by the mail provider. | No |
+| `EMAIL_FROM_ADDRESS` | unset | Required in staging/production; use the authenticated mailbox or an address Mailcow permits for it. | No |
 | `FRONTEND_BASE_URL` | `http://localhost:5173` | Public HTTPS origin used in email links. | No |
 | `ENTRY_RECEIPT_SECRET` | development placeholder | Generate a unique random value of at least 32 bytes. Rotating it invalidates deterministic receipt-token replay behavior; coordinate rotation and notify operators. | Yes |
 | `MASTER_DATA_SCHEDULER_ENABLED` | `true` | Must be enabled in staging/production. The API imports Big CTY immediately on startup if no active CTY version exists, then checks it nightly. | No |
@@ -33,7 +33,7 @@ Generate secrets with an operating-system cryptographic generator, for example `
 
 Install the pinned tools and dependencies with `make setup`, then start exactly one API process with `make start-api`. API startup applies pending Alembic migrations before serving requests and aborts startup if migration fails. New databases use one consolidated baseline; each later data-model change is a separate Alembic migration above it. A compatibility-only archive upgrades databases stamped at a pre-squash revision. `make db-upgrade` remains available for explicit preflight or maintenance runs. Serve the built Vue application from an HTTPS-capable reverse proxy or static host and proxy `/api/` to the API. Keep proxy request limits at least as restrictive as the application's 1 MiB JSON and 5 MiB + 64 KiB multipart limits.
 
-After the first startup has completed its database migration, create the initial administrator interactively so the password is not passed as a command argument: `uv run contestmaster-admin create-first-admin --username admin --email admin@example.org --display-name "Contestmaster Administrator"`. Run it before exposing the service. The command refuses to create another initial account once any system user exists. A global administrator creates later contest-manager accounts through the administration API/UI.
+After the first startup has completed its database migration, create the initial Global Administrator interactively so the password is not passed as a command argument: `uv run contestmaster-admin create-first-admin --username admin --email admin@example.org --display-name "Contestmaster Administrator"`. Run it before exposing the service. The command refuses to create another initial account once any system user exists. A Global Administrator creates later Contest Admin and Global Administrator accounts through the administration UI, and owners grant scoped access to additional Contest Admins from contest and ruleset editors.
 
 Use `GET /api/v1/health/live` for process liveness and `GET /api/v1/health/ready` for database readiness. These endpoints become available after database migrations; they do not signal that CTY master data is ready. If no active CTY version exists, the API starts the initial import immediately in the background without delaying startup. Check `GET /api/v1/master-data/status` for active versions and the latest provisioning attempt, and wait for the required version before running scoring that depends on CTY. Startup logs show the provisioning trigger and source-request start, completion, duration, response size, and failures. The global-admin interface provides detailed version operations. The standalone importer remains available through `uv run contestmaster-master-data sync`; `status` prints recent runs and active versions. The same command can later be called by a K3s CronJob as a one-shot Job.
 
@@ -49,6 +49,21 @@ uv run contestmaster-db backup /secure-backups/contestmaster-2026-10-15.db
 uv run contestmaster-db restore /secure-backups/contestmaster-2026-10-15.db
 uv run contestmaster-db verify
 ```
+
+### Mailcow SMTP example
+
+Configure the sending mailbox in Mailcow, then use its submission service with STARTTLS:
+
+```dotenv
+EMAIL_SMTP_HOST=mail.conxtor.com
+EMAIL_SMTP_PORT=587
+EMAIL_SMTP_USERNAME=contestmaster@mail.conxtor.com
+EMAIL_SMTP_PASSWORD=<store-the-mailbox-password-in-a-secret-manager>
+EMAIL_FROM_ADDRESS=contestmaster@mail.conxtor.com
+FRONTEND_BASE_URL=https://contestmaster.example.org
+```
+
+The application negotiates STARTTLS on port 587. Use a Mailcow mailbox, its full email address as the username, and a sender address authorized for that mailbox. Do not use the administrative Mailcow account. The official [Mailcow client configuration manual](https://docs.mailcow.email/client/client-manual/) documents SMTP submission using STARTTLS on port 587 and implicit TLS on port 465; Contestmaster currently uses STARTTLS and therefore configures port 587.
 
 Backups are not overwritten. Restore validates the source before touching the configured database, preserves an existing target as `*.pre-restore-<UTC timestamp>.bak`, stages a second copy, validates it, and atomically replaces the configured file. Keep the API stopped throughout. Protect backups like production data because they contain participant contact details, original submitted logs, and account data; encrypt storage and limit access. Define a retention schedule that meets the operator's legal and contest-retention obligations, then securely delete expired copies.
 

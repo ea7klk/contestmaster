@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
-import { signIn } from '../api/identity'
+import { requestSystemPasswordReset, resetSystemPassword, signIn } from '../api/identity'
 
 const email = ref('')
 const password = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
+const message = ref('')
+const mode = ref<'login' | 'forgot' | 'reset'>('login')
 const router = useRouter()
 const route = useRoute()
 
@@ -15,15 +17,26 @@ async function submit() {
   if (submitting.value) return
   submitting.value = true
   errorMessage.value = ''
+  message.value = ''
   try {
-    await signIn(email.value.trim(), password.value)
-    await router.replace(
-      typeof route.query.next === 'string' &&
-        route.query.next.startsWith('/') &&
-        !route.query.next.startsWith('//')
-        ? route.query.next
-        : '/manage/contests',
-    )
+    if (mode.value === 'forgot') {
+      const result = await requestSystemPasswordReset(email.value.trim())
+      message.value = result.message
+    } else if (mode.value === 'reset') {
+      const token = typeof route.query.token === 'string' ? route.query.token : ''
+      await resetSystemPassword(token, password.value)
+      message.value = 'Your password has been updated. You can now sign in.'
+      mode.value = 'login'
+    } else {
+      await signIn(email.value.trim(), password.value)
+      await router.replace(
+        typeof route.query.next === 'string' &&
+          route.query.next.startsWith('/') &&
+          !route.query.next.startsWith('//')
+          ? route.query.next
+          : '/manage/contests',
+      )
+    }
   } catch (error) {
     errorMessage.value =
       error instanceof ApiError
@@ -33,20 +46,25 @@ async function submit() {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  if (route.path === '/reset-password') mode.value = 'reset'
+})
 </script>
 
 <template>
   <section class="welcome-card auth-card" aria-labelledby="sign-in-title">
     <p class="eyebrow">{{ $tr('Contest staff') }}</p>
-    <h1 id="sign-in-title">{{ $tr('Sign in') }}</h1>
+    <h1 id="sign-in-title">{{ $tr(mode === 'reset' ? 'Reset password' : mode === 'forgot' ? 'Recover password' : 'Sign in') }}</h1>
     <p class="intro">
       {{
-        $tr('Use your Contestmaster administrator or contest-manager account.')
+        $tr(mode === 'login' ? 'Use your Contestmaster administrator or contest-manager account.' : mode === 'forgot' ? 'Enter your account email to receive a one-time password reset link.' : 'Choose a new password for your account.')
       }}
     </p>
+    <p v-if="message" role="status">{{ $tr(message) }}</p>
 
     <form class="stacked-form" @submit.prevent="submit">
-      <label>
+      <label v-if="mode !== 'reset'">
         {{ $tr('Email address') }}
         <input
           v-model="email"
@@ -57,14 +75,15 @@ async function submit() {
           maxlength="320"
         />
       </label>
-      <label>
+      <label v-if="mode !== 'forgot'">
         {{ $tr('Password') }}
         <input
           v-model="password"
-          autocomplete="current-password"
+          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
           name="password"
           type="password"
           required
+          minlength="12"
           maxlength="1024"
         />
       </label>
@@ -72,8 +91,10 @@ async function submit() {
         {{ errorMessage }}
       </p>
       <button class="primary-button" type="submit" :disabled="submitting">
-        {{ submitting ? 'Signing in…' : 'Sign in' }}
+        {{ submitting ? 'Working…' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Save new password' : 'Sign in' }}
       </button>
+      <button v-if="mode === 'login'" type="button" class="text-button" @click="mode = 'forgot'; errorMessage = ''; message = ''">{{ $tr('Forgot password?') }}</button>
+      <button v-if="mode === 'forgot'" type="button" class="text-button" @click="mode = 'login'">{{ $tr('Back to sign-in') }}</button>
     </form>
   </section>
 </template>

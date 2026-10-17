@@ -102,6 +102,7 @@ export function validateRuleset(
 }
 export interface SavedRulesetVersion {
   id: number
+  ruleset_id: number
   ruleset_key: string
   version: string
   source_url: string | null
@@ -147,7 +148,7 @@ export async function listAllRulesetVersions(
 export async function getSavedRulesetVersion(
   id: number,
   signal?: AbortSignal,
-): Promise<{ id: number; configuration: RulesetDraft }> {
+): Promise<{ id: number; ruleset_id: number; configuration: RulesetDraft }> {
   return request(`/rulesets/versions/${id}`, { method: 'GET', signal })
 }
 

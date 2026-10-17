@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.models import Contest, RulesetActivation, RulesetVersion
+from backend.app.models import Contest, Ruleset, RulesetActivation, RulesetVersion
 from backend.app.models.types import utc_now
 from backend.app.rulesets.schema import RulesetDefinition, rule_types_in
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
@@ -62,7 +62,17 @@ def save_ruleset_version(
             )
         return PersistedRuleset(existing, created=False)
 
+    ruleset = session.scalar(select(Ruleset).where(Ruleset.ruleset_key == validated.ruleset_key))
+    if ruleset is None:
+        ruleset = Ruleset(
+            ruleset_key=validated.ruleset_key,
+            owner_user_id=created_by_user_id,
+        )
+        session.add(ruleset)
+        session.flush()
+
     version = RulesetVersion(
+        ruleset_id=ruleset.id,
         ruleset_key=validated.ruleset_key,
         version=validated.version,
         source_url=str(validated.source_url) if validated.source_url else None,

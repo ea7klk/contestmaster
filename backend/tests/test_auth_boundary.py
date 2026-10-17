@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi import HTTPException
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.app import identity_cli
+from backend.app.api import identity as identity_api
 from backend.app.api.auth import (
     hash_password,
     require_authenticated_user,
@@ -30,6 +32,7 @@ from backend.app.models import (
     RulesetActivation,
     RulesetVersion,
     Station,
+    SystemPasswordReset,
     SystemRole,
     SystemSession,
     SystemUser,
@@ -249,12 +252,12 @@ def test_global_admin_can_create_manager_but_manager_cannot(identity_database):
         },
     )
     assert created.status_code == 201
-    assert created.json()["role"] == "contest_manager"
+    assert created.json()["role"] == "contest_admin"
     assert "password_hash" not in created.text
     with identity_database() as session:
         event = session.query(AuditEvent).one()
         assert event.actor_user_id == 1
-        assert event.action == "system_user.contest_manager_created"
+        assert event.action == "system_user.created"
         assert event.target_type == "system_user"
         assert event.target_id == str(created.json()["id"])
         assert event.reason == "Organizer account provisioned for a scheduled event"
@@ -278,6 +281,124 @@ def test_global_admin_can_create_manager_but_manager_cannot(identity_database):
         },
     )
     assert denied.status_code == 403
+    disabled = client.patch(
+        f"/api/v1/auth/admin/users/{created.json()['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={"is_active": False},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["is_active"] is False
+    assert manager_client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_global_password_reset_revokes_sessions_and_last_admin_cannot_be_disabled(
+    identity_database, monkeypatch
+):
+    admin_id = add_user(identity_database)
+    delivered: list[str] = []
+    monkeypatch.setattr(
+        identity_api,
+        "get_settings",
+        lambda: SimpleNamespace(frontend_base_url="http://localhost:5173"),
+    )
+    monkeypatch.setattr(
+        identity_api, "send_email", lambda _email, _subject, _body, link: delivered.append(link)
+    )
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/forgot-password", json={"email": "admin@example.test"}
+        ).status_code
+        == 202
+    )
+    token = parse_qs(urlparse(delivered[0]).query)["token"][0]
+    with identity_database() as session:
+        record = session.query(SystemPasswordReset).one()
+        assert record.token_hash != token
+    assert (
+        client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "password": "a replacement password for admin"},
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert (
+        client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "password": "another replacement password"},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.test", "password": "a replacement password for admin"},
+        ).status_code
+        == 200
+    )
+    rejected = client.patch(
+        f"/api/v1/auth/admin/users/{admin_id}",
+        headers={"X-CSRF-Token": client.cookies.get("contestmaster_csrf")},
+        json={"is_active": False},
+    )
+    assert rejected.status_code == 409
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+
+def test_global_administrator_can_manage_participant_accounts(identity_database):
+    add_user(identity_database)
+    manager_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="manager-user-admin-test",
+        email="manager-user-admin@example.test",
+    )
+    with identity_database.begin() as session:
+        participant = Participant(display_name="Participant")
+        session.add(participant)
+        session.flush()
+        participant_id = participant.id
+
+    admin = TestClient(app)
+    assert (
+        admin.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@example.test", "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    listed = admin.get("/api/v1/auth/admin/participants")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["id"] == participant_id
+    updated = admin.patch(
+        f"/api/v1/auth/admin/participants/{participant_id}",
+        headers={"X-CSRF-Token": admin.cookies.get("contestmaster_csrf")},
+        json={"is_active": False},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["is_active"] is False
+
+    manager = TestClient(app)
+    with identity_database() as session:
+        manager_user = session.get(SystemUser, manager_id)
+        assert manager_user is not None
+        email = manager_user.email_normalized
+    assert (
+        manager.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "Correct horse battery staple"},
+        ).status_code
+        == 200
+    )
+    assert manager.get("/api/v1/auth/admin/participants").status_code == 403
 
 
 def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_database):
@@ -756,7 +877,7 @@ def test_manager_can_save_and_select_ruleset_only_for_owned_draft(identity_datab
             headers={"X-CSRF-Token": other.cookies.get("contestmaster_csrf")},
             json=valid_payload(),
         ).status_code
-        == 200
+        == 404
     )
 
     with identity_database() as session:
@@ -765,6 +886,100 @@ def test_manager_can_save_and_select_ruleset_only_for_owned_draft(identity_datab
         assert {event.action for event in session.query(AuditEvent).all()} == {
             "ruleset_version.created",
             "contest.ruleset_activated",
+        }
+
+
+def test_contest_owner_can_assign_manager_and_assignee_access_is_scoped(identity_database):
+    owner_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="resource-owner",
+        email="owner-resource@example.test",
+    )
+    assigned_id = add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="resource-assigned",
+        email="assigned-resource@example.test",
+    )
+    add_user(
+        identity_database,
+        role=SystemRole.CONTEST_MANAGER,
+        username="resource-outsider",
+        email="outsider-resource@example.test",
+    )
+    with identity_database.begin() as session:
+        contest = Contest(
+            owner_user_id=owner_id,
+            name="Shared contest",
+            slug="shared-contest",
+            starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 1, 2, tzinfo=UTC),
+            log_submission_cutoff_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        session.add(contest)
+        session.flush()
+        contest_id = contest.id
+
+    owner = TestClient(app)
+    assert (
+        owner.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "owner-resource@example.test",
+                "password": "Correct horse battery staple",
+            },
+        ).status_code
+        == 200
+    )
+    listed = owner.get(f"/api/v1/contests/{contest_id}/administrators")
+    assert listed.status_code == 200
+    assert listed.json()["owner_user_id"] == owner_id
+    assert listed.json()["eligible"][0]["user_id"] == assigned_id
+    headers = {"X-CSRF-Token": owner.cookies.get("contestmaster_csrf")}
+    assigned = owner.post(
+        f"/api/v1/contests/{contest_id}/administrators",
+        headers=headers,
+        json={"user_id": assigned_id},
+    )
+    assert assigned.status_code == 201
+
+    manager = TestClient(app)
+    assert (
+        manager.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "assigned-resource@example.test",
+                "password": "Correct horse battery staple",
+            },
+        ).status_code
+        == 200
+    )
+    assert manager.get(f"/api/v1/contests/{contest_id}").status_code == 200
+    assert manager.get(f"/api/v1/contests/{contest_id}/administrators").status_code == 200
+
+    outsider = TestClient(app)
+    assert (
+        outsider.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "outsider-resource@example.test",
+                "password": "Correct horse battery staple",
+            },
+        ).status_code
+        == 200
+    )
+    assert outsider.get(f"/api/v1/contests/{contest_id}").status_code == 404
+
+    removed = owner.delete(
+        f"/api/v1/contests/{contest_id}/administrators/{assigned_id}", headers=headers
+    )
+    assert removed.status_code == 204
+    assert manager.get(f"/api/v1/contests/{contest_id}").status_code == 404
+    with identity_database() as session:
+        assert {event.action for event in session.query(AuditEvent).all()} == {
+            "contest.administrator_added",
+            "contest.administrator_removed",
         }
 
 

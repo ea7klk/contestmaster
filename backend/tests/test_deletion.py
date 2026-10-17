@@ -103,9 +103,7 @@ def _session_generator(factory):
         ("SQLITE_CONSTRAINT_NOTNULL", "not_null"),
     ],
 )
-def test_integrity_failure_kind_classifies_sqlite_constraint(
-    sqlite_errorname, expected
-):
+def test_integrity_failure_kind_classifies_sqlite_constraint(sqlite_errorname, expected):
     driver_error = type(
         "SQLiteConstraintError",
         (Exception,),
@@ -417,9 +415,7 @@ def test_protected_log_history_cannot_be_deleted_without_contest_permit(
         entry_id = session.scalar(
             select(Entry.id).where(Entry.contest_id == deletion_fixture["contest_id"])
         )
-        revision = session.scalar(
-            select(EntryRevision).where(EntryRevision.entry_id == entry_id)
-        )
+        revision = session.scalar(select(EntryRevision).where(EntryRevision.entry_id == entry_id))
         assert revision is not None
         revision_id = revision.id
         session.delete(revision)

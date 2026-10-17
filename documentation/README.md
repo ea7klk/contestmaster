@@ -38,15 +38,17 @@ For supported interface languages and the localization workflow, see [internatio
 
 ### System roles and access
 
-The system has two privileged account roles. A participant is a contest identity, not a privileged system account, and does not need to register before submitting a log. A participant who registers and verifies an email address can request a short-lived, single-use email magic link to access only associated entries. This access never grants a global administrator or contest manager role.
+The application has three roles. Participants are contest users and never receive privileged system permissions. Guest log submission remains available without registration.
 
-- **Global administrator:** has all privileges across the system and all contests.
-- **Contest manager:** can create and manage their own contests, configure those contests' rules and automatic recalculation setting, run contest result generation, and generate contest result lists. Contest managers do not have global administrator privileges.
-- **Guest log submitter:** can submit a contest log without an account and use an entry-scoped receipt token to manage that entry. Store only a token hash; the contest manager controls its expiry and can close, revoke, or rotate it. The submission is associated with a participant/entry record, while its system-account submitter reference remains empty.
-- **Registered participant:** can verify an email address and use a short-lived, single-use email magic link to manage only entries associated with that identity. Participant identity and entry access do not grant privileged system roles.
-- **Public visitor:** can view contest results and standings in the web frontend without an account. Viewing results does not grant contest-management privileges.
+- **Global Administrator:** has all system privileges, including creating and managing any account, contest, or ruleset, managing resource administrator assignments, and editing/activating master-data versions. The system must retain at least one active Global Administrator.
+- **Contest Admin:** can create contests and rulesets, configure contest rules, generate results, and manage their own resources or resources assigned to them. The original creator remains permanent owner. Owners can assign or remove additional Contest Admins; assigned admins receive the same resource permissions.
+- **Participant:** can register with a callsign, email, and password; must verify email before password sign-in. A participant may add callsigns, access only associated entries, amend/resubmit or withdraw their logs, and request password recovery by single-use email link. Existing guest receipt access and email magic links remain supported.
+- **Guest log submitter:** can submit a log without an account and use an entry-scoped receipt token to manage that entry. Store only a token hash; a Contest Admin controls its expiry and can close, revoke, or rotate it.
+- **Public visitor:** can view public contest results and standings without an account.
 
-Only global administrators can access master-data version management in the web application. The API must enforce the same role restriction. Global administrators can inspect version and sync history, activate validated candidate versions, and delete eligible old versions. Contest managers and public visitors cannot list, activate, or delete shared master data.
+Contest and ruleset authorization is enforced in the API. Listings are scoped to owned or assigned resources. Owners retain permanent ownership even when they grant or revoke additional administrators. Global Administrators may manage any resource.
+
+Only Global Administrators can access master-data version management in the web application. The API enforces the same role restriction. Global Administrators can inspect version and sync history, activate validated candidate versions, and delete eligible old versions. Contest Admins and public visitors cannot list, activate, or delete shared master data.
 
 ### Later capabilities
 
@@ -76,20 +78,21 @@ IARU organizational regions are outside the current release: they are not a firs
 
 ## Architecture overview
 
-The Vue application handles contest setup, manager-authored Markdown contest descriptions, log entry, log-file selection and upload, administration, standings display, and a simple graphical rule composer for contest managers. Participants can upload logs and anyone can view contest results and standings without creating system accounts; privileged contest-management actions require authentication. Recurring schedules are modeled as a series of independent contest editions: each edition has its own dates, lifecycle, logs, score runs, and results. Public contest details display the manager's description above a generated ruleset summary. The frontend sanitizes rendered Markdown; the summary includes category dimensions and configured choices, but can be imprecise, so the sponsor's official rules remain authoritative. The manager result-generation workflow shows an accessible indeterminate progress bar while the API calculates results; no percentage is shown because the current API does not report incremental progress. The frontend sends API requests and multipart log uploads to the Python REST API. The API authenticates privileged actions, checks global administrator or contest-manager permissions, accepts eligible log submissions without an account, passes uploaded files to import adapters, applies contest domain services, and accesses SQLite only through the ORM persistence layer using ORM-managed connections and sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the browser may provide immediate convenience checks, but the backend remains authoritative. Managers can permanently delete their contests (global administrators can delete any contest), including all dependent logs, scores, results, access grants, and contest history; deleting a series removes all its editions and exceptions. Shared participant identities and global audit events are retained. Saved ruleset versions can be deleted by their creator or a global administrator only when no contest assignment, activation history, or score run references them.
+The Vue application handles contest setup, participant registration and account management, guest log upload, administration, standings, and the graphical ruleset composer. Participants can register or upload logs anonymously, and anyone can view public results. Recurring schedules produce independent contest editions with their own state, logs, score runs, and results. Public contest details display the manager's description above a generated ruleset summary; rendered Markdown is sanitized. The frontend sends typed API requests and multipart uploads to the Python REST API. The API enforces Global Administrator, Contest Admin, participant, and resource-grant permissions, imports accepted logs, applies contest-domain services, and accesses SQLite only through SQLAlchemy ORM-managed sessions. Scoring is performed by a versioned ruleset implementation behind a stable interface; the backend is authoritative. Resource owners retain permanent ownership and may grant or revoke additional Contest Admins. Shared participant identities and global audit events are retained when contests are deleted.
 
 ```mermaid
 flowchart LR
-    Participant[Log submitter; account optional] --> Web[Vue web application]
+    Guest[Guest log submitter; account optional] --> Web[Vue web application]
+    Participant[Registered participant] --> Web
     Visitor[Unauthenticated results viewer] --> Web
-    PrivilegedUser[Global administrator or contest manager] --> Web
+    PrivilegedUser[Global Administrator or Contest Admin] --> Web
     Web --> Composer[Graphical contest rule composer]
     Web -->|global-admin configuration| CatalogAdmin[Band and mode catalog administration]
     Composer -->|rule configuration| API[Python REST API]
     CatalogAdmin -->|catalog reads and protected changes| API
     Web -->|HTTPS REST / JSON and multipart log uploads| API[Python REST API]
     Web -->|public contest details, results, and standings| API
-    API -->|privileged actions| Auth[Role and contest-scope authorization]
+    API -->|privileged and participant actions| Auth[Role, ownership, and grant authorization]
     API --> Domain[Contest domain services]
     Domain --> Validation[Log and exchange validation]
     Domain --> Rules[Versioned contest rulesets]
@@ -99,7 +102,7 @@ flowchart LR
     SchemaMigration --> Store
     Store -->|ORM-managed connection and session| DB[(SQLite)]
     Store -->|catalog and rule versions| OperatingCatalog[band_catalog_items, mode_catalog_items, ruleset_versions]
-    API -->|account-free log upload| Adapters[Import and export adapters]
+    API -->|guest or account-backed log upload| Adapters[Import and export adapters]
     Adapters -->|accepted new log| Domain
     Adapters --> Formats[Cabrillo, ADI/ADIF and other log formats]
     Timer[Internal API startup and nightly scheduler] -->|invokes| MasterImport[CTY cty.dat import job]
@@ -118,8 +121,8 @@ flowchart LR
 
 ### Main boundaries
 
-- **Vue frontend:** presents workflows, sends typed API requests, lets participants upload log files without requiring accounts, displays contest results and standings publicly without login, and provides contest management with paged contest lists, JSON contest import/export (with optional attached ruleset), Markdown contest descriptions, and draft editing of saved rulesets as new immutable versions. The contest list uses normal page scrolling without a nested scroll region. Render manager-authored contest descriptions safely from Markdown source. The public details page places this description above a generated category/rules overview that may be imprecise; the official contest rules remain authoritative. The graphical composer validates and reviews contest rules. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
-- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, account-free log submission, public read access to contest results and standings, and ORM-managed transaction boundaries. A single-process internal timer materializes editions through each series' configured rolling window and applies skip/move exceptions. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
+- **Vue frontend:** presents workflows, sends typed API requests, lets guests upload log files without accounts, provides participants with registration, verified sign-in and entry management, and displays contest results publicly without login. It provides paged contest and ruleset management, account administration for Global Administrators, and owner controls for assigning additional Contest Admins. Contest management includes JSON import/export, Markdown descriptions and ruleset editing. The contest list uses normal page scrolling without a nested scroll region. Render manager-authored contest descriptions safely from Markdown source. The public details page places this description above a generated category/rules overview that may be imprecise; the official contest rules remain authoritative. The graphical composer validates and reviews contest rules. Show upload progress, import summaries, and actionable row-level errors. Render a shared footer on every route, including public and authenticated pages, listing each external licensed dataset used by the application with a direct link to its license or use terms. Keep the attribution list synchronized with enabled sources. Keep contest rules and final score calculations on the server.
+- **Python REST API:** owns the external API contract, input validation, role and contest-scope authorization for privileged actions, guest log submission, participant credential lifecycle, public read access to contest results and standings, and ORM-managed transaction boundaries. Participant identities remain distinct from privileged accounts. Resource owners retain permanent ownership; assigned Contest Admins receive scoped access; Global Administrators can manage all users and resources. A single-process internal timer materializes editions through each series' configured rolling window and applies skip/move exceptions. Use ORM-managed connections and sessions for all application database access; application code must not open direct sqlite3 connections or issue database operations outside the ORM. Publish an OpenAPI description.
 - **Contest domain:** models common contest concepts and exposes services for callsign normalization, QSO validation, duplicate selection, counterpart-log matching, scoring, and adjudication. Keep pure rule checks independent of HTTP and SQLite; ORM orchestration records immutable decisions and score runs at the application boundary.
 - **Contest schedules:** one-time contests and recurring series both produce ordinary contest records. A series stores UTC recurrence configuration, duration, cutoff offset, optional rolling creation window, ruleset/default settings, and exceptions; each edition is an independent contest record with its own state and data. Managers can skip or move an occurrence, set an absolute cutoff override for an edition, or delete a whole series with its editions. The API's internal timer is the sole scheduler owner in the initial one-process deployment.
 - **Rulesets:** define reusable categories, exchange interpretation, QSO eligibility predicates over contact geography, entry categories/declarations, and the station callsign, plus multipliers, penalties, and rounding rules. Contest start/end instants, periodicity, and log submission cutoff belong to contest configuration and are excluded from rulesets. The ruleset's submission rule only selects late-log handling. The API exposes a typed built-in rule catalog and a no-save validation endpoint that returns configuration errors, a readable summary, and an integer worked-score example. Configured cross-log workflow hooks control reciprocal-contact tolerances and whether missing/mismatched counterpart contacts require review. Submitted configuration never executes code. Contest managers author configuration through the graphical composer; validated versions are append-only, activation history is recorded per contest, and score runs retain their selected version.
@@ -139,13 +142,19 @@ SQLite fits the expected low concurrency and keeps initial deployment simple. It
 
 ## Initial data model
 
-The model below is a starting point. Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as a versioned configuration. Privileged system roles are only for global administrators and contest managers; participant records are contest identities and do not require a privileged account. Verified participant emails support short-lived, single-use magic-link sign-in scoped to associated entries. An entry's submitter_user_id is nullable when a participant uploads a log as a guest. Guest receipt grants are scoped to one entry, manager-controlled for expiry and revocation, and store only a token hash. The exact original Cabrillo or ADI/ADIF input and import metadata are retained with each immutable entry revision; normalized station and QSO values use child rows. A unique contest-scoped idempotency digest points to each accepted request. Preserve submitted values when normalization is needed for matching or scoring. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts, and dependent score runs retain that reference.
+Contest ruleset configuration is authored in the visual composer, validated by the API, and saved as an immutable version. Global Administrators can administer all privileged and participant accounts and all resources. Contest Admin permissions are scoped to permanently owned or assigned contests and rulesets; each creator remains the permanent owner. Participant records are separate from privileged system accounts. Verified participant emails support password login, recovery, two-address email changes, and magic-link access scoped to associated entries. Participant callsigns are separately managed, with the registered primary callsign protected from removal. An entry's submitter_user_id is nullable when a participant uploads as a guest. Guest receipt grants are scoped to one entry and store only a token hash. The original Cabrillo or ADI/ADIF input is retained with each immutable entry revision. CTY is currently the only provisioned master-data dataset; a contest pins its CTY version at the start instant only when its rules use callsign-derived facts.
 
-The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Rule versions and activations use ORM-managed tables; the `ruleset_activations` rows append the selected version, actor, timestamp, and configuration digest without mutating its immutable definition. Bands and modes are separate ORM entities in `band_catalog_items` and `mode_catalog_items`, with distinct admin forms and distinct composer API resources. Eligibility rules store selected stable keys in immutable ruleset configuration; catalog keys cannot be renamed or deleted while referenced by saved rulesets, and deactivation removes an item from new selections without altering historical snapshots. Category dimensions and choices, including optional plain-text descriptions, are stored in the versioned ruleset configuration JSON; they do not require separate relational tables. Contest-history delete guards remain active except when the authorized deletion service inserts a transaction-scoped permit for the contest being removed. Ruleset definitions remain protected from direct deletion; deleting an unused version requires the authorized service to verify all references and insert a transaction-scoped version permit.
+The active ORM schema and migration baseline contain no IARU-region table, entity assignment, or IARU-region-to-zone mapping. Contest ruleset configuration has no built-in IARU-region condition or lookup. Stable `rulesets` retain permanent ownership across immutable versions. `contest_administrators` and `ruleset_administrators` grant scoped Contest Admin access without changing resource ownership. `participant_callsigns` stores additional callsigns; participant emails, email-change confirmations, password resets, and sessions support account security. Bands and modes remain separate ORM entities. Contest-history delete guards and ruleset-version permits remain active. For SQLite compatibility with pre-existing referenced versions, `ruleset_versions.ruleset_id` is nullable and indexed but does not yet have a database foreign-key constraint; migrations backfill it where possible and API/persistence authorization validates the root association.
 
 ```mermaid
 erDiagram
     SYSTEM_USER ||--o{ CONTEST : owns
+    CONTEST ||--o{ CONTEST_ADMINISTRATOR : shares
+    SYSTEM_USER ||--o{ CONTEST_ADMINISTRATOR : assigned
+    RULESET ||--o{ RULESET_VERSION : versions
+    SYSTEM_USER o|--o{ RULESET : owns
+    RULESET ||--o{ RULESET_ADMINISTRATOR : shares
+    SYSTEM_USER ||--o{ RULESET_ADMINISTRATOR : assigned
     SYSTEM_USER ||--o{ CONTEST_SERIES : manages
     RULESET_VERSION o|--o{ CONTEST_SERIES : defaults
     CONTEST_SERIES ||--o{ CONTEST : editions
@@ -154,8 +163,12 @@ erDiagram
     CONTEST ||--o{ ENTRY : accepts
     PARTICIPANT ||--o{ ENTRY : identifies
     PARTICIPANT ||--o{ PARTICIPANT_EMAIL : verifies
+    PARTICIPANT ||--o{ PARTICIPANT_CALLSIGN : identifies
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_MAGIC_LINK : authenticates
     PARTICIPANT_EMAIL ||--o{ PARTICIPANT_SESSION : signs_in
+    PARTICIPANT ||--o{ PARTICIPANT_EMAIL_CHANGE : confirms_change
+    PARTICIPANT ||--o{ PARTICIPANT_PASSWORD_RESET : recovers
+    SYSTEM_USER ||--o{ SYSTEM_PASSWORD_RESET : recovers
     CONTEST ||--o{ RULESET_VERSION : selects
     CONTEST ||--o{ RULESET_ACTIVATION : history
     CONTEST ||--o| CONTEST_DELETION_PERMIT : temporarily_authorizes_removal
@@ -193,6 +206,24 @@ erDiagram
         integer id PK
         text username UK
         text role
+    }
+    CONTEST_ADMINISTRATOR {
+        integer contest_id PK, FK
+        integer user_id PK, FK
+        integer added_by_user_id FK
+        text added_at_utc
+    }
+    RULESET {
+        integer id PK
+        text ruleset_key UK
+        integer owner_user_id FK
+        text created_at_utc
+    }
+    RULESET_ADMINISTRATOR {
+        integer ruleset_id PK, FK
+        integer user_id PK, FK
+        integer added_by_user_id FK
+        text added_at_utc
     }
     CONTEST {
         integer id PK
@@ -245,12 +276,48 @@ erDiagram
         text display_name
         text callsign_submitted
         text callsign_normalized
+        text password_hash "nullable for guest-only identities"
+        integer is_active
+    }
+    PARTICIPANT_CALLSIGN {
+        integer id PK
+        integer participant_id FK
+        text callsign_submitted
+        text callsign_normalized
+        integer is_primary
+        text verified_at_utc "nullable"
     }
     PARTICIPANT_EMAIL {
         integer id PK
         integer participant_id FK
         text email_normalized UK
         text verified_at_utc
+        integer is_primary
+        integer is_active
+    }
+    PARTICIPANT_EMAIL_CHANGE {
+        integer id PK
+        integer participant_id FK
+        integer old_email_id FK
+        text new_email_normalized
+        text old_token_hash UK
+        text new_token_hash UK
+        text confirmation_times_utc
+    }
+    PARTICIPANT_PASSWORD_RESET {
+        integer id PK
+        integer participant_id FK
+        integer participant_email_id FK
+        text token_hash UK
+        text expires_at_utc
+        text consumed_at_utc "nullable"
+    }
+    SYSTEM_PASSWORD_RESET {
+        integer id PK
+        integer user_id FK
+        text token_hash UK
+        text expires_at_utc
+        text consumed_at_utc "nullable"
     }
     PARTICIPANT_SESSION {
         integer id PK
@@ -271,6 +338,7 @@ erDiagram
     }
     RULESET_VERSION {
         integer id PK
+        integer ruleset_id "nullable indexed root reference; legacy compatibility"
         text ruleset_key
         text version
         text source_url

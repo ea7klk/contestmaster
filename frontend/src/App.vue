@@ -153,6 +153,12 @@ watch(
         </RouterLink>
         <RouterLink
           v-if="staffUser?.role === 'global_administrator'"
+          to="/admin/users"
+        >
+          {{ $tr('System users') }}
+        </RouterLink>
+        <RouterLink
+          v-if="staffUser?.role === 'global_administrator'"
           to="/admin/operating-catalog"
         >
           {{ $tr('Bands and modes') }}

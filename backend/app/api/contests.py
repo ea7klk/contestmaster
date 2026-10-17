@@ -15,7 +15,12 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.app.api.auth import AuthenticatedUser, Principal, require_contest_access
+from backend.app.api.auth import (
+    AuthenticatedUser,
+    Principal,
+    can_manage_ruleset,
+    require_contest_access,
+)
 from backend.app.api.errors import API_ERROR_RESPONSES, error_response
 from backend.app.api.pagination import Page, page_meta, pagination_parameters, validate_sort
 from backend.app.audit import record_audit_event
@@ -24,6 +29,7 @@ from backend.app.contest_series import create_series_for_contest
 from backend.app.db import get_session
 from backend.app.models import (
     Contest,
+    ContestAdministrator,
     ContestSeries,
     ContestSeriesException,
     ContestStatus,
@@ -32,9 +38,11 @@ from backend.app.models import (
     EntryRevision,
     EntryStatus,
     Qso,
+    Ruleset,
     RulesetVersion,
     Station,
     SystemRole,
+    SystemUser,
 )
 from backend.app.rulesets.catalog_validation import catalog_reference_errors
 from backend.app.rulesets.persistence import (
@@ -213,9 +221,22 @@ class SeriesExceptionWrite(BaseModel):
 
 def _series_for_user(session: Session, series_id: int, principal: Principal) -> ContestSeries:
     series = session.get(ContestSeries, series_id)
+    has_assigned_edition = bool(
+        series is not None
+        and session.scalar(
+            select(Contest.id)
+            .join(ContestAdministrator, ContestAdministrator.contest_id == Contest.id)
+            .where(
+                Contest.series_id == series_id,
+                ContestAdministrator.user_id == principal.user_id,
+            )
+            .limit(1)
+        )
+    )
     if series is None or (
         principal.role is not SystemRole.GLOBAL_ADMINISTRATOR
         and series.owner_user_id != principal.user_id
+        and not has_assigned_edition
     ):
         raise HTTPException(status_code=404, detail="Contest series not found.")
     return series
@@ -241,6 +262,10 @@ class ContestStatusChange(BaseModel):
 
     status: ContestStatus
     audit_reason: str | None = Field(default=None, max_length=2000)
+
+
+class AdministratorAssignment(BaseModel):
+    user_id: int = Field(strict=True, ge=1)
 
 
 class ContestDeleteConfirmation(BaseModel):
@@ -319,7 +344,16 @@ def contest_output(contest: Contest) -> dict[str, object]:
 def _accessible_contests(principal: Principal):
     statement = select(Contest)
     if principal.role is not SystemRole.GLOBAL_ADMINISTRATOR:
-        statement = statement.where(Contest.owner_user_id == principal.user_id)
+        statement = statement.where(
+            or_(
+                Contest.owner_user_id == principal.user_id,
+                Contest.id.in_(
+                    select(ContestAdministrator.contest_id).where(
+                        ContestAdministrator.user_id == principal.user_id
+                    )
+                ),
+            )
+        )
     return statement
 
 
@@ -353,7 +387,16 @@ def list_contests(
     count_statement = select(func.count()).select_from(Contest)
     statement = _accessible_contests(principal)
     if principal.role is not SystemRole.GLOBAL_ADMINISTRATOR:
-        count_statement = count_statement.where(Contest.owner_user_id == principal.user_id)
+        count_statement = count_statement.where(
+            or_(
+                Contest.owner_user_id == principal.user_id,
+                Contest.id.in_(
+                    select(ContestAdministrator.contest_id).where(
+                        ContestAdministrator.user_id == principal.user_id
+                    )
+                ),
+            )
+        )
     if status is not None:
         count_statement = count_statement.where(Contest.status == status)
         statement = statement.where(Contest.status == status)
@@ -485,6 +528,13 @@ def import_contest(
                 "Imported ruleset configuration is invalid.",
                 details,
             )
+        existing_ruleset = session.scalar(
+            select(Ruleset).where(Ruleset.ruleset_key == definition.ruleset_key)
+        )
+        if existing_ruleset is not None and not can_manage_ruleset(
+            session, existing_ruleset, principal
+        ):
+            raise HTTPException(status_code=404, detail="Ruleset not found.")
 
     contest_payload = payload.contest
     cutoff_at, cutoff_offset, cutoff_override = _cutoff_settings(contest_payload)
@@ -1317,6 +1367,11 @@ def select_contest_ruleset(
             status_code=409,
             detail="A ruleset can be selected only while the contest is a draft.",
         )
+    version = session.get(RulesetVersion, payload.ruleset_version_id)
+    if version is None or not can_manage_ruleset(
+        session, session.get(Ruleset, version.ruleset_id) if version else None, principal
+    ):
+        raise HTTPException(status_code=404, detail="Ruleset version not found.")
     try:
         activation = activate_ruleset(
             session,
@@ -1587,6 +1642,122 @@ def public_contest_detail_output(contest: Contest, session: Session) -> dict[str
     else:
         output["ruleset"] = None
     return output
+
+
+@router.get("/{contest_id}/administrators")
+def list_contest_administrators(
+    contest: Annotated[Contest, Depends(require_contest_access)],
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    rows = session.execute(
+        select(ContestAdministrator, SystemUser)
+        .join(SystemUser, SystemUser.id == ContestAdministrator.user_id)
+        .where(ContestAdministrator.contest_id == contest.id)
+        .order_by(SystemUser.display_name, SystemUser.id)
+    )
+    eligible = list(
+        session.scalars(
+            select(SystemUser)
+            .where(
+                SystemUser.is_active.is_(True),
+                SystemUser.role == SystemRole.CONTEST_MANAGER,
+                SystemUser.id != contest.owner_user_id,
+                SystemUser.id.not_in(
+                    select(ContestAdministrator.user_id).where(
+                        ContestAdministrator.contest_id == contest.id
+                    )
+                ),
+            )
+            .order_by(SystemUser.display_name, SystemUser.id)
+        )
+    )
+    return {
+        "owner_user_id": contest.owner_user_id,
+        "items": [
+            {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+            for _link, user in rows
+        ],
+        "eligible": [
+            {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+            for user in eligible
+        ],
+    }
+
+
+@router.post("/{contest_id}/administrators", status_code=201)
+def add_contest_administrator(
+    contest_id: int,
+    payload: AdministratorAssignment,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    contest = session.get(Contest, contest_id)
+    if contest is None or (
+        actor.role is not SystemRole.GLOBAL_ADMINISTRATOR and contest.owner_user_id != actor.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Contest not found.")
+    user = session.get(SystemUser, payload.user_id)
+    if user is None or not user.is_active or user.role is not SystemRole.CONTEST_MANAGER:
+        raise HTTPException(
+            status_code=422, detail="Select an active contest administrator account."
+        )
+    if user.id == contest.owner_user_id:
+        raise HTTPException(
+            status_code=409, detail="The contest owner is already an administrator."
+        )
+    link = ContestAdministrator(
+        contest_id=contest.id, user_id=user.id, added_by_user_id=actor.user_id
+    )
+    session.add(link)
+    try:
+        session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=actor.user_id,
+            action="contest.administrator_added",
+            target_type="contest",
+            target_id=contest.id,
+            metadata={"administrator_user_id": user.id},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409, detail="This user already administers the contest."
+        ) from exc
+    return {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+
+
+@router.delete("/{contest_id}/administrators/{user_id}", status_code=204)
+def remove_contest_administrator(
+    contest_id: int,
+    user_id: int,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    contest = session.get(Contest, contest_id)
+    if contest is None or (
+        actor.role is not SystemRole.GLOBAL_ADMINISTRATOR and contest.owner_user_id != actor.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Contest not found.")
+    link = session.get(ContestAdministrator, (contest_id, user_id))
+    if link is None:
+        raise HTTPException(status_code=404, detail="Contest administrator not found.")
+    session.delete(link)
+    record_audit_event(
+        session,
+        actor_user_id=actor.user_id,
+        action="contest.administrator_removed",
+        target_type="contest",
+        target_id=contest.id,
+        metadata={"administrator_user_id": user_id},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
+    return Response(status_code=204)
 
 
 @public_router.get("", responses=API_ERROR_RESPONSES)

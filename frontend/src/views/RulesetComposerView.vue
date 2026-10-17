@@ -4,6 +4,7 @@ import ConditionEditor from '../components/ConditionEditor.vue'
 import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
 import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
 import EligibilityCatalogEditor from '../components/EligibilityCatalogEditor.vue'
+import ResourceAdministrators from '../components/ResourceAdministrators.vue'
 import {
   getBands,
   getModes,
@@ -45,6 +46,7 @@ const issues = ref<RulesetIssue[]>([])
 const generalError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const editingSource = ref('')
+const activeRulesetId = ref<number | null>(null)
 const props = defineProps<{ editVersionId?: string }>()
 
 const optionalTypes = computed(() =>
@@ -279,6 +281,7 @@ async function persistDraft() {
   savedMessage.value = ''
   try {
     const persisted = await saveRulesetVersion(buildDraft())
+    activeRulesetId.value = persisted.ruleset_id ?? null
     savedMessage.value = persisted.created
       ? editingSource.value
         ? `Saved ${persisted.ruleset_key} version ${persisted.version}. ${editingSource.value} remains unchanged; select the new version from the contest manager when ready.`
@@ -308,6 +311,7 @@ async function loadSavedVersion(
   signal?: Parameters<typeof getSavedRulesetVersion>[1],
 ) {
   const saved = await getSavedRulesetVersion(versionId, signal)
+  activeRulesetId.value = saved.ruleset_id ?? null
   const definition = saved.configuration
   if (
     !Array.isArray(definition.rules) ||
@@ -1012,6 +1016,7 @@ function catalogErrorMessage(reason: unknown) {
         </button>
       </section>
     </template>
+    <ResourceAdministrators resource-kind="ruleset" :resource-id="activeRulesetId" />
   </section>
 </template>
 

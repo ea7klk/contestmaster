@@ -17,7 +17,7 @@ from backend.app.api.pagination import Page, page_meta, pagination_parameters
 from backend.app.audit import record_audit_event
 from backend.app.contest_deletion import DeletionConflictError, delete_unused_ruleset_version
 from backend.app.db import get_session
-from backend.app.models import RulesetVersion, SystemRole
+from backend.app.models import Ruleset, RulesetAdministrator, RulesetVersion, SystemRole, SystemUser
 from backend.app.rulesets.catalog_validation import catalog_reference_errors
 from backend.app.rulesets.persistence import (
     RulesetConflictError,
@@ -31,6 +31,32 @@ from backend.app.rulesets.summary import validation_report
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 
 router = APIRouter(tags=["rulesets"])
+
+
+def _can_manage_ruleset(session: Session, ruleset: Ruleset | None, actor: object) -> bool:
+    if ruleset is None:
+        return False
+    if getattr(actor, "role", None) is SystemRole.GLOBAL_ADMINISTRATOR:
+        return True
+    user_id = getattr(actor, "user_id", None)
+    if ruleset.owner_user_id == user_id:
+        return True
+    return session.get(RulesetAdministrator, (ruleset.id, user_id)) is not None
+
+
+def _can_manage_ruleset_version(session: Session, version: RulesetVersion, actor: object) -> bool:
+    if getattr(actor, "role", None) is SystemRole.GLOBAL_ADMINISTRATOR:
+        return True
+    if version.ruleset_id is None:
+        # Compatibility for old/test rows created before stable ruleset roots existed.
+        return version.created_by_user_id == getattr(actor, "user_id", None)
+    return _can_manage_ruleset(session, session.get(Ruleset, version.ruleset_id), actor)
+
+
+def _can_manage_ruleset_members(session: Session, ruleset: Ruleset, actor: object) -> bool:
+    return getattr(
+        actor, "role", None
+    ) is SystemRole.GLOBAL_ADMINISTRATOR or ruleset.owner_user_id == getattr(actor, "user_id", None)
 
 
 class RulesetDeleteConfirmation(BaseModel):
@@ -85,6 +111,22 @@ def list_ruleset_versions(
 ) -> dict[str, object]:
     statement = select(RulesetVersion)
     count_statement = select(func.count()).select_from(RulesetVersion)
+    if actor.role is not SystemRole.GLOBAL_ADMINISTRATOR:
+        accessible_ids = select(Ruleset.id).where(
+            (Ruleset.owner_user_id == actor.user_id)
+            | Ruleset.id.in_(
+                select(RulesetAdministrator.ruleset_id).where(
+                    RulesetAdministrator.user_id == actor.user_id
+                )
+            )
+        )
+        accessible_versions = or_(
+            RulesetVersion.ruleset_id.in_(accessible_ids),
+            (RulesetVersion.ruleset_id.is_(None))
+            & (RulesetVersion.created_by_user_id == actor.user_id),
+        )
+        statement = statement.where(accessible_versions)
+        count_statement = count_statement.where(accessible_versions)
     search = (q or "").strip()
     if search:
         pattern = f"%{search}%"
@@ -109,6 +151,7 @@ def list_ruleset_versions(
         "items": [
             {
                 "id": version.id,
+                "ruleset_id": version.ruleset_id,
                 "ruleset_key": version.ruleset_key,
                 "version": version.version,
                 "source_url": version.source_url,
@@ -130,17 +173,23 @@ def list_ruleset_versions(
 @router.get("/versions/{version_id}", responses=API_ERROR_RESPONSES)
 def get_ruleset_version(
     version_id: int,
-    _actor: AuthenticatedUser,
+    actor: AuthenticatedUser,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
     version = session.get(RulesetVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Ruleset version not found.")
+    if not _can_manage_ruleset_version(session, version, actor):
+        raise HTTPException(status_code=404, detail="Ruleset version not found.")
     try:
         definition = load_ruleset_version(version)
     except RulesetPersistenceError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"id": version.id, "configuration": definition.model_dump(mode="json")}
+    return {
+        "id": version.id,
+        "ruleset_id": version.ruleset_id,
+        "configuration": definition.model_dump(mode="json"),
+    }
 
 
 @router.post("/versions", responses=API_ERROR_RESPONSES, response_model=None)
@@ -172,6 +221,9 @@ def persist_ruleset_version(
             "Ruleset configuration is invalid.",
             details,
         )
+    ruleset = session.scalar(select(Ruleset).where(Ruleset.ruleset_key == definition.ruleset_key))
+    if ruleset is not None and not _can_manage_ruleset(session, ruleset, actor):
+        raise HTTPException(status_code=404, detail="Ruleset not found.")
     try:
         persisted = save_ruleset_version(session, definition, created_by_user_id=actor.user_id)
         if persisted.created:
@@ -201,6 +253,7 @@ def persist_ruleset_version(
     response.status_code = 201 if persisted.created else 200
     return {
         "id": version.id,
+        "ruleset_id": version.ruleset_id,
         "ruleset_key": version.ruleset_key,
         "version": version.version,
         "rule_type_keys": version.rule_type_keys,
@@ -220,10 +273,7 @@ def delete_ruleset_version_endpoint(
     version = session.get(RulesetVersion, version_id)
     if version is None:
         raise HTTPException(status_code=404, detail="Ruleset version not found.")
-    if (
-        actor.role is not SystemRole.GLOBAL_ADMINISTRATOR
-        and version.created_by_user_id != actor.user_id
-    ):
+    if not _can_manage_ruleset_version(session, version, actor):
         raise HTTPException(status_code=404, detail="Ruleset version not found.")
     identity = f"{version.ruleset_key}@{version.version}"
     if payload.confirm_identity != identity:
@@ -252,4 +302,121 @@ def delete_ruleset_version_endpoint(
             status_code=409,
             detail="This ruleset version has retained references and cannot be deleted.",
         ) from exc
+    return Response(status_code=204)
+
+
+@router.get("/{ruleset_id}/administrators")
+def list_ruleset_administrators(
+    ruleset_id: int,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    ruleset = session.get(Ruleset, ruleset_id)
+    if ruleset is None or not _can_manage_ruleset(session, ruleset, actor):
+        raise HTTPException(status_code=404, detail="Ruleset not found.")
+    rows = session.execute(
+        select(RulesetAdministrator, SystemUser)
+        .join(SystemUser, SystemUser.id == RulesetAdministrator.user_id)
+        .where(RulesetAdministrator.ruleset_id == ruleset.id)
+        .order_by(SystemUser.display_name, SystemUser.id)
+    )
+    return {
+        "owner_user_id": ruleset.owner_user_id,
+        "items": [
+            {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+            for _link, user in rows
+        ],
+        "eligible": [
+            {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+            for user in session.scalars(
+                select(SystemUser)
+                .where(
+                    SystemUser.is_active.is_(True),
+                    SystemUser.role == SystemRole.CONTEST_MANAGER,
+                    SystemUser.id != ruleset.owner_user_id,
+                    SystemUser.id.not_in(
+                        select(RulesetAdministrator.user_id).where(
+                            RulesetAdministrator.ruleset_id == ruleset.id
+                        )
+                    ),
+                )
+                .order_by(SystemUser.display_name, SystemUser.id)
+            )
+        ],
+    }
+
+
+class RulesetAdministratorWrite(BaseModel):
+    user_id: int = Field(strict=True, ge=1)
+
+
+@router.post("/{ruleset_id}/administrators", status_code=201)
+def add_ruleset_administrator(
+    ruleset_id: int,
+    payload: RulesetAdministratorWrite,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> dict[str, object]:
+    ruleset = session.get(Ruleset, ruleset_id)
+    if ruleset is None or not _can_manage_ruleset_members(session, ruleset, actor):
+        raise HTTPException(status_code=404, detail="Ruleset not found.")
+    user = session.get(SystemUser, payload.user_id)
+    if user is None or not user.is_active or user.role is not SystemRole.CONTEST_MANAGER:
+        raise HTTPException(
+            status_code=422, detail="Select an active contest administrator account."
+        )
+    if user.id == ruleset.owner_user_id:
+        raise HTTPException(
+            status_code=409, detail="The ruleset owner is already an administrator."
+        )
+    link = RulesetAdministrator(
+        ruleset_id=ruleset.id, user_id=user.id, added_by_user_id=actor.user_id
+    )
+    session.add(link)
+    try:
+        session.flush()
+        record_audit_event(
+            session,
+            actor_user_id=actor.user_id,
+            action="ruleset.administrator_added",
+            target_type="ruleset",
+            target_id=ruleset.id,
+            metadata={"administrator_user_id": user.id},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409, detail="This user already administers the ruleset."
+        ) from exc
+    return {"user_id": user.id, "username": user.username, "display_name": user.display_name}
+
+
+@router.delete("/{ruleset_id}/administrators/{user_id}", status_code=204)
+def remove_ruleset_administrator(
+    ruleset_id: int,
+    user_id: int,
+    actor: AuthenticatedUser,
+    session: Annotated[Session, Depends(get_session)],
+    request: Request,
+) -> Response:
+    ruleset = session.get(Ruleset, ruleset_id)
+    if ruleset is None or not _can_manage_ruleset_members(session, ruleset, actor):
+        raise HTTPException(status_code=404, detail="Ruleset not found.")
+    link = session.get(RulesetAdministrator, (ruleset_id, user_id))
+    if link is None:
+        raise HTTPException(status_code=404, detail="Ruleset administrator not found.")
+    session.delete(link)
+    record_audit_event(
+        session,
+        actor_user_id=actor.user_id,
+        action="ruleset.administrator_removed",
+        target_type="ruleset",
+        target_id=ruleset.id,
+        metadata={"administrator_user_id": user_id},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    session.commit()
     return Response(status_code=204)

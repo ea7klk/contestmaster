@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -48,14 +49,16 @@ def _run_python(database_url: str, code: str) -> None:
     environment = os.environ.copy()
     environment["DATABASE_URL"] = database_url
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-c", code],
         cwd=project_root,
         env=environment,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if result.returncode:
+        raise AssertionError(result.stderr)
 
 
 def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) -> None:
@@ -74,6 +77,13 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
         "contests",
         "contest_series",
         "contest_series_exceptions",
+        "participant_callsigns",
+        "participant_email_changes",
+        "participant_password_resets",
+        "system_password_resets",
+        "contest_administrators",
+        "rulesets",
+        "ruleset_administrators",
         "contest_deletion_permits",
         "ruleset_deletion_permits",
         "entries",
@@ -99,7 +109,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "operating_catalog_items" not in tables
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0022_recurring_contest_series"
+            "0023_participant_accounts_and_shared_iam"
         )
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
         assert (
@@ -232,17 +242,19 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 5
-    assert revisions[0].revision == "0022_recurring_contest_series"
-    assert revisions[0].down_revision == "0021_authorized_ruleset_deletion"
-    assert revisions[1].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[1].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[2].revision == "0020_authorized_contest_deletion"
-    assert revisions[2].down_revision == "0019_contest_periodicity"
-    assert revisions[3].revision == "0019_contest_periodicity"
-    assert revisions[3].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[4].down_revision is None
-    assert revisions[4].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 6
+    assert revisions[0].revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[0].down_revision == "0022_recurring_contest_series"
+    assert revisions[1].revision == "0022_recurring_contest_series"
+    assert revisions[1].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[2].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[2].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[3].revision == "0020_authorized_contest_deletion"
+    assert revisions[3].down_revision == "0019_contest_periodicity"
+    assert revisions[4].revision == "0019_contest_periodicity"
+    assert revisions[4].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[5].down_revision is None
+    assert revisions[5].revision == "0018_remove_unscored_country_data"
 
 
 def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
@@ -462,7 +474,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0022_recurring_contest_series"
+            "0023_participant_accounts_and_shared_iam"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="legacy-admin").count() == 1
@@ -481,7 +493,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0022_recurring_contest_series"
+            "0023_participant_accounts_and_shared_iam"
         )
     engine.dispose()
 
@@ -509,33 +521,42 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
         )
         session.add(actor)
         session.flush()
-        ruleset = RulesetVersion(
-            ruleset_key="shared-baseline-schedule",
-            version="2025",
-            rule_type_keys=["schedule"],
-            configuration={
-                "schema_version": 1,
-                "rules": [
-                    {
-                        "id": "schedule",
-                        "rule": {
-                            "kind": "schedule",
-                            "recurrence": {
-                                "frequency": "nth_weekday",
-                                "month": 6,
-                                "weekday": 5,
-                                "occurrence": 3,
-                            },
+        legacy_configuration = {
+            "schema_version": 1,
+            "rules": [
+                {
+                    "id": "schedule",
+                    "rule": {
+                        "kind": "schedule",
+                        "recurrence": {
+                            "frequency": "nth_weekday",
+                            "month": 6,
+                            "weekday": 5,
+                            "occurrence": 3,
                         },
-                    }
-                ],
+                    },
+                }
+            ],
+        }
+        # This fixture intentionally targets the pre-IAM legacy schema, whose
+        # ruleset_versions table does not yet have the new ruleset_id column.
+        ruleset_id = session.execute(
+            text(
+                "INSERT INTO ruleset_versions "
+                "(ruleset_key, version, rule_type_keys, configuration, "
+                "created_by_user_id, created_at) "
+                "VALUES (:key, :version, :types, :configuration, :creator, :created)"
+            ),
+            {
+                "key": "shared-baseline-schedule",
+                "version": "2025",
+                "types": json.dumps(["schedule"]),
+                "configuration": json.dumps(legacy_configuration),
+                "creator": actor.id,
+                "created": datetime.now(UTC).isoformat(),
             },
-            created_by_user_id=actor.id,
-        )
-        session.add(ruleset)
-        session.flush()
+        ).lastrowid
         actor_id = actor.id
-        ruleset_id = ruleset.id
         session.commit()
 
     # The pre-squash Contest table has no `periodicity` column yet, so use a
@@ -576,7 +597,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0022_recurring_contest_series"
+            "0023_participant_accounts_and_shared_iam"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

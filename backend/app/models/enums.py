@@ -4,6 +4,7 @@ from enum import StrEnum
 class SystemRole(StrEnum):
     GLOBAL_ADMINISTRATOR = "global_administrator"
     CONTEST_MANAGER = "contest_manager"
+    CONTEST_ADMIN = "contest_manager"
 
 
 class ContestStatus(StrEnum):

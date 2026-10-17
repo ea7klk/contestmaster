@@ -5,18 +5,19 @@ import SignInView from './SignInView.vue'
 
 afterEach(() => vi.unstubAllGlobals())
 
-async function mountSignIn() {
+async function mountSignIn(path = '/sign-in?next=/manage/contests') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/sign-in', component: SignInView },
+      { path: '/reset-password', component: SignInView },
       {
         path: '/manage/contests',
         component: { template: '<p>manager home</p>' },
       },
     ],
   })
-  await router.push('/sign-in?next=/manage/contests')
+  await router.push(path)
   await router.isReady()
   return {
     wrapper: mount(SignInView, { global: { plugins: [router] } }),
@@ -83,5 +84,40 @@ describe('SignInView', () => {
       'password is incorrect',
     )
     expect(router.currentRoute.value.path).toBe('/sign-in')
+  })
+
+  it('requests a generic staff password recovery message', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ email: 'staff@example.test' })
+      return new Response(JSON.stringify({
+        status: 'accepted',
+        message: 'If the account is eligible, a password reset link was sent.',
+      }), { status: 202 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { wrapper } = await mountSignIn()
+    await wrapper.findAll('button').find((button) => button.text().includes('Forgot password'))!.trigger('click')
+    await wrapper.get('input[name="email"]').setValue('staff@example.test')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(wrapper.get('[role="status"]').text()).toContain('If the account is eligible')
+  })
+
+  it('consumes a one-time staff password-reset token', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        token: 'staff-reset-token',
+        password: 'a sufficiently long replacement password',
+      })
+      return new Response(JSON.stringify({ status: 'password_updated' }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { wrapper } = await mountSignIn('/reset-password?token=staff-reset-token')
+    await wrapper.get('input[type="password"]').setValue('a sufficiently long replacement password')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(wrapper.get('[role="status"]').text()).toContain('password has been updated')
   })
 })

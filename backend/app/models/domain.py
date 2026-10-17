@@ -60,7 +60,9 @@ class SystemUser(Base):
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     role: Mapped[SystemRole] = mapped_column(enum_column(SystemRole, "system_role"), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
@@ -95,6 +97,10 @@ class Participant(Base):
     display_name: Mapped[str | None] = mapped_column(String(160))
     callsign_submitted: Mapped[str | None] = mapped_column(String(32))
     callsign_normalized: Mapped[str | None] = mapped_column(String(32))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
@@ -113,6 +119,35 @@ class ParticipantEmail(Base):
         String(320, collation="NOCASE"), nullable=False, unique=True
     )
     verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class ParticipantCallsign(Base):
+    __tablename__ = "participant_callsigns"
+    __table_args__ = (
+        UniqueConstraint(
+            "participant_id", "callsign_normalized", name="participant_callsign_unique"
+        ),
+        CheckConstraint("length(trim(callsign_submitted)) > 0", name="callsign_not_blank"),
+        CheckConstraint("length(trim(callsign_normalized)) > 0", name="callsign_norm_not_blank"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey("participants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    callsign_submitted: Mapped[str] = mapped_column(String(32), nullable=False)
+    callsign_normalized: Mapped[str] = mapped_column(String(32), nullable=False)
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
@@ -126,6 +161,70 @@ class ParticipantMagicLink(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     participant_email_id: Mapped[int] = mapped_column(
         ForeignKey("participant_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class ParticipantEmailChange(Base):
+    """Two-address confirmation required before a participant email can change."""
+
+    __tablename__ = "participant_email_changes"
+    __table_args__ = (
+        CheckConstraint("length(old_token_hash) = 64", name="old_token_hash_length"),
+        CheckConstraint("length(new_token_hash) = 64", name="new_token_hash_length"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey("participants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    old_email_id: Mapped[int] = mapped_column(
+        ForeignKey("participant_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    new_email_normalized: Mapped[str] = mapped_column(String(320), nullable=False)
+    old_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    new_token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    old_confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    new_confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class ParticipantPasswordReset(Base):
+    __tablename__ = "participant_password_resets"
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 64", name="token_hash_sha256_length"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey("participants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    participant_email_id: Mapped[int] = mapped_column(
+        ForeignKey("participant_emails.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class SystemPasswordReset(Base):
+    __tablename__ = "system_password_resets"
+    __table_args__ = (
+        CheckConstraint("length(token_hash) = 64", name="token_hash_sha256_length"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("system_users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
@@ -199,6 +298,58 @@ class Contest(Base):
         UTCDateTime(), nullable=False, default=utc_now, onupdate=utc_now
     )
     series: Mapped[ContestSeries | None] = relationship(back_populates="editions")
+
+
+class ContestAdministrator(Base):
+    """Additional contest admins; the creator remains owner on Contest.owner_user_id."""
+
+    __tablename__ = "contest_administrators"
+    __table_args__ = (CheckConstraint("user_id != added_by_user_id", name="admin_not_self_added"),)
+
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("system_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    added_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("system_users.id", ondelete="SET NULL")
+    )
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class Ruleset(Base):
+    """Stable ruleset identity; owner_user_id is the permanent original owner."""
+
+    __tablename__ = "rulesets"
+    __table_args__ = (
+        CheckConstraint("length(trim(ruleset_key)) > 0", name="ruleset_key_not_blank"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ruleset_key: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("system_users.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+
+
+class RulesetAdministrator(Base):
+    """Additional administrators; the ruleset creator remains its permanent owner."""
+
+    __tablename__ = "ruleset_administrators"
+    __table_args__ = (CheckConstraint("user_id != added_by_user_id", name="admin_not_self_added"),)
+
+    ruleset_id: Mapped[int] = mapped_column(
+        ForeignKey("rulesets.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("system_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    added_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("system_users.id", ondelete="SET NULL")
+    )
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
 
 
 class ContestSeries(Base):
@@ -287,6 +438,7 @@ class RulesetVersion(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ruleset_id: Mapped[int | None] = mapped_column(Integer, index=True)
     ruleset_key: Mapped[str] = mapped_column(String(120), nullable=False)
     version: Mapped[str] = mapped_column(String(80), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(2048))

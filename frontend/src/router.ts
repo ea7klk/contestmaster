@@ -63,6 +63,11 @@ export const router = createRouter({
       component: () => import('./views/SignInView.vue'),
     },
     {
+      path: '/reset-password',
+      name: 'system-reset-password',
+      component: () => import('./views/SignInView.vue'),
+    },
+    {
       path: '/participant/access',
       name: 'participant-access',
       component: () => import('./views/ParticipantAccessView.vue'),
@@ -70,6 +75,16 @@ export const router = createRouter({
     {
       path: '/participant/verify',
       name: 'participant-verify',
+      component: () => import('./views/ParticipantAccessView.vue'),
+    },
+    {
+      path: '/participant/reset-password',
+      name: 'participant-reset-password',
+      component: () => import('./views/ParticipantAccessView.vue'),
+    },
+    {
+      path: '/participant/confirm-email-change',
+      name: 'participant-confirm-email-change',
       component: () => import('./views/ParticipantAccessView.vue'),
     },
     {
@@ -81,6 +96,11 @@ export const router = createRouter({
       path: '/admin/master-data',
       name: 'master-data-admin',
       component: () => import('./views/MasterDataAdminView.vue'),
+    },
+    {
+      path: '/admin/users',
+      name: 'user-admin',
+      component: () => import('./views/UserAdminView.vue'),
     },
     {
       path: '/admin/operating-catalog',
