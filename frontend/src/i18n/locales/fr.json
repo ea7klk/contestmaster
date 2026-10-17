@@ -277,6 +277,7 @@
   "s_49c70ba5": "Ensemble de règles et définition de catégorie",
   "s_49d05e2b": "Concours avec règles",
   "s_49d36dfd": "Chaque dimension constitue un axe de classement (par exemple opérateur, puissance ou bande) ; les choix sont les valeurs autorisées sur cet axe.",
+  "s_4a95ae8f": "La validation a détecté une contradiction, une incompatibilité ou une autre erreur dans le règlement. Corrigez les champs indiqués, puis relancez la validation avant d’enregistrer.",
   "s_4abc3dc9": "Clé de choix",
   "s_4ac8e0f9": "par ex. 14 MHz",
   "s_4b2dc389": "Clé stable",

@@ -960,6 +960,13 @@ function catalogErrorMessage(reason: unknown) {
         </label>
       </div>
 
+      <p v-if="issues.length" role="status" class="validation-guidance">
+        {{
+          $tr(
+            'Validation found a contradiction, incompatibility, or another ruleset error. Fix the listed fields, then validate again before saving.',
+          )
+        }}
+      </p>
       <ul
         v-if="issues.length"
         class="error-list"

@@ -89,7 +89,13 @@ def save_ruleset_version(
 def load_ruleset_version(version: RulesetVersion) -> RulesetDefinition:
     """Revalidate stored JSON before execution; persisted configuration is untrusted input."""
     try:
-        definition = validate_ruleset(_normalize_stored_configuration(version.configuration))
+        # Immutable versions created before import-mapping consistency checks remain
+        # readable for historical contest/detail views. New validation and saves use
+        # the strict default and reject the same combinations.
+        definition = validate_ruleset(
+            _normalize_stored_configuration(version.configuration),
+            check_import_mapping_consistency=False,
+        )
     except RulesetValidationError as exc:
         raise RulesetPersistenceError("Stored ruleset configuration is invalid.") from exc
     if definition.ruleset_key != version.ruleset_key or definition.version != version.version:

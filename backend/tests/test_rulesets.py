@@ -5,10 +5,12 @@ from fastapi.testclient import TestClient
 from pydantic import TypeAdapter, ValidationError
 
 from backend.app.main import app
+from backend.app.models import RulesetVersion
 from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.engine import RuleExecutionError, ScoringEntry, score_entry
 from backend.app.rulesets.operating import evaluate_operating_constraints
+from backend.app.rulesets.persistence import load_ruleset_version
 from backend.app.rulesets.schema import (
     BonusRule,
     CategoryRule,
@@ -101,7 +103,28 @@ def valid_payload() -> dict[str, object]:
             },
             {
                 "id": "format",
-                "rule": {"kind": "format_mapping", "format": "cabrillo", "qso_columns": ["band"]},
+                "rule": {
+                    "kind": "format_mapping",
+                    "format": "cabrillo",
+                    "qso_columns": [
+                        "frequency",
+                        "mode",
+                        "date",
+                        "time",
+                        "callsign_sent",
+                        "rst_sent",
+                        "exchange_sent",
+                        "callsign_received",
+                        "rst_received",
+                        "exchange_received",
+                    ],
+                    "category_mappings": [
+                        {
+                            "external_value": "SINGLE",
+                            "category_values": {"operator": "single"},
+                        }
+                    ],
+                },
             },
             {
                 "id": "entity-multiplier",
@@ -219,6 +242,26 @@ def test_validation_endpoint_reports_cross_rule_errors_as_field_details():
     )
 
 
+def test_validation_endpoint_reports_import_conflicts_with_field_paths():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = ["mode", "frequency", *format_rule["qso_columns"][2:]]
+    format_rule["category_mappings"] = []
+
+    response = TestClient(app).post("/api/v1/rulesets/validate", json=payload)
+
+    assert response.status_code == 422
+    details = response.json()["error"]["details"]
+    assert any(
+        detail["location"][-1] == "qso_columns" and "WWROF" in detail["message"]
+        for detail in details
+    )
+    assert any(
+        detail["location"][-1] == "category_mappings" and "operator" in detail["message"]
+        for detail in details
+    )
+
+
 def test_ruleset_schema_rejects_unknown_and_fractional_values():
     payload = valid_payload()
     payload["undocumented_default"] = True
@@ -234,7 +277,16 @@ def test_ruleset_schema_rejects_unknown_and_fractional_values():
 def test_ruleset_can_enable_multiple_distinct_log_formats_only_once_each():
     payload = valid_payload()
     payload["rules"].append(
-        {"id": "adif-format", "rule": {"kind": "format_mapping", "format": "adif"}}
+        {
+            "id": "adif-format",
+            "rule": {
+                "kind": "format_mapping",
+                "format": "adif",
+                "category_mappings": [
+                    {"external_value": "SINGLE", "category_values": {"operator": "single"}}
+                ],
+            },
+        }
     )
     assert validate_ruleset(payload).ruleset_key == "sample-sprint"
 
@@ -244,6 +296,54 @@ def test_ruleset_can_enable_multiple_distinct_log_formats_only_once_each():
     with pytest.raises(RulesetValidationError) as error:
         validate_ruleset(payload)
     assert any("only once" in str(issue["message"]) for issue in error.value.errors)
+
+
+def test_ruleset_validation_rejects_cabrillo_column_order_that_conflicts_with_wwrof():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = ["band", *format_rule["qso_columns"]]
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any(
+        issue["path"].endswith("qso_columns") and "WWROF-defined field order" in issue["message"]
+        for issue in error.value.errors
+    )
+
+
+def test_ruleset_validation_rejects_required_categories_not_mapped_for_an_import_format():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["category_mappings"] = []
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any(
+        issue["path"].endswith("category_mappings") and "operator" in issue["message"]
+        for issue in error.value.errors
+    )
+
+
+def test_legacy_import_mapping_conflict_can_be_loaded_but_not_revalidated_for_save():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["category_mappings"] = []
+
+    loaded_definition = validate_ruleset(payload, check_import_mapping_consistency=False)
+    assert loaded_definition.ruleset_key == "sample-sprint"
+    stored = RulesetVersion(
+        ruleset_key="sample-sprint",
+        version="2026",
+        source_url="https://example.test/rules/2026",
+        source_edition="2026 edition",
+        rule_type_keys=sorted({item["rule"]["kind"] for item in payload["rules"]}),
+        configuration=payload,
+    )
+    assert load_ruleset_version(stored).ruleset_key == "sample-sprint"
+    with pytest.raises(RulesetValidationError):
+        validate_ruleset(payload)
 
 
 def test_ruleset_validator_rejects_duplicate_keys_unsafe_patterns_and_bad_fact_paths():

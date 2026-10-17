@@ -277,6 +277,7 @@
   "s_49c70ba5": "Ruleset and category definition",
   "s_49d05e2b": "Contest with ruleset",
   "s_49d36dfd": "Each dimension is one classification axis (for example operator, power, or band); choices are the values allowed on that axis.",
+  "s_4a95ae8f": "Validation found a contradiction, incompatibility, or another ruleset error. Fix the listed fields, then validate again before saving.",
   "s_4abc3dc9": "Choice key",
   "s_4ac8e0f9": "e.g. 14 MHz",
   "s_4b2dc389": "Stable key",

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 
 from pydantic import ValidationError
 
+from backend.app.logs.cabrillo import DEFAULT_QSO_COLUMNS
 from backend.app.rulesets.conditions import is_safe_pattern
 from backend.app.rulesets.schema import (
     AllCondition,
@@ -93,7 +94,9 @@ def _condition_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
     return errors
 
 
-def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
+def _cross_reference_errors(
+    definition: RulesetDefinition, *, check_import_mapping_consistency: bool
+) -> list[dict[str, object]]:
     errors: list[dict[str, object]] = []
     rules = [item.rule for item in definition.rules]
     kinds = [rule.kind for rule in rules]
@@ -228,6 +231,43 @@ def _cross_reference_errors(definition: RulesetDefinition) -> list[dict[str, obj
                     }
                 )
         elif rule.kind == "format_mapping":
+            if check_import_mapping_consistency:
+                if rule.format == "cabrillo" and rule.qso_columns:
+                    configured_columns = tuple(rule.qso_columns)
+                    if configured_columns != DEFAULT_QSO_COLUMNS:
+                        errors.append(
+                            {
+                                "path": f"rules[{index}].qso_columns",
+                                "message": (
+                                    "Cabrillo QSO fields must follow the WWROF-defined field "
+                                    "order: " + ", ".join(DEFAULT_QSO_COLUMNS) + "."
+                                ),
+                            }
+                        )
+
+                mapped_dimensions = {
+                    dimension_key
+                    for mapping in rule.category_mappings
+                    for dimension_key in mapping.category_values
+                }
+                required_dimensions = {
+                    dimension.key
+                    for category_rule in rules
+                    if category_rule.kind == "categories"
+                    for dimension in category_rule.dimensions
+                    if dimension.required
+                }
+                unmapped_required = sorted(required_dimensions - mapped_dimensions)
+                if unmapped_required:
+                    errors.append(
+                        {
+                            "path": f"rules[{index}].category_mappings",
+                            "message": (
+                                f"The {rule.format} format does not map required category "
+                                "dimension(s): " + ", ".join(unmapped_required) + "."
+                            ),
+                        }
+                    )
             for mapping_index, mapping in enumerate(rule.category_mappings):
                 for dimension_key, choice_key in mapping.category_values.items():
                     if (
@@ -320,7 +360,9 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
     return errors
 
 
-def validate_ruleset(payload: object) -> RulesetDefinition:
+def validate_ruleset(
+    payload: object, *, check_import_mapping_consistency: bool = True
+) -> RulesetDefinition:
     """Parse a strict ruleset document and enforce system-level cross-rule invariants."""
     try:
         definition = RulesetDefinition.model_validate(payload)
@@ -332,7 +374,9 @@ def validate_ruleset(payload: object) -> RulesetDefinition:
         raise RulesetValidationError(errors) from exc
     errors = (
         _condition_errors(definition)
-        + _cross_reference_errors(definition)
+        + _cross_reference_errors(
+            definition, check_import_mapping_consistency=check_import_mapping_consistency
+        )
         + _condition_reference_errors(definition)
     )
     if errors:

@@ -473,7 +473,10 @@ describe('RulesetComposerView', () => {
       'configuration is invalid',
     )
     expect(wrapper.get('.error-list').text()).toContain('Schedule is required')
+    expect(wrapper.get('.validation-guidance').text()).toContain('contradiction')
+    expect(wrapper.get('.error-list').text()).toContain('rules › 0')
     expect(wrapper.find('.validation-panel').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Save validated ruleset version')
   })
 
   it('persists a validated immutable ruleset version', async () => {
