@@ -3,6 +3,7 @@ import {
   describeContestRuleset,
   type ContestSummaryItem,
 } from './publicContestDescription'
+import { setLocale, supportedLocales } from '../i18n'
 
 function summaryText(item: ContestSummaryItem): string {
   return typeof item === 'string'
@@ -15,6 +16,74 @@ function summaryIntroduction(item: ContestSummaryItem): string {
 }
 
 describe('describeContestRuleset', () => {
+  it('localizes generated rules and keeps dynamic scoring values in every locale', async () => {
+    const ruleset = {
+      schema_version: 2 as const,
+      ruleset_key: 'translated-summary',
+      version: '2026',
+      rules: [
+        {
+          id: 'points',
+          rule: { kind: 'points', fact: 'fixed', fixed_points: 37 },
+        },
+      ],
+    }
+
+    for (const locale of supportedLocales) {
+      await setLocale(locale, undefined)
+      const [description] = describeContestRuleset(ruleset)
+      expect(description).toBeDefined()
+      expect(description).toContain('37')
+      if (locale !== 'en')
+        expect(description).not.toBe(
+          'Each eligible contact is worth 37 points.',
+        )
+    }
+    await setLocale('en', undefined)
+  })
+
+  it('translates Cabrillo requirements while preserving standard tokens and contest values', async () => {
+    const ruleset = {
+      schema_version: 2 as const,
+      ruleset_key: 'translated-cabrillo',
+      version: '2026',
+      rules: [
+        {
+          id: 'format',
+          rule: { kind: 'format_mapping', format: 'cabrillo' },
+        },
+      ],
+    }
+
+    for (const locale of supportedLocales) {
+      await setLocale(locale, undefined)
+      const requirements = describeContestRuleset(ruleset, {
+        name: 'Autumn Test',
+        slug: 'autumn-test',
+      }).at(-1)
+      expect(requirements && typeof requirements !== 'string').toBe(true)
+      if (!requirements || typeof requirements === 'string')
+        throw new Error('Expected Cabrillo requirement bullets')
+      const bullets = requirements.bullets.join(' ')
+      for (const token of [
+        'START-OF-LOG',
+        'END-OF-LOG',
+        'CALLSIGN',
+        'CONTEST',
+        'Autumn Test',
+        'autumn-test',
+        'YYYY-MM-DD',
+        'HHMM',
+        'RST',
+      ]) {
+        expect(bullets).toContain(token)
+      }
+      if (locale !== 'en')
+        expect(requirements.introduction).not.toBe('Required Cabrillo fields:')
+    }
+    await setLocale('en', undefined)
+  })
+
   it('turns common scoring and exchange rules into plain-language descriptions', () => {
     const descriptions = describeContestRuleset({
       schema_version: 2,

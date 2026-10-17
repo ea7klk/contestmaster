@@ -1,7 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { expectAccessible } from '../test/a11y'
+import { setLocale } from '../i18n'
 import PublicContestView from './PublicContestView.vue'
 
 const details = {
@@ -39,6 +41,29 @@ const details = {
 }
 
 describe('PublicContestView', () => {
+  it('updates generated summaries when the selected language changes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(details), { status: 200 })),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Eligible contacts may use')
+
+    await setLocale('de', undefined)
+    await nextTick()
+    expect(wrapper.text()).toContain('Berechtigte Kontakte können')
+
+    await setLocale('en', undefined)
+    await nextTick()
+    expect(wrapper.text()).toContain('Eligible contacts may use')
+  })
+
   it('shows UTC contest dates and a preselected log submission link for an open contest', async () => {
     vi.stubGlobal(
       'fetch',
@@ -58,6 +83,9 @@ describe('PublicContestView', () => {
     )
     expect(wrapper.text()).toContain(
       'automatically generated from the ruleset and may be imprecise',
+    )
+    expect(wrapper.text()).toContain(
+      'The English version of this description remains authoritative.',
     )
     expect(wrapper.text()).toContain('bands 20m and 40m')
     expect(wrapper.text()).toContain('modes CW')

@@ -75,6 +75,24 @@ describe('localization foundation', () => {
     await setLocale('en', undefined)
   })
 
+  it('translates the generated contest summary notice in every launch locale', async () => {
+    const source =
+      'This summary is automatically generated from the ruleset and may be imprecise. Refer to the contest’s official published rules for the authoritative requirements. The English version of this description remains authoritative.'
+    const expected = {
+      en: 'This summary is automatically generated from the ruleset and may be imprecise. Refer to the contest’s official published rules for the authoritative requirements. The English version of this description remains authoritative.',
+      de: 'Diese Zusammenfassung wird automatisch aus dem Regelsatz erstellt und kann ungenau sein. Maßgeblich sind die offiziell veröffentlichten Wettbewerbsregeln. Die englische Fassung dieser Beschreibung bleibt maßgeblich.',
+      fr: 'Ce résumé est généré automatiquement à partir du jeu de règles et peut manquer de précision. Consultez le règlement officiel publié du concours pour connaître les exigences faisant autorité. La version anglaise de cette description reste la référence.',
+      es: 'Este resumen se genera automáticamente a partir del conjunto de reglas y puede ser impreciso. Consulte las reglas oficiales publicadas del concurso para conocer los requisitos definitivos. La versión en inglés de esta descripción sigue siendo la versión de referencia.',
+      it: 'Questo riepilogo è generato automaticamente dal regolamento e potrebbe essere impreciso. Per i requisiti ufficiali, consultare il regolamento pubblicato del concorso. La versione inglese di questa descrizione resta quella di riferimento.',
+    } as const
+
+    for (const locale of supportedLocales) {
+      await setLocale(locale, undefined)
+      expect(translateText(source)).toBe(expected[locale])
+    }
+    await setLocale('en', undefined)
+  })
+
   it('uses locale-aware UTC timestamps and integer-only number formatting', async () => {
     await setLocale('de', undefined)
     expect(formatUtcDateTime('2026-10-17T14:05:00Z')).toContain('UTC')

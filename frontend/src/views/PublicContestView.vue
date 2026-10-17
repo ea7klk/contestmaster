@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '../api/client'
 import { getPublicContest, type PublicContestDetails } from '../api/results'
-import { formatUtcDateTime } from '../i18n'
+import { formatUtcDateTime, i18n } from '../i18n'
 import { renderContestMarkdown } from './contestMarkdown'
 import {
   describeContestRuleset,
@@ -15,14 +15,16 @@ const props = defineProps<{ slug: string }>()
 const contest = ref<PublicContestDetails | null>(null)
 const loading = ref(true)
 const error = ref('')
-const rulesetSummary = computed(() =>
-  describeContestRuleset(
+const rulesetSummary = computed(() => {
+  // Rebuild the generated prose when the user changes the interface language.
+  void i18n.global.locale.value
+  return describeContestRuleset(
     contest.value?.ruleset ?? null,
     contest.value
       ? { name: contest.value.name, slug: contest.value.slug }
       : undefined,
-  ),
-)
+  )
+})
 function hasBullets(item: ContestSummaryItem): item is SummaryWithBullets {
   return typeof item !== 'string'
 }
@@ -83,7 +85,7 @@ onMounted(async () => {
         <p class="generated-summary-note">
           {{
             $tr(
-              'This summary is automatically generated from the ruleset and may be imprecise. Refer to the contest’s official published rules for the authoritative requirements.',
+              'This summary is automatically generated from the ruleset and may be imprecise. Refer to the contest’s official published rules for the authoritative requirements. The English version of this description remains authoritative.',
             )
           }}
         </p>

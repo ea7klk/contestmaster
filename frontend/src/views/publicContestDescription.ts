@@ -1,4 +1,5 @@
 import type { RulesetDraft } from '../api/rulesets'
+import { translateText } from '../i18n'
 
 type JsonRecord = Record<string, unknown>
 
@@ -9,6 +10,10 @@ export interface SummaryWithBullets {
 }
 
 export type ContestSummaryItem = string | SummaryWithBullets
+
+function tx(source: string, values?: Record<string, string | number>): string {
+  return translateText(source, values)
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -29,16 +34,20 @@ function stringList(value: unknown): string[] {
 function names(values: string[], fallback: string): string {
   if (values.length === 0) return fallback
   if (values.length === 1) return values[0] ?? fallback
-  if (values.length === 2) return `${values[0]} and ${values[1]}`
-  return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`
+  const conjunction = tx('and')
+  if (values.length === 2) return `${values[0]} ${conjunction} ${values[1]}`
+  return `${values.slice(0, -1).join(', ')}, ${conjunction} ${values.at(-1)}`
 }
 
 function formatValueConstraints(field: JsonRecord): string {
   const constraints: string[] = []
   const choices = stringList(field.choices)
-  if (choices.length) constraints.push(`allowed values: ${names(choices, '')}`)
+  if (choices.length)
+    constraints.push(
+      tx('allowed values: {values}', { values: names(choices, '') }),
+    )
   if (typeof field.pattern === 'string' && field.pattern.trim()) {
-    constraints.push(`must match ${field.pattern}`)
+    constraints.push(tx('must match {pattern}', { pattern: field.pattern }))
   }
   if (
     typeof field.min_integer === 'number' ||
@@ -48,26 +57,33 @@ function formatValueConstraints(field: JsonRecord): string {
       typeof field.min_integer === 'number' ? field.min_integer : 'no minimum'
     const upper =
       typeof field.max_integer === 'number' ? field.max_integer : 'no maximum'
-    constraints.push(`integer from ${lower} to ${upper}`)
+    constraints.push(
+      tx('integer from {minimum} to {maximum}', {
+        minimum: lower,
+        maximum: upper,
+      }),
+    )
   } else if (field.value_type === 'integer' || field.value_type === 'serial') {
     constraints.push(
       field.value_type === 'serial'
-        ? 'positive integer serial number'
-        : 'integer',
+        ? tx('positive integer serial number')
+        : tx('integer'),
     )
   } else if (typeof field.value_type === 'string') {
     const types: Record<string, string> = {
-      callsign: 'callsign',
-      grid: 'grid locator',
-      zone: 'zone identifier',
-      text: 'text',
-      enum: 'one of the listed values',
+      callsign: tx('callsign'),
+      grid: tx('grid locator'),
+      zone: tx('zone identifier'),
+      text: tx('text'),
+      enum: tx('one of the listed values'),
     }
     if (!choices.length && types[field.value_type])
       constraints.push(types[field.value_type] as string)
   }
   if (typeof field.max_length === 'number') {
-    constraints.push(`up to ${field.max_length} characters`)
+    constraints.push(
+      tx('up to {count} characters', { count: field.max_length }),
+    )
   }
   return constraints.length ? ` (${constraints.join('; ')})` : ''
 }
@@ -92,22 +108,27 @@ function requiredExchangeEntries(
   return requiredFields.map((field) => {
     const label = stringValue(
       field.label,
-      stringValue(field.key, 'exchange value'),
+      stringValue(field.key, tx('exchange value')),
     )
     const direction = stringValue(field.direction, 'both')
     const directionText =
       {
-        sent: 'sent',
-        received: 'received',
-        both: 'sent and received',
-        entry: 'declared for the entry',
+        sent: tx('sent'),
+        received: tx('received'),
+        both: tx('sent and received'),
+        entry: tx('declared for the entry'),
       }[direction] ?? direction
     const tags = adifExchangeTags[stringValue(field.key)]
     const tagText =
       format === 'adif' && tags && direction !== 'entry'
         ? ` [ADIF: ${direction === 'sent' ? tags.sent : direction === 'received' ? tags.received : `${tags.sent} / ${tags.received}`}]`
         : ''
-    return `${label} (${directionText})${tagText}${formatValueConstraints(field)}`
+    return tx('{label} ({direction}){tagText}{constraints}', {
+      label,
+      direction: directionText,
+      tagText,
+      constraints: formatValueConstraints(field),
+    })
   })
 }
 
@@ -118,7 +139,17 @@ function describeRequiredExchangeFields(
 ): string {
   const entries = requiredExchangeEntries(rule, format)
   if (!entries.length) return ''
-  return ` Required contest exchange fields and constraints${condition ? ` when ${condition}` : ''}: ${entries.join('; ')}.`
+  return condition
+    ? tx(
+        ' Required contest exchange fields and constraints when {condition}: {entries}.',
+        {
+          condition,
+          entries: entries.join('; '),
+        },
+      )
+    : tx(' Required contest exchange fields and constraints: {entries}.', {
+        entries: entries.join('; '),
+      })
 }
 
 function describeLogSubmissionRequirements(
@@ -137,20 +168,43 @@ function describeLogSubmissionRequirements(
   )
   const eligibility = eligibilityConfig?.rule
   const eligibilityCondition = isRecord(eligibilityConfig?.when)
-    ? ` when ${describeCondition(eligibilityConfig.when)}`
+    ? tx(' when {condition}', {
+        condition: describeCondition(eligibilityConfig.when),
+      })
     : ''
   const allowedBands = eligibility ? stringList(eligibility.allowed_bands) : []
   const allowedModes = eligibility ? stringList(eligibility.allowed_modes) : []
   const bandConstraint = (format: string) =>
     allowedBands.length
-      ? `Allowed band values${eligibilityCondition}: ${names(allowedBands, '')}; frequency values must fall within these bands.`
-      : `No band restriction is configured; provide ${format === 'cabrillo' ? 'a Cabrillo frequency or band token' : 'an ADIF BAND or supported FREQ'} accepted by the importer.`
+      ? tx(
+          'Allowed band values{condition}: {bands}; frequency values must fall within these bands.',
+          {
+            condition: eligibilityCondition,
+            bands: names(allowedBands, ''),
+          },
+        )
+      : tx(
+          'No band restriction is configured; provide {field} accepted by the importer.',
+          {
+            field:
+              format === 'cabrillo'
+                ? tx('a Cabrillo frequency or band token')
+                : tx('an ADIF BAND or supported FREQ'),
+          },
+        )
   const modeConstraint = (format: string) =>
     allowedModes.length
-      ? `Allowed mode values${eligibilityCondition}: ${names(allowedModes, '')}.`
+      ? tx('Allowed mode values{condition}: {modes}.', {
+          condition: eligibilityCondition,
+          modes: names(allowedModes, ''),
+        })
       : format === 'cabrillo'
-        ? 'No contest mode restriction is configured; standard Cabrillo mode tokens include CW, PH, FM, RY, and DG.'
-        : 'No contest mode restriction is configured; use the ADIF MODE or SUBMODE required by the sponsor.'
+        ? tx(
+            'No contest mode restriction is configured; standard Cabrillo mode tokens include CW, PH, FM, RY, and DG.',
+          )
+        : tx(
+            'No contest mode restriction is configured; use the ADIF MODE or SUBMODE required by the sponsor.',
+          )
   const exchangeConfig = configuredRules.find(
     (configured) => configured.rule.kind === 'exchange',
   )
@@ -173,57 +227,94 @@ function describeLogSubmissionRequirements(
       )
       if (format === 'cabrillo') {
         const contestHeader = contest
-          ? `CONTEST must match “${contest.name}” or “${contest.slug}”`
-          : 'CONTEST must match the selected contest'
+          ? tx('CONTEST must match “{name}” or “{slug}”', {
+              name: contest.name,
+              slug: contest.slug,
+            })
+          : tx('CONTEST must match the selected contest')
         return {
-          introduction: 'Required Cabrillo fields:',
+          introduction: tx('Required Cabrillo fields:'),
           bullets: [
-            'START-OF-LOG: 2.0 or 3.0. The importer also accepts legacy unversioned markers.',
-            'END-OF-LOG: terminates the log records.',
-            `CALLSIGN: non-empty header value. CONTEST: non-empty header value; ${contestHeader}.`,
-            'Each QSO must include frequency or band.',
-            'Each QSO must include mode.',
-            'Each QSO must include date in UTC as YYYY-MM-DD.',
-            'Each QSO must include time in UTC as HHMM (HHMMSS is also accepted).',
-            'Each QSO must include sent callsign, sent RST, and sent exchange.',
-            'Each QSO must include received callsign, received RST, and received exchange.',
-            'Callsigns may contain A–Z, 0–9, and /. RST reports and exchange tokens must be non-empty.',
+            tx(
+              'START-OF-LOG: 2.0 or 3.0. The importer also accepts legacy unversioned markers.',
+            ),
+            tx('END-OF-LOG: terminates the log records.'),
+            tx(
+              'CALLSIGN: non-empty header value. CONTEST: non-empty header value; {contestHeader}.',
+              { contestHeader },
+            ),
+            tx('Each QSO must include frequency or band.'),
+            tx('Each QSO must include mode.'),
+            tx('Each QSO must include date in UTC as YYYY-MM-DD.'),
+            tx(
+              'Each QSO must include time in UTC as HHMM (HHMMSS is also accepted).',
+            ),
+            tx(
+              'Each QSO must include sent callsign, sent RST, and sent exchange.',
+            ),
+            tx(
+              'Each QSO must include received callsign, received RST, and received exchange.',
+            ),
+            tx(
+              'Callsigns may contain A–Z, 0–9, and /. RST reports and exchange tokens must be non-empty.',
+            ),
             bandConstraint(format),
             modeConstraint(format),
-            ...requiredExchangeEntries(exchange, format).map(
-              (entry) =>
-                `Required exchange: ${entry}${exchangeCondition ? ` when ${exchangeCondition}` : ''}.`,
+            ...requiredExchangeEntries(exchange, format).map((entry) =>
+              exchangeCondition
+                ? tx('Required exchange: {entry} when {condition}.', {
+                    entry,
+                    condition: exchangeCondition,
+                  })
+                : tx('Required exchange: {entry}.', { entry }),
             ),
           ],
         }
       }
-      return `Required ADIF fields: identify the station with STATION_CALLSIGN or OPERATOR in the header or a QSO record; every QSO record must end with <EOR> and include QSO_DATE (valid UTC date as YYYYMMDD), TIME_ON (HHMM or HHMMSS UTC), CALL (callsign), MODE or SUBMODE, BAND or FREQ in MHz, and sent and received exchange data. ${bandConstraint(format)} ${modeConstraint(format)}${exchangeDetails}`
+      return tx(
+        'Required ADIF fields: identify the station with STATION_CALLSIGN or OPERATOR in the header or a QSO record; every QSO record must end with <EOR> and include QSO_DATE (valid UTC date as YYYYMMDD), TIME_ON (HHMM or HHMMSS UTC), CALL (callsign), MODE or SUBMODE, BAND or FREQ in MHz, and sent and received exchange data. {bandConstraint} {modeConstraint}{exchangeDetails}',
+        {
+          bandConstraint: bandConstraint(format),
+          modeConstraint: modeConstraint(format),
+          exchangeDetails,
+        },
+      )
     })
 }
 
 const categoryMeanings: Record<string, string> = {
-  operator:
+  operator: tx(
     'classifies the operator arrangement; the contest rules define operator eligibility, operating-time, and transmitter limits',
-  power: 'classifies station transmit output power',
-  band: 'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
-  mode: 'classifies operating modes; the contest rules define included modes and mixed-mode requirements',
-  assisted:
+  ),
+  power: tx('classifies station transmit output power'),
+  band: tx(
+    'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
+  ),
+  mode: tx(
+    'classifies operating modes; the contest rules define included modes and mixed-mode requirements',
+  ),
+  assisted: tx(
     'indicates whether operating assistance is used; the contest rules define which tools count as assistance',
-  transmitter:
+  ),
+  transmitter: tx(
     'classifies transmitter configuration; the contest rules define simultaneous transmitter and band-change limits',
-  overlay:
+  ),
+  overlay: tx(
     'is an additional sponsor-defined classification that may apply alongside a main category',
-  station_class:
+  ),
+  station_class: tx(
     'classifies station type or capability; the contest rules define location, portability, and equipment requirements',
-  region:
+  ),
+  region: tx(
     'groups entries by geography; the contest rules define the region boundaries and assignment source',
-  category: 'is a sponsor-defined grouping of entries',
+  ),
+  category: tx('is a sponsor-defined grouping of entries'),
 }
 
 const powerChoiceMeanings: Record<string, string> = {
-  qrp: 'Maximum transmit output: 5 W.',
-  low: 'Maximum transmit output: 100 W.',
-  high: 'Maximum transmit output: up to the applicable legal limit.',
+  qrp: tx('Maximum transmit output: 5 W.'),
+  low: tx('Maximum transmit output: 100 W.'),
+  high: tx('Maximum transmit output: up to the applicable legal limit.'),
 }
 
 function categoryDimensionKind(key: string, label: string): string {
@@ -257,57 +348,61 @@ function categoryChoiceMeaning(
 }
 
 function describeCondition(value: unknown): string {
-  if (!isRecord(value)) return 'the configured condition'
+  if (!isRecord(value)) return tx('the configured condition')
   if (value.kind === 'compare') {
-    const fact = stringValue(value.fact, 'configured contest value')
-      .replace(/^qso\./, 'contact ')
-      .replace(/^entry\./, 'entry ')
-      .replace(/^station\./, 'station ')
-      .replace(/^exchange\./, 'exchange ')
+    const fact = stringValue(value.fact, tx('configured contest value'))
+      .replace(/^qso\./, `${tx('contact')} `)
+      .replace(/^entry\./, `${tx('entry')} `)
+      .replace(/^station\./, `${tx('station')} `)
+      .replace(/^exchange\./, `${tx('exchange')} `)
       .replaceAll('_', ' ')
     const operator = {
-      eq: 'is',
-      ne: 'is not',
-      in: 'is one of',
-      not_in: 'is not one of',
-      lt: 'is less than',
-      lte: 'is at most',
-      gt: 'is greater than',
-      gte: 'is at least',
-      matches: 'matches',
-      exists: 'is present',
+      eq: tx('is'),
+      ne: tx('is not'),
+      in: tx('is one of'),
+      not_in: tx('is not one of'),
+      lt: tx('is less than'),
+      lte: tx('is at most'),
+      gt: tx('is greater than'),
+      gte: tx('is at least'),
+      matches: tx('matches'),
+      exists: tx('is present'),
     }[stringValue(value.operator)]
     if (value.operator === 'exists') return `${fact} ${operator}`
     const expected = Array.isArray(value.value)
-      ? names(value.value.map(String), 'the configured values')
-      : String(value.value ?? 'the configured value')
-    return `${fact} ${operator ?? 'matches'} ${expected}`
+      ? names(value.value.map(String), tx('the configured values'))
+      : String(value.value ?? tx('the configured value'))
+    return `${fact} ${operator ?? tx('matches')} ${expected}`
   }
   if (value.kind === 'all' || value.kind === 'any') {
     const conditions = Array.isArray(value.conditions)
       ? value.conditions.map(describeCondition)
       : []
     return conditions.length
-      ? conditions.join(value.kind === 'all' ? ' and ' : ' or ')
-      : 'the configured conditions'
+      ? conditions.join(
+          value.kind === 'all' ? ` ${tx('and')} ` : ` ${tx('or')} `,
+        )
+      : tx('the configured conditions')
   }
   if (value.kind === 'not') {
-    return `not (${describeCondition(value.condition)})`
+    return tx('not ({condition})', {
+      condition: describeCondition(value.condition),
+    })
   }
-  return 'the configured condition'
+  return tx('the configured condition')
 }
 
 function summarizeRule(rule: JsonRecord): ContestSummaryItem {
   switch (rule.kind) {
     case 'submission': {
       const latePolicy = {
-        reject: 'Late logs are rejected.',
-        accept_late: 'Late logs may be accepted and marked late.',
-        checklog: 'Late logs are classified for checklog review.',
+        reject: tx('Late logs are rejected.'),
+        accept_late: tx('Late logs may be accepted and marked late.'),
+        checklog: tx('Late logs are classified for checklog review.'),
       }[stringValue(rule.late_policy)]
-      return `${latePolicy ?? 'The late-log policy is defined by the contest.'}${
+      return `${latePolicy ?? tx('The late-log policy is defined by the contest.')}${
         rule.manager_extension_allowed === true
-          ? ' A contest manager may extend the submission cutoff.'
+          ? tx(' A contest manager may extend the submission cutoff.')
           : ''
       }`
     }
@@ -325,28 +420,40 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
         const key = stringValue(dimension.key)
         const label = stringValue(
           dimension.label,
-          stringValue(dimension.key, 'Category'),
+          stringValue(dimension.key, tx('Category')),
         )
         const dimensionKind = categoryDimensionKind(key, label)
         const requirement =
-          dimension.required === false ? 'optional' : 'required'
+          dimension.required === false ? tx('optional') : tx('required')
         const meaning =
           stringValue(dimension.description) ||
           categoryMeanings[dimensionKind] ||
-          'is a sponsor-defined classification; check the official rules for its exact definition and limits'
+          tx(
+            'is a sponsor-defined classification; check the official rules for its exact definition and limits',
+          )
         const choiceDefinitions = choiceRows
           .map((choice) => {
             const meaning = categoryChoiceMeaning(dimensionKind, choice)
             return meaning
-              ? `${stringValue(choice.label, stringValue(choice.key))}: ${meaning}`
+              ? tx('{label}: {meaning}', {
+                  label: stringValue(choice.label, stringValue(choice.key)),
+                  meaning,
+                })
               : ''
           })
           .filter(Boolean)
-        const values = choices.length ? `: ${names(choices, '')}` : ''
-        const choiceText = choiceDefinitions.length
-          ? ` Choice details: ${choiceDefinitions.join('; ')}.`
+        const values = choices.length
+          ? tx(': {choices}', { choices: names(choices, '') })
           : ''
-        return `${label} (${requirement})${values}. This ${meaning}.${choiceText}`
+        const choiceText = choiceDefinitions.length
+          ? tx(' Choice details: {details}.', {
+              details: choiceDefinitions.join('; '),
+            })
+          : ''
+        return tx(
+          '{label} ({requirement}){values}. This {meaning}.{choiceText}',
+          { label, requirement, values, meaning, choiceText },
+        )
       })
       const exclusions = Array.isArray(rule.mutually_exclusive)
         ? rule.mutually_exclusive
@@ -364,21 +471,28 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
             .filter((group) => group.length > 1)
         : []
       if (dimensions.length === 0) {
-        return 'Entry categories are configured for this contest.'
+        return tx('Entry categories are configured for this contest.')
       }
-      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank.`
+      const summary = tx(
+        'Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank.',
+      )
       const declarationChoices = dimensionRows.flatMap((dimension) => {
         const dimensionLabel = stringValue(
           dimension.label,
-          stringValue(dimension.key, 'Category'),
+          stringValue(dimension.key, tx('Category')),
         )
         return Array.isArray(dimension.choices)
           ? dimension.choices
               .filter(isRecord)
               .filter((choice) => choice.requires_declaration === true)
-              .map(
-                (choice) =>
-                  `${stringValue(choice.label, stringValue(choice.key, 'Category choice'))} in ${dimensionLabel}`,
+              .map((choice) =>
+                tx('{choice} in {dimension}', {
+                  choice: stringValue(
+                    choice.label,
+                    stringValue(choice.key, tx('Category choice')),
+                  ),
+                  dimension: dimensionLabel,
+                }),
               )
           : []
       })
@@ -396,22 +510,30 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
           : false
       })
       const notes = [
-        'Exact qualifications and limits are contest-specific; the official published rules are authoritative.',
+        tx(
+          'Exact qualifications and limits are contest-specific; the official published rules are authoritative.',
+        ),
         ...(declarationChoices.length
           ? [
-              `The ruleset marks ${names(declarationChoices, 'the marked choices')} as requiring a declaration.`,
+              tx('The ruleset marks {choices} as requiring a declaration.', {
+                choices: names(declarationChoices, tx('the marked choices')),
+              }),
             ]
           : []),
         ...(exclusions.length
           ? [
-              `These dimensions cannot be combined: ${exclusions
-                .map((group) => names(group, 'configured dimensions'))
-                .join('; ')}.`,
+              tx('These dimensions cannot be combined: {groups}.', {
+                groups: exclusions
+                  .map((group) => names(group, tx('configured dimensions')))
+                  .join('; '),
+              }),
             ]
           : []),
         ...(hasGeneratedPowerLimits
           ? [
-              'Unless contest rules specify otherwise, these are the assumed power limits; the official rules define where power is measured.',
+              tx(
+                'Unless contest rules specify otherwise, these are the assumed power limits; the official rules define where power is measured.',
+              ),
             ]
           : []),
       ]
@@ -422,148 +544,203 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
         ? rule.fields.filter(isRecord).map((field) => {
             const label = stringValue(
               field.label,
-              stringValue(field.key, 'exchange value'),
+              stringValue(field.key, tx('exchange value')),
             )
             const direction = stringValue(field.direction)
             const directionText = {
-              sent: 'sent',
-              received: 'received',
-              both: 'sent and received',
-              entry: 'declared for the entry',
+              sent: tx('sent'),
+              received: tx('received'),
+              both: tx('sent and received'),
+              entry: tx('declared for the entry'),
             }[direction]
-            return directionText ? `${label} (${directionText})` : label
+            return directionText
+              ? tx('{label} ({direction})', { label, direction: directionText })
+              : label
           })
         : []
       return fields.length
-        ? `Stations exchange ${names(fields, 'the configured exchange fields')}.`
-        : 'Stations use the exchange fields configured for this contest.'
+        ? tx('Stations exchange {fields}.', {
+            fields: names(fields, tx('the configured exchange fields')),
+          })
+        : tx('Stations use the exchange fields configured for this contest.')
     }
     case 'eligibility': {
       const bands = stringList(rule.allowed_bands)
       const modes = stringList(rule.allowed_modes)
       const limits = [
-        bands.length ? `bands ${names(bands, '')}` : 'all bands',
-        modes.length ? `modes ${names(modes, '')}` : 'all modes',
+        bands.length
+          ? tx('bands {bands}', { bands: names(bands, '') })
+          : tx('all bands'),
+        modes.length
+          ? tx('modes {modes}', { modes: names(modes, '') })
+          : tx('all modes'),
       ]
       const checks = [
-        rule.reject_self_contacts === true ? 'self-contacts are excluded' : '',
+        rule.reject_self_contacts === true
+          ? tx('self-contacts are excluded')
+          : '',
         rule.reject_out_of_period === true
-          ? 'contacts outside the contest period are excluded'
+          ? tx('contacts outside the contest period are excluded')
           : '',
         rule.reject_missing_required_exchange === true
-          ? 'contacts missing required exchange details are excluded'
+          ? tx('contacts missing required exchange details are excluded')
           : '',
         rule.eligible_if !== undefined && rule.eligible_if !== null
-          ? 'additional configured contact conditions apply'
+          ? tx('additional configured contact conditions apply')
           : '',
       ].filter(Boolean)
-      return `Eligible contacts may use ${names(limits, 'the configured operating limits')}.${
-        checks.length ? ` ${names(checks, '')}.` : ''
-      }`
+      return tx('Eligible contacts may use {limits}.{checks}', {
+        limits: names(limits, tx('the configured operating limits')),
+        checks: checks.length ? ` ${names(checks, '')}.` : '',
+      })
     }
     case 'duplicates': {
       const scope = stringList(rule.scope).map(
         (item) =>
           ({
-            worked_callsign: 'the same callsign',
-            band: 'the same band',
-            mode: 'the same mode',
-            grid: 'the same grid square',
-            transmitter: 'the same transmitter',
+            worked_callsign: tx('the same callsign'),
+            band: tx('the same band'),
+            mode: tx('the same mode'),
+            grid: tx('the same grid square'),
+            transmitter: tx('the same transmitter'),
           })[item] ?? item,
       )
       const effect = {
-        ignore: 'ignored',
-        not_credited: 'not credited',
-        penalty: 'subject to a penalty',
-        needs_review: 'sent for review',
+        ignore: tx('ignored'),
+        not_credited: tx('not credited'),
+        penalty: tx('subject to a penalty'),
+        needs_review: tx('sent for review'),
       }[stringValue(rule.effect)]
-      return `A contact repeated with ${names(scope, 'the configured duplicate identity')} is ${effect ?? 'handled by the configured duplicate policy'}.`
+      return tx('A contact repeated with {scope} is {effect}.', {
+        scope: names(scope, tx('the configured duplicate identity')),
+        effect: effect ?? tx('handled by the configured duplicate policy'),
+      })
     }
     case 'points': {
       const fact = stringValue(rule.fact)
       if (fact === 'fixed' && typeof rule.fixed_points === 'number') {
-        return `Each eligible contact is worth ${rule.fixed_points} points.`
+        return tx('Each eligible contact is worth {points} points.', {
+          points: rule.fixed_points,
+        })
       }
       const values = isRecord(rule.values) ? Object.entries(rule.values) : []
       const examples = values
         .slice(0, 4)
-        .map(([key, value]) => `${key}: ${String(value)} points`)
+        .map(([key, value]) =>
+          tx('{key}: {points} points', { key, points: String(value) }),
+        )
       const remainder =
         values.length > examples.length
-          ? `, plus ${values.length - examples.length} other values`
+          ? tx(', plus {count} other values', {
+              count: values.length - examples.length,
+            })
           : ''
       const defaultPoints =
         typeof rule.default_points === 'number'
-          ? ` Contacts without a matching value are worth ${rule.default_points} points.`
+          ? tx(
+              ' Contacts without a matching value are worth {points} points.',
+              { points: rule.default_points },
+            )
           : ''
       return examples.length
-        ? `Contact points are based on ${fact || 'configured contact details'} (${examples.join('; ')}${remainder}).${defaultPoints}`
-        : `Contact points are based on ${fact || 'the configured scoring rule'}.`
+        ? tx(
+            'Contact points are based on {fact} ({examples}{remainder}).{defaultPoints}',
+            {
+              fact: fact || tx('configured contact details'),
+              examples: examples.join('; '),
+              remainder,
+              defaultPoints,
+            },
+          )
+        : tx('Contact points are based on {fact}.', {
+            fact: fact || tx('the configured scoring rule'),
+          })
     }
     case 'multiplier': {
       const source = stringValue(
         rule.source_fact,
-        'the configured exchange or contact value',
+        tx('the configured exchange or contact value'),
       )
-      const scope = stringValue(rule.scope, 'contest')
-      return `Multipliers come from ${source} and count once per ${scope.replaceAll('_', ' ')}.`
+      const scope = stringValue(rule.scope, tx('contest'))
+      return tx('Multipliers come from {source} and count once per {scope}.', {
+        source,
+        scope: scope.replaceAll('_', ' '),
+      })
     }
     case 'bonus': {
       const points =
-        typeof rule.points === 'number' ? rule.points : 'configured'
+        typeof rule.points === 'number' ? String(rule.points) : tx('configured')
       const basis =
-        rule.basis === 'per_entry' ? 'per entry' : 'per eligible contact'
+        rule.basis === 'per_entry'
+          ? tx('per entry')
+          : tx('per eligible contact')
       const cap =
-        typeof rule.cap === 'number' ? `, up to ${rule.cap} points` : ''
+        typeof rule.cap === 'number'
+          ? tx(', up to {points} points', { points: rule.cap })
+          : ''
       const minimum =
         typeof rule.minimum_eligible_qsos === 'number' &&
         rule.minimum_eligible_qsos > 0
-          ? ` after at least ${rule.minimum_eligible_qsos} eligible contacts`
+          ? tx(' after at least {count} eligible contacts', {
+              count: rule.minimum_eligible_qsos,
+            })
           : ''
       const evidence =
         typeof rule.evidence_key === 'string'
-          ? ` Evidence declaration “${rule.evidence_key}” is required.`
+          ? tx(' Evidence declaration “{key}” is required.', {
+              key: rule.evidence_key,
+            })
           : ''
-      return `Bonus: ${points} points ${basis}${cap}${minimum}.${evidence}`
+      return tx('Bonus: {points} points {basis}{cap}{minimum}.{evidence}', {
+        points,
+        basis,
+        cap,
+        minimum,
+        evidence,
+      })
     }
     case 'penalty': {
       const action = stringValue(
         rule.action,
-        'the configured consequence',
+        tx('the configured consequence'),
       ).replaceAll('_', ' ')
       const points =
         typeof rule.points === 'number' && rule.points > 0
-          ? ` (${rule.points} points)`
+          ? tx(' ({points} points)', { points: rule.points })
           : ''
       const maximum =
         typeof rule.maximum_occurrences === 'number' &&
         rule.maximum_occurrences > 1
-          ? `, up to ${rule.maximum_occurrences} times`
+          ? tx(', up to {count} times', { count: rule.maximum_occurrences })
           : ''
-      return `For ${stringValue(rule.reason_code, 'a configured violation')}, the penalty is to ${action}${points}${maximum}.`
+      return tx('For {reason}, the penalty is to {action}{points}{maximum}.', {
+        reason: stringValue(rule.reason_code, tx('a configured violation')),
+        action,
+        points,
+        maximum,
+      })
     }
     case 'score_formula': {
       const variableNames: Record<string, string> = {
-        points_total: 'contact points',
-        multiplier_count: 'multipliers',
-        bonus_points: 'bonus points',
-        penalty_points: 'penalty points',
-        power_multiplier: 'power multiplier',
+        points_total: tx('contact points'),
+        multiplier_count: tx('multipliers'),
+        bonus_points: tx('bonus points'),
+        penalty_points: tx('penalty points'),
+        power_multiplier: tx('power multiplier'),
       }
       const operand = (value: unknown) => {
-        if (!isRecord(value)) return 'a configured value'
+        if (!isRecord(value)) return tx('a configured value')
         if (typeof value.constant === 'number') return String(value.constant)
         return (
-          variableNames[stringValue(value.variable)] ?? 'a configured value'
+          variableNames[stringValue(value.variable)] ?? tx('a configured value')
         )
       }
       const operators: Record<string, string> = {
-        add: 'plus',
-        subtract: 'minus',
-        multiply: 'multiplied by',
-        floor_divide: 'divided by',
-        round_divide: 'divided by',
+        add: tx('plus'),
+        subtract: tx('minus'),
+        multiply: tx('multiplied by'),
+        floor_divide: tx('divided by'),
+        round_divide: tx('divided by'),
       }
       const steps = Array.isArray(rule.steps) ? rule.steps.filter(isRecord) : []
       const expression = [
@@ -572,53 +749,83 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
           const rounding =
             step.operator === 'round_divide' &&
             typeof step.rounding === 'string'
-              ? ` (${step.rounding.replaceAll('_', ' ')} rounding)`
+              ? tx(' ({rounding} rounding)', {
+                  rounding: step.rounding.replaceAll('_', ' '),
+                })
               : ''
-          return `${operators[stringValue(step.operator)] ?? 'combined with'} ${operand(step.operand)}${rounding}`
+          return tx('{operator} {operand}{rounding}', {
+            operator:
+              operators[stringValue(step.operator)] ?? tx('combined with'),
+            operand: operand(step.operand),
+            rounding,
+          })
         }),
       ]
-      return `Final score: ${expression.join(' ')}. Scores use whole-number points.`
+      return tx('Final score: {expression}. Scores use whole-number points.', {
+        expression: expression.join(' '),
+      })
     }
     case 'operating_constraints': {
       const limits = [
         typeof rule.max_operating_minutes === 'number' &&
-          `up to ${rule.max_operating_minutes} operating minutes`,
+          tx('up to {count} operating minutes', {
+            count: rule.max_operating_minutes,
+          }),
         typeof rule.maximum_band_changes === 'number' &&
-          `up to ${rule.maximum_band_changes} band changes`,
+          tx('up to {count} band changes', {
+            count: rule.maximum_band_changes,
+          }),
         typeof rule.maximum_transmitters === 'number' &&
-          `up to ${rule.maximum_transmitters} transmitters`,
+          tx('up to {count} transmitters', {
+            count: rule.maximum_transmitters,
+          }),
         typeof rule.minimum_off_time_minutes === 'number' &&
           rule.minimum_off_time_minutes > 0 &&
-          `${rule.minimum_off_time_minutes} minutes of off time`,
+          tx('{count} minutes of off time', {
+            count: rule.minimum_off_time_minutes,
+          }),
         typeof rule.required_off_periods === 'number' &&
           rule.required_off_periods > 0 &&
-          `${rule.required_off_periods} required off periods`,
+          tx('{count} required off periods', {
+            count: rule.required_off_periods,
+          }),
         typeof rule.minimum_band_dwell_minutes === 'number' &&
-          `${rule.minimum_band_dwell_minutes}-minute minimum band dwell`,
+          tx('{count}-minute minimum band dwell', {
+            count: rule.minimum_band_dwell_minutes,
+          }),
         rule.one_transmitted_signal_per_band === true &&
-          'one transmitted signal per band',
+          tx('one transmitted signal per band'),
       ].filter((item): item is string => typeof item === 'string')
       return limits.length
-        ? `Operating limits include ${names(limits, 'the configured station rules')}.`
-        : 'Operating and station limits follow the contest configuration.'
+        ? tx('Operating limits include {limits}.', {
+            limits: names(limits, tx('the configured station rules')),
+          })
+        : tx('Operating and station limits follow the contest configuration.')
     }
     case 'format_mapping':
-      return `${stringValue(rule.format, 'The configured')} log format is accepted.${
-        rule.preserve_unknown_fields === true
-          ? ' Unrecognized fields are retained for review.'
-          : ''
-      }`
+      return tx('{format} log format is accepted.{preserved}', {
+        format: stringValue(rule.format, tx('The configured')),
+        preserved:
+          rule.preserve_unknown_fields === true
+            ? tx(' Unrecognized fields are retained for review.')
+            : '',
+      })
     case 'workflow_hook': {
       const stage = stringValue(rule.stage, 'contest')
       const execution = {
-        automatic: 'runs automatically',
-        declaration: 'uses participant declarations',
-        human_review: 'requires human review',
+        automatic: tx('runs automatically'),
+        declaration: tx('uses participant declarations'),
+        human_review: tx('requires human review'),
       }[stringValue(rule.execution)]
-      return `${stage.charAt(0).toUpperCase()}${stage.slice(1)} processing ${execution ?? 'follows the configured workflow'}.`
+      return tx('{stage} processing {execution}.', {
+        stage: stage.charAt(0).toUpperCase() + stage.slice(1),
+        execution: execution ?? tx('follows the configured workflow'),
+      })
     }
     default:
-      return `Additional contest rule configured: ${stringValue(rule.kind, 'unspecified')}.`
+      return tx('Additional contest rule configured: {kind}.', {
+        kind: stringValue(rule.kind, tx('unspecified')),
+      })
   }
 }
 
@@ -632,7 +839,9 @@ export function describeContestRuleset(
     const summary = summarizeRule(configured.rule)
     if (configured.when === undefined || configured.when === null)
       return [summary]
-    const conditionPrefix = `Only when ${describeCondition(configured.when)}: `
+    const conditionPrefix = tx('Only when {condition}: ', {
+      condition: describeCondition(configured.when),
+    })
     if (typeof summary === 'string') {
       return [
         `${conditionPrefix}${summary.charAt(0).toLowerCase()}${summary.slice(1)}`,
