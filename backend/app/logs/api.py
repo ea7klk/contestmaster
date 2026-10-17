@@ -13,7 +13,7 @@ from pathlib import PurePosixPath
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
@@ -24,7 +24,7 @@ from backend.app.api.participant_identity import ParticipantPrincipal, require_p
 from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
-from backend.app.email_delivery import send_guest_entry_verification
+from backend.app.email_delivery import schedule_email_delivery, send_guest_entry_verification
 from backend.app.email_locale import request_email_locale
 from backend.app.guest_email import prepare_guest_email, verify_guest_email
 from backend.app.logs.adif import parse_adif
@@ -94,6 +94,25 @@ def _deliver_guest_verification(email: str, token: str, event_id: str, *, locale
             extra={"event_id": event_id, "error_type": type(exc).__name__},
         )
         return False
+    return True
+
+
+def _queue_guest_verification(
+    background_tasks: BackgroundTasks,
+    email: str,
+    token: str,
+    event_id: str,
+    *,
+    locale: str,
+) -> bool:
+    schedule_email_delivery(
+        background_tasks,
+        _deliver_guest_verification,
+        email,
+        token,
+        event_id,
+        locale=locale,
+    )
     return True
 
 
@@ -311,6 +330,7 @@ def _optional_participant(
 async def submit_log(
     contest_slug: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
     participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
@@ -385,7 +405,7 @@ async def submit_log(
     if is_late and late_policy == "reject":
         raise HTTPException(status_code=409, detail="This contest does not accept late logs.")
     session.execute(text("BEGIN IMMEDIATE"))
-    guest_email_delivery: bool | None = None
+    guest_email_queued: bool | None = None
     valid_cabrillo_email: str | None = None
     if upload_format == "cabrillo":
         raw_email = parsed.headers.get("EMAIL", [])
@@ -442,8 +462,12 @@ async def submit_log(
         )
         session.commit()
         if token:
-            guest_email_delivery = _deliver_guest_verification(
-                contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
+            guest_email_queued = _queue_guest_verification(
+                background_tasks,
+                contact.email_normalized,
+                token,
+                f"entry-{entry.id}",
+                locale=contact.locale,
             )
     revision = _latest_revision(session, entry.id)
     score_runs = (
@@ -466,7 +490,8 @@ async def submit_log(
         "receipt_token_replayed": replayed,
         "guest_email_prompt_required": participant is None
         and (upload_format == "adif" or valid_cabrillo_email is None),
-        "guest_email_verification_sent": guest_email_delivery,
+        "guest_email_verification_sent": None,
+        "guest_email_verification_queued": guest_email_queued,
         "summary": {
             "accepted_qsos": len(parsed.qsos),
             "rejected_qsos": 0,
@@ -484,6 +509,7 @@ def set_guest_entry_email(
     entry_id: int,
     payload: GuestEmailRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
     receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
     participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
@@ -522,15 +548,20 @@ def set_guest_entry_email(
         request_id=getattr(request.state, "request_id", None),
     )
     session.commit()
-    delivery_sent = None
+    delivery_queued = None
     if token is not None:
-        delivery_sent = _deliver_guest_verification(
-            contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
+        delivery_queued = _queue_guest_verification(
+            background_tasks,
+            contact.email_normalized,
+            token,
+            f"entry-{entry.id}",
+            locale=contact.locale,
         )
     return {
         "status": "revoked" if contact.revoked_at else "verification_required",
         "verified": contact.verified_at is not None,
-        "verification_email_sent": delivery_sent,
+        "verification_email_sent": None,
+        "verification_email_queued": delivery_queued,
     }
 
 
@@ -570,6 +601,7 @@ def verify_guest_entry_email(
 def resend_guest_entry_verification(
     entry_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
     receipt: Annotated[str | None, Header(alias="X-Entry-Receipt")] = None,
     participant: Annotated[ParticipantPrincipal | None, Depends(_optional_participant)] = None,
@@ -600,13 +632,21 @@ def resend_guest_entry_verification(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     session.commit()
-    sent = bool(
+    queued = bool(
         token
-        and _deliver_guest_verification(
-            contact.email_normalized, token, f"entry-{entry.id}", locale=contact.locale
+        and _queue_guest_verification(
+            background_tasks,
+            contact.email_normalized,
+            token,
+            f"entry-{entry.id}",
+            locale=contact.locale,
         )
     )
-    return {"status": "verification_required", "verification_email_sent": sent}
+    return {
+        "status": "verification_required",
+        "verification_email_sent": None,
+        "verification_email_queued": queued,
+    }
 
 
 @router.put("/entries/{entry_id}/log", response_model=None)

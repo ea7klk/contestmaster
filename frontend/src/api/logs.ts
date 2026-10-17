@@ -24,6 +24,7 @@ export interface LogSubmissionResult {
   receipt_token?: string | null
   guest_email_prompt_required?: boolean
   guest_email_verification_sent?: boolean | null
+  guest_email_verification_queued?: boolean | null
   summary: {
     accepted_qsos: number
     rejected_qsos: number
@@ -310,6 +311,7 @@ export function setGuestEntryEmail(
     status: 'revoked' | 'verification_required'
     verified: boolean
     verification_email_sent: boolean | null
+    verification_email_queued: boolean | null
   }>(`/public/entries/${entryId}/guest-email`, {
     method: 'POST',
     headers: receiptHeaders(receiptToken),
@@ -333,7 +335,11 @@ export function resendGuestEntryEmailVerification(
   entryId: number,
   receiptToken?: string,
 ) {
-  return apiRequest<{ status: string; verification_email_sent: boolean }>(
+  return apiRequest<{
+    status: string
+    verification_email_sent: boolean | null
+    verification_email_queued: boolean
+  }>(
     `/public/entries/${entryId}/guest-email/resend`,
     { method: 'POST', headers: receiptHeaders(receiptToken) },
   )

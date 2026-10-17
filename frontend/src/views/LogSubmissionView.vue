@@ -138,9 +138,9 @@ async function saveGuestEmail() {
       },
       result.value.receipt_token,
     )
-    guestEmailMessage.value = response.verification_email_sent
-      ? 'A verification link was sent. Your email choices take effect only after you verify the address.'
-      : 'Your choices are saved, but the verification email could not be sent. Use the resend option after email delivery is available.'
+    guestEmailMessage.value = response.verification_email_queued
+      ? 'Your verification email has been queued. Your email choices take effect only after you verify the address.'
+      : 'Your choices are saved, but a verification email was not queued. You can retry.'
     emailPromptDismissed.value = true
   } catch (reason) {
     guestEmailError.value =
@@ -160,9 +160,9 @@ async function resendHeaderVerification() {
       result.value.entry_id,
       result.value.receipt_token,
     )
-    guestEmailMessage.value = response.verification_email_sent
-      ? 'A new verification link was sent to the Cabrillo EMAIL address.'
-      : 'The verification email could not be sent. Try again after email delivery is available.'
+    guestEmailMessage.value = response.verification_email_queued
+      ? 'A new verification email has been queued to the Cabrillo EMAIL address.'
+      : 'Your choices are saved, but a verification email was not queued. You can retry.'
   } catch (reason) {
     guestEmailError.value =
       reason instanceof ApiError ? reason.message : 'The verification email could not be resent.'
@@ -391,19 +391,19 @@ onMounted(loadContests)
         </div>
       </section>
       <section
-        v-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_sent === true"
+        v-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_queued === true"
         class="guest-email-prompt"
         aria-labelledby="cabrillo-email-title"
       >
         <h3 id="cabrillo-email-title">{{ $tr('Verify your Cabrillo email') }}</h3>
-        <p>{{ $tr('We sent a one-time verification link to the EMAIL address in your Cabrillo file. Verification enables entry access only. Result notices are not enabled by this field.') }}</p>
+        <p>{{ $tr('A one-time verification email has been queued to the EMAIL address in your Cabrillo file. Verification enables entry access only. Result notices are not enabled by this field.') }}</p>
       </section>
       <section
-        v-else-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_sent === false && result.entry_id && result.receipt_token"
+        v-else-if="result.status === 'accepted' && !result.guest_email_prompt_required && result.guest_email_verification_queued === false && result.entry_id && result.receipt_token"
         class="guest-email-prompt"
         aria-labelledby="cabrillo-email-retry-title"
       >
-        <h3 id="cabrillo-email-retry-title">{{ $tr('Cabrillo email verification not sent') }}</h3>
+        <h3 id="cabrillo-email-retry-title">{{ $tr('Cabrillo email verification not queued') }}</h3>
         <p>{{ $tr('The log was accepted. The verification email could not be delivered. You can retry sending it.') }}</p>
         <button class="secondary-button" type="button" :disabled="verificationResendBusy" @click="resendHeaderVerification">
           {{ verificationResendBusy ? $tr('Sending…') : $tr('Resend verification email') }}

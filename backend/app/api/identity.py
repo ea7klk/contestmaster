@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import smtplib
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +29,7 @@ from backend.app.api.errors import API_ERROR_RESPONSES
 from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
-from backend.app.email_delivery import send_email
+from backend.app.email_delivery import schedule_email_delivery, send_email
 from backend.app.email_locale import request_email_locale
 from backend.app.models import (
     Participant,
@@ -239,6 +238,7 @@ def current_user(actor: AuthenticatedUser) -> dict[str, object]:
 def forgot_system_password(
     payload: PasswordResetRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     try:
@@ -271,25 +271,21 @@ def forgot_system_password(
         )
         query = urlencode({"token": raw})
         link = f"{get_settings().frontend_base_url.rstrip('/')}/reset-password?{query}"
-        try:
-            session.flush()
-            send_email(
-                address,
-                "Reset your Contestmaster password",
-                "Use this one-time link to reset your password. It expires in 30 minutes.",
-                link,
-                locale=request_email_locale(request),
-                template="password_reset",
-            )
-            session.commit()
-        except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
-            session.rollback()
-            raise HTTPException(
-                status_code=503, detail="Email delivery is temporarily unavailable."
-            ) from exc
+        session.flush()
+        session.commit()
+        schedule_email_delivery(
+            background_tasks,
+            send_email,
+            address,
+            "Reset your Contestmaster password",
+            "Use this one-time link to reset your password. It expires in 30 minutes.",
+            link,
+            locale=request_email_locale(request),
+            template="password_reset",
+        )
     return {
         "status": "accepted",
-        "message": "If the account is eligible, a password reset link was sent.",
+        "message": "If the account is eligible, a password reset email will arrive shortly.",
     }
 
 

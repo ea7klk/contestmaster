@@ -5,13 +5,12 @@ from __future__ import annotations
 import hmac
 import re
 import secrets
-import smtplib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -26,7 +25,11 @@ from backend.app.api.auth import (
 from backend.app.audit import record_audit_event
 from backend.app.config import get_settings
 from backend.app.db import get_session
-from backend.app.email_delivery import send_email, send_participant_magic_link
+from backend.app.email_delivery import (
+    schedule_email_delivery,
+    send_email,
+    send_participant_magic_link,
+)
 from backend.app.email_locale import request_email_locale
 from backend.app.models import (
     Contest,
@@ -189,6 +192,7 @@ def _clear_participant_cookies(response: Response) -> None:
 def register_participant(
     payload: ParticipantRegistration,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     enforce_rate_limit(
@@ -254,17 +258,15 @@ def register_participant(
         expires_at=now + MAGIC_LINK_LIFETIME,
     )
     session.add(link)
-    try:
-        session.flush()
-        send_participant_magic_link(
-            address, _magic_link_url(raw_token), locale=request_email_locale(request)
-        )
-        session.commit()
-    except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=503, detail="Email delivery is temporarily unavailable."
-        ) from exc
+    session.flush()
+    session.commit()
+    schedule_email_delivery(
+        background_tasks,
+        send_participant_magic_link,
+        address,
+        _magic_link_url(raw_token),
+        locale=request_email_locale(request),
+    )
     return {"status": "verification_sent"}
 
 
@@ -335,6 +337,7 @@ def login_participant(
 def forgot_participant_password(
     payload: TokenRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     try:
@@ -371,25 +374,21 @@ def forgot_participant_password(
             expires_at=now + timedelta(minutes=30),
         )
         session.add(record)
-        try:
-            session.flush()
-            send_email(
-                address,
-                "Reset your Contestmaster password",
-                "Use this one-time link to reset your password. It expires in 30 minutes.",
-                _account_link("/participant/reset-password", token),
-                locale=request_email_locale(request),
-                template="password_reset",
-            )
-            session.commit()
-        except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
-            session.rollback()
-            raise HTTPException(
-                status_code=503, detail="Email delivery is temporarily unavailable."
-            ) from exc
+        session.flush()
+        session.commit()
+        schedule_email_delivery(
+            background_tasks,
+            send_email,
+            address,
+            "Reset your Contestmaster password",
+            "Use this one-time link to reset your password. It expires in 30 minutes.",
+            _account_link("/participant/reset-password", token),
+            locale=request_email_locale(request),
+            template="password_reset",
+        )
     return {
         "status": "accepted",
-        "message": "If the account is eligible, a password reset link was sent.",
+        "message": "If the account is eligible, a password reset email will arrive shortly.",
     }
 
 
@@ -710,6 +709,7 @@ def begin_participant_email_change(
     payload: EmailChangeRequest,
     request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     try:
@@ -733,30 +733,29 @@ def begin_participant_email_change(
         expires_at=now + timedelta(hours=24),
     )
     session.add(change)
-    try:
-        session.flush()
-        send_email(
-            actor.email,
-            "Confirm your Contestmaster email change",
-            "Confirm this email change from your current address. It expires in 24 hours.",
-            _account_link("/participant/confirm-email-change", old_raw),
-            locale=request_email_locale(request),
-            template="email_change_current",
-        )
-        send_email(
-            target,
-            "Confirm your new Contestmaster email",
-            "Confirm this address to complete the email change. It expires in 24 hours.",
-            _account_link("/participant/confirm-email-change", new_raw),
-            locale=request_email_locale(request),
-            template="email_change_new",
-        )
-        session.commit()
-    except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=503, detail="Email delivery is temporarily unavailable."
-        ) from exc
+    session.flush()
+    session.commit()
+    locale = request_email_locale(request)
+    schedule_email_delivery(
+        background_tasks,
+        send_email,
+        actor.email,
+        "Confirm your Contestmaster email change",
+        "Confirm this email change from your current address. It expires in 24 hours.",
+        _account_link("/participant/confirm-email-change", old_raw),
+        locale=locale,
+        template="email_change_current",
+    )
+    schedule_email_delivery(
+        background_tasks,
+        send_email,
+        target,
+        "Confirm your new Contestmaster email",
+        "Confirm this address to complete the email change. It expires in 24 hours.",
+        _account_link("/participant/confirm-email-change", new_raw),
+        locale=locale,
+        template="email_change_new",
+    )
     return {"status": "confirmation_sent"}
 
 
@@ -824,6 +823,7 @@ def confirm_participant_email_change(
 def request_magic_link(
     payload: MagicLinkRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     try:
@@ -879,18 +879,18 @@ def request_magic_link(
     )
     session.add(link)
     session.flush()
-    try:
-        send_participant_magic_link(
-            email_address, _magic_link_url(raw_token), locale=request_email_locale(request)
-        )
-        session.commit()
-    except (OSError, RuntimeError, ValueError, smtplib.SMTPException) as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail="Email delivery is temporarily unavailable.",
-        ) from exc
-    return {"status": "accepted", "message": "If the address can be used, a sign-in link was sent."}
+    session.commit()
+    schedule_email_delivery(
+        background_tasks,
+        send_participant_magic_link,
+        email_address,
+        _magic_link_url(raw_token),
+        locale=request_email_locale(request),
+    )
+    return {
+        "status": "accepted",
+        "message": "If the address can be used, a sign-in link will arrive shortly.",
+    }
 
 
 @router.post("/consume-link")

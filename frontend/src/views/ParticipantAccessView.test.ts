@@ -79,7 +79,7 @@ describe('ParticipantAccessView', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(fetchMock).toHaveBeenCalledOnce()
-    expect(wrapper.get('[role="status"]').text()).toContain('verification link')
+    expect(wrapper.get('[role="status"]').text()).toContain('verification email')
     await expectAccessible(wrapper.element)
   })
 
@@ -165,7 +165,7 @@ describe('ParticipantAccessView', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(wrapper.get('[role="status"]').text()).toContain(
-      'one-time sign-in link',
+      'sign-in email will arrive shortly',
     )
   })
 

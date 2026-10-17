@@ -1,3 +1,4 @@
+import asyncio
 import json
 import smtplib
 import ssl
@@ -94,6 +95,18 @@ def test_send_email_uses_starttls_authentication_and_optional_test_body():
     assert html is not None and "Contestmaster" in html.get_content()
     assert "#511e20" in html.get_content()
     assert "smtp-secret" not in plain.get_content()
+
+
+def test_scheduled_delivery_runs_only_when_background_tasks_execute():
+    from fastapi import BackgroundTasks
+
+    delivered = []
+    tasks = BackgroundTasks()
+    email_delivery.schedule_email_delivery(tasks, delivered.append, "message")
+
+    assert delivered == []
+    asyncio.run(tasks())
+    assert delivered == ["message"]
 
 
 @pytest.mark.parametrize(

@@ -4,9 +4,12 @@ import logging
 import re
 import smtplib
 import ssl
+from collections.abc import Callable
 from email.message import EmailMessage
 from time import monotonic
+from typing import Any
 
+from fastapi import BackgroundTasks
 from pydantic import ValidationError
 
 from backend.app.config import get_settings
@@ -27,6 +30,29 @@ class EmailDeliveryError(RuntimeError):
         super().__init__(f"Email delivery failed during {stage} ({failure_kind}).")
         self.stage = stage
         self.failure_kind = failure_kind
+
+
+def schedule_email_delivery(
+    background_tasks: BackgroundTasks,
+    delivery: Callable[..., None],
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Run a synchronous delivery function after the HTTP response is sent."""
+    background_tasks.add_task(_run_email_delivery, delivery, *args, **kwargs)
+
+
+def _run_email_delivery(delivery: Callable[..., None], *args: Any, **kwargs: Any) -> None:
+    try:
+        delivery(*args, **kwargs)
+    except EmailDeliveryError:
+        # send_email already logged a sanitized delivery failure with SMTP stage details.
+        return
+    except Exception as exc:
+        logger.warning(
+            "email_background_delivery_failed",
+            extra={"failure_kind": type(exc).__name__},
+        )
 
 
 def send_participant_magic_link(email: str, link: str, *, locale: str = "en") -> None:

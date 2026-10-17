@@ -186,7 +186,9 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
     assert client.get(f"/api/v1/public/entries/{entry_id}").status_code == 404
 
 
-def test_valid_cabrillo_email_is_verified_and_grants_only_its_entry(log_database, monkeypatch):
+def test_valid_cabrillo_email_is_queued_for_verification_and_grants_only_its_entry(
+    log_database, monkeypatch
+):
     delivered: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "backend.app.logs.api.send_guest_entry_verification",
@@ -195,7 +197,8 @@ def test_valid_cabrillo_email_is_verified_and_grants_only_its_entry(log_database
     with TestClient(app) as client:
         uploaded = submit(client, headers={"Accept-Language": "de"}).json()
         assert uploaded["guest_email_prompt_required"] is False
-        assert uploaded["guest_email_verification_sent"] is True
+        assert uploaded["guest_email_verification_sent"] is None
+        assert uploaded["guest_email_verification_queued"] is True
         assert delivered[0][0] == "operator@example.test"
         token = delivered[0][1].split("token=", 1)[1]
         with log_database() as session:
@@ -377,13 +380,15 @@ def test_failed_guest_verification_delivery_keeps_upload_and_allows_resend(
         uploaded_response = submit(client)
         assert uploaded_response.status_code == 201
         uploaded = uploaded_response.json()
-        assert uploaded["guest_email_verification_sent"] is False
+        assert uploaded["guest_email_verification_sent"] is None
+        assert uploaded["guest_email_verification_queued"] is True
         retried = client.post(
             f"/api/v1/public/entries/{uploaded['entry_id']}/guest-email/resend",
             headers={"X-Entry-Receipt": uploaded["receipt_token"]},
         )
         assert retried.status_code == 200
-        assert retried.json()["verification_email_sent"] is True
+        assert retried.json()["verification_email_sent"] is None
+        assert retried.json()["verification_email_queued"] is True
         assert send_attempts == 2
 
 

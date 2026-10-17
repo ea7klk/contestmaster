@@ -242,7 +242,8 @@ describe('LogSubmissionView', () => {
           JSON.stringify({
             status: 'verification_required',
             verified: false,
-            verification_email_sent: true,
+            verification_email_sent: null,
+            verification_email_queued: true,
           }),
           { status: 200 },
         )
@@ -270,6 +271,7 @@ describe('LogSubmissionView', () => {
         ...responseBody,
         guest_email_prompt_required: true,
         guest_email_verification_sent: null,
+        guest_email_verification_queued: null,
       })
       onload: (() => void) | null = null
       onerror: (() => void) | null = null
@@ -306,7 +308,7 @@ describe('LogSubmissionView', () => {
     expect(saveEmailChoices).toBeDefined()
     await saveEmailChoices?.trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('A verification link was sent.')
+    expect(wrapper.text()).toContain('Your verification email has been queued.')
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/public/entries/8/guest-email',
       expect.objectContaining({ method: 'POST' }),

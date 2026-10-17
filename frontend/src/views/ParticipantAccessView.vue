@@ -51,7 +51,7 @@ async function requestLink() {
   try {
     await requestParticipantMagicLink(email.value)
     message.value =
-      'If this address can be used, a one-time sign-in link has been sent. Check your email.'
+      'If this address can be used, a sign-in email will arrive shortly. Check your inbox.'
   } catch (cause) {
     error.value =
       cause instanceof ApiError
@@ -74,8 +74,7 @@ async function submitIdentity() {
         password: password.value,
         display_name: displayName.value || undefined,
       })
-      message.value =
-        'Check your email for a verification link to activate the account.'
+      message.value = 'A verification email will arrive shortly to activate your account.'
     } else if (mode.value === 'login') {
       await loginParticipant(email.value, password.value)
       await router.replace('/participant/entries')
@@ -89,7 +88,7 @@ async function submitIdentity() {
     } else {
       await requestParticipantPasswordReset(email.value)
       message.value =
-        'If the account is eligible, a password reset link was sent.'
+        'If the account is eligible, a password reset email will arrive shortly.'
     }
   } catch (cause) {
     error.value =
@@ -164,7 +163,7 @@ async function changeEmail() {
   error.value = ''
   try {
     await requestParticipantEmailChange(newEmail.value)
-    message.value = 'Confirmation links have been sent to both email addresses.'
+    message.value = 'Confirmation emails will be sent shortly to both addresses.'
     newEmail.value = ''
   } catch (cause) {
     error.value =

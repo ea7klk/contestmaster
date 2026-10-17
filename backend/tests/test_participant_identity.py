@@ -187,7 +187,7 @@ def test_magic_link_verifies_email_and_scopes_session_to_participant_entries(
     assert client.get("/api/v1/participants/auth/me").status_code == 401
 
 
-def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
+def test_expired_magic_link_is_rejected_and_delivery_failure_does_not_block_request(
     participant_database, monkeypatch
 ):
     delivered: list[tuple[str, str]] = []
@@ -221,13 +221,13 @@ def test_expired_magic_link_is_rejected_and_delivery_failure_rolls_back(
     failed = client.post(
         "/api/v1/participants/auth/request-link", json={"email": "rollback@example.test"}
     )
-    assert failed.status_code == 503
+    assert failed.status_code == 202
     with participant_database() as session:
         assert (
             session.query(ParticipantEmail)
             .filter_by(email_normalized="rollback@example.test")
             .count()
-            == 0
+            == 1
         )
 
 
