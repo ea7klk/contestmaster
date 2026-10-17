@@ -68,6 +68,45 @@ describe('PublicContestView', () => {
     await expectAccessible(wrapper.element)
   })
 
+  it('shows format-specific required fields and the contest name required by Cabrillo', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...details,
+              ruleset: {
+                ...details.ruleset,
+                rules: [
+                  ...details.ruleset.rules,
+                  {
+                    id: 'format',
+                    rule: { kind: 'format_mapping', format: 'cabrillo' },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Required Cabrillo fields')
+    expect(wrapper.text()).toContain(
+      'CONTEST must match “Autumn Test” or “autumn-test”',
+    )
+    expect(wrapper.text()).toContain('Allowed band values: 20m and 40m')
+    expect(wrapper.text()).toContain('Allowed mode values: CW')
+  })
+
   it('renders manager Markdown above the generated summary and strips unsafe HTML', async () => {
     vi.stubGlobal(
       'fetch',

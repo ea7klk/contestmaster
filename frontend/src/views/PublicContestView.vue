@@ -12,7 +12,12 @@ const contest = ref<PublicContestDetails | null>(null)
 const loading = ref(true)
 const error = ref('')
 const rulesetSummary = computed(() =>
-  describeContestRuleset(contest.value?.ruleset ?? null),
+  describeContestRuleset(
+    contest.value?.ruleset ?? null,
+    contest.value
+      ? { name: contest.value.name, slug: contest.value.slug }
+      : undefined,
+  ),
 )
 const contestDescriptionHtml = computed(() =>
   renderContestMarkdown(contest.value?.description ?? null),

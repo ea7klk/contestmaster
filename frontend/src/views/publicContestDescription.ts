@@ -25,6 +25,147 @@ function names(values: string[], fallback: string): string {
   return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`
 }
 
+function formatValueConstraints(field: JsonRecord): string {
+  const constraints: string[] = []
+  const choices = stringList(field.choices)
+  if (choices.length) constraints.push(`allowed values: ${names(choices, '')}`)
+  if (typeof field.pattern === 'string' && field.pattern.trim()) {
+    constraints.push(`must match ${field.pattern}`)
+  }
+  if (
+    typeof field.min_integer === 'number' ||
+    typeof field.max_integer === 'number'
+  ) {
+    const lower =
+      typeof field.min_integer === 'number' ? field.min_integer : 'no minimum'
+    const upper =
+      typeof field.max_integer === 'number' ? field.max_integer : 'no maximum'
+    constraints.push(`integer from ${lower} to ${upper}`)
+  } else if (field.value_type === 'integer' || field.value_type === 'serial') {
+    constraints.push(
+      field.value_type === 'serial'
+        ? 'positive integer serial number'
+        : 'integer',
+    )
+  } else if (typeof field.value_type === 'string') {
+    const types: Record<string, string> = {
+      callsign: 'callsign',
+      grid: 'grid locator',
+      zone: 'zone identifier',
+      text: 'text',
+      enum: 'one of the listed values',
+    }
+    if (!choices.length && types[field.value_type])
+      constraints.push(types[field.value_type] as string)
+  }
+  if (typeof field.max_length === 'number') {
+    constraints.push(`up to ${field.max_length} characters`)
+  }
+  return constraints.length ? ` (${constraints.join('; ')})` : ''
+}
+
+const adifExchangeTags: Record<string, { sent: string; received: string }> = {
+  serial: { sent: 'STX or STX_STRING', received: 'SRX or SRX_STRING' },
+  grid: { sent: 'MY_GRIDSQUARE', received: 'GRIDSQUARE' },
+  report: { sent: 'RST_SENT', received: 'RST_RCVD' },
+  state: { sent: 'MY_STATE', received: 'STATE' },
+  cq_zone: { sent: 'MY_CQ_ZONE', received: 'CQZ' },
+  itu_zone: { sent: 'MY_ITU_ZONE', received: 'ITUZ' },
+}
+
+function describeRequiredExchangeFields(
+  rule: JsonRecord | undefined,
+  format: string,
+  condition?: string,
+): string {
+  if (!rule || !Array.isArray(rule.fields)) return ''
+  const requiredFields = rule.fields.filter(
+    (field): field is JsonRecord => isRecord(field) && field.required !== false,
+  )
+  if (!requiredFields.length) return ''
+  const entries = requiredFields.map((field) => {
+    const label = stringValue(
+      field.label,
+      stringValue(field.key, 'exchange value'),
+    )
+    const direction = stringValue(field.direction, 'both')
+    const directionText =
+      {
+        sent: 'sent',
+        received: 'received',
+        both: 'sent and received',
+        entry: 'declared for the entry',
+      }[direction] ?? direction
+    const tags = adifExchangeTags[stringValue(field.key)]
+    const tagText =
+      format === 'adif' && tags && direction !== 'entry'
+        ? ` [ADIF: ${direction === 'sent' ? tags.sent : direction === 'received' ? tags.received : `${tags.sent} / ${tags.received}`}]`
+        : ''
+    return `${label} (${directionText})${tagText}${formatValueConstraints(field)}`
+  })
+  return ` Required contest exchange fields and constraints${condition ? ` when ${condition}` : ''}: ${entries.join('; ')}.`
+}
+
+function describeLogSubmissionRequirements(
+  ruleset: RulesetDraft,
+  contest?: { name: string; slug: string },
+): string[] {
+  const configuredRules = ruleset.rules.filter((configured) =>
+    isRecord(configured.rule),
+  )
+  const rules = configuredRules.map((configured) => configured.rule)
+  const formats = rules.filter((rule) => rule.kind === 'format_mapping')
+  if (!formats.length) return []
+
+  const eligibilityConfig = configuredRules.find(
+    (configured) => configured.rule.kind === 'eligibility',
+  )
+  const eligibility = eligibilityConfig?.rule
+  const eligibilityCondition = isRecord(eligibilityConfig?.when)
+    ? ` when ${describeCondition(eligibilityConfig.when)}`
+    : ''
+  const allowedBands = eligibility ? stringList(eligibility.allowed_bands) : []
+  const allowedModes = eligibility ? stringList(eligibility.allowed_modes) : []
+  const bandConstraint = (format: string) =>
+    allowedBands.length
+      ? `Allowed band values${eligibilityCondition}: ${names(allowedBands, '')}; frequency values must fall within these bands.`
+      : `No band restriction is configured; provide ${format === 'cabrillo' ? 'a Cabrillo frequency or band token' : 'an ADIF BAND or supported FREQ'} accepted by the importer.`
+  const modeConstraint = (format: string) =>
+    allowedModes.length
+      ? `Allowed mode values${eligibilityCondition}: ${names(allowedModes, '')}.`
+      : format === 'cabrillo'
+        ? 'No contest mode restriction is configured; standard Cabrillo mode tokens include CW, PH, FM, RY, and DG.'
+        : 'No contest mode restriction is configured; use the ADIF MODE or SUBMODE required by the sponsor.'
+  const exchangeConfig = configuredRules.find(
+    (configured) => configured.rule.kind === 'exchange',
+  )
+  const exchange = exchangeConfig?.rule
+  const exchangeCondition = isRecord(exchangeConfig?.when)
+    ? describeCondition(exchangeConfig.when)
+    : undefined
+
+  return [
+    ...new Set(
+      formats.map((format) => stringValue(format.format).toLowerCase()),
+    ),
+  ]
+    .filter((format) => format === 'cabrillo' || format === 'adif')
+    .map((format) => {
+      const exchangeDetails = describeRequiredExchangeFields(
+        exchange,
+        format,
+        exchangeCondition,
+      )
+      if (format === 'cabrillo') {
+        const contestHeader = contest
+          ? `CONTEST must match “${contest.name}” or “${contest.slug}”`
+          : 'CONTEST must match the selected contest'
+        return `Required Cabrillo fields: START-OF-LOG: 2.0 or 3.0 and END-OF-LOG: records (the importer also accepts legacy unversioned markers); non-empty CALLSIGN and CONTEST headers (${contestHeader}); and, for every QSO, frequency or band, mode, date (UTC YYYY-MM-DD), time (UTC HHMM; the importer also accepts HHMMSS), sent callsign, sent RST, sent exchange, received callsign, received RST, and received exchange. Callsigns use A-Z, 0-9, or /; reports and exchange tokens must be non-empty. ${bandConstraint(format)} ${modeConstraint(format)}${exchangeDetails}`
+      }
+      return `Required ADIF fields: identify the station with STATION_CALLSIGN or OPERATOR in the header or a QSO record; every QSO record must end with <EOR> and include QSO_DATE (valid UTC date as YYYYMMDD), TIME_ON (HHMM or HHMMSS UTC), CALL (callsign), MODE or SUBMODE, BAND or FREQ in MHz, and sent and received exchange data. ${bandConstraint(format)} ${modeConstraint(format)}${exchangeDetails}`
+    })
+}
+
 const categoryMeanings: Record<string, string> = {
   operator:
     'classifies the operator arrangement; the contest rules define operator eligibility, operating-time, and transmitter limits',
@@ -404,7 +545,7 @@ function summarizeRule(rule: JsonRecord): string {
         : 'Operating and station limits follow the contest configuration.'
     }
     case 'format_mapping':
-      return `Log submissions use ${stringValue(rule.format, 'the configured')} format.${
+      return `${stringValue(rule.format, 'The configured')} log format is accepted.${
         rule.preserve_unknown_fields === true
           ? ' Unrecognized fields are retained for review.'
           : ''
@@ -423,9 +564,12 @@ function summarizeRule(rule: JsonRecord): string {
   }
 }
 
-export function describeContestRuleset(ruleset: RulesetDraft | null): string[] {
+export function describeContestRuleset(
+  ruleset: RulesetDraft | null,
+  contest?: { name: string; slug: string },
+): string[] {
   if (!ruleset || !Array.isArray(ruleset.rules)) return []
-  return ruleset.rules.flatMap((configured) => {
+  const descriptions = ruleset.rules.flatMap((configured) => {
     if (!isRecord(configured) || !isRecord(configured.rule)) return []
     const summary = summarizeRule(configured.rule)
     return [
@@ -434,4 +578,8 @@ export function describeContestRuleset(ruleset: RulesetDraft | null): string[] {
         : `Only when ${describeCondition(configured.when)}: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`,
     ]
   })
+  return [
+    ...descriptions,
+    ...describeLogSubmissionRequirements(ruleset, contest),
+  ]
 }
