@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { describeContestRuleset } from './publicContestDescription'
+import {
+  describeContestRuleset,
+  type ContestSummaryItem,
+} from './publicContestDescription'
+
+function summaryText(item: ContestSummaryItem): string {
+  return typeof item === 'string'
+    ? item
+    : [item.introduction, ...item.bullets, ...(item.notes ?? [])].join(' ')
+}
+
+function summaryIntroduction(item: ContestSummaryItem): string {
+  return typeof item === 'string' ? item : item.introduction
+}
 
 describe('describeContestRuleset', () => {
   it('turns common scoring and exchange rules into plain-language descriptions', () => {
@@ -57,9 +70,11 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions[0]).toContain('operator arrangement')
-    expect(descriptions[0]).toContain('Single operator and Multi operator')
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain('operator arrangement')
+    expect(summaryText(descriptions[0]!)).toContain(
+      'Single operator and Multi operator',
+    )
+    expect(summaryText(descriptions[0]!)).toContain(
       'official published rules are authoritative',
     )
     expect(descriptions[1]).toBe(
@@ -110,16 +125,22 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions[0]).toContain('operator arrangement')
-    expect(descriptions[0]).toContain('Single operator and Multi operator')
-    expect(descriptions[0]).toContain('not universal wattage limits')
-    expect(descriptions[0]).toContain(
-      'Low-power class; the exact maximum output',
+    expect(summaryText(descriptions[0]!)).toContain('operator arrangement')
+    expect(summaryText(descriptions[0]!)).toContain(
+      'Single operator and Multi operator',
     )
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain('QRP is up to 5 W')
+    expect(summaryText(descriptions[0]!)).toContain('Low Power is up to 100 W')
+    expect(summaryText(descriptions[0]!)).toContain(
+      'High Power is up to the legal limit',
+    )
+    expect(summaryText(descriptions[0]!)).toContain(
+      'Maximum transmit output is 100 W',
+    )
+    expect(summaryText(descriptions[0]!)).toContain(
       'Multi operator in Operator class as requiring a declaration',
     )
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain(
       'These dimensions cannot be combined: Operator class and Power class.',
     )
   })
@@ -154,13 +175,13 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain(
       'Measured at the antenna connector after the amplifier.',
     )
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain(
       'Low power: Maximum 100 W PEP at the antenna connector.',
     )
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain(
       'official published rules are authoritative',
     )
   })
@@ -187,7 +208,7 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions[0]).toContain(
+    expect(summaryText(descriptions[0]!)).toContain(
       'This is a sponsor-defined classification; check the official rules for its exact definition and limits.',
     )
   })
@@ -243,25 +264,34 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    const requirements = descriptions.at(-1) ?? ''
-    expect(requirements).toContain(
-      'Required Cabrillo fields: START-OF-LOG: 2.0 or 3.0 and END-OF-LOG:',
+    const requirements = descriptions.at(-1)
+    expect(typeof requirements).not.toBe('string')
+    if (!requirements || typeof requirements === 'string')
+      throw new Error('Expected Cabrillo list')
+    expect(requirements.introduction).toBe('Required Cabrillo fields:')
+    expect(requirements.bullets).toContain(
+      'START-OF-LOG: 2.0 or 3.0. The importer also accepts legacy unversioned markers.',
     )
-    expect(requirements).toContain('CALLSIGN and CONTEST headers')
-    expect(requirements).toContain(
-      'date (UTC YYYY-MM-DD), time (UTC HHMM; the importer also accepts HHMMSS)',
+    expect(requirements.bullets).toContain(
+      'END-OF-LOG: terminates the log records.',
     )
-    expect(requirements).toContain(
+    expect(requirements.bullets).toContain(
+      'CALLSIGN: non-empty header value. CONTEST: non-empty header value; CONTEST must match the selected contest.',
+    )
+    expect(requirements.bullets).toContain(
+      'Each QSO must include date in UTC as YYYY-MM-DD.',
+    )
+    expect(requirements.bullets).toContain(
       'Allowed band values: 20m and 40m; frequency values must fall within these bands.',
     )
-    expect(requirements).toContain('Allowed mode values: CW.')
-    expect(requirements).toContain(
-      'Serial number (sent and received) (positive integer serial number; up to 6 characters)',
+    expect(requirements.bullets).toContain('Allowed mode values: CW.')
+    expect(requirements.bullets).toContain(
+      'Required exchange: Serial number (sent and received) (positive integer serial number; up to 6 characters).',
     )
-    expect(requirements).toContain(
-      'Section (received) (allowed values: A and B)',
+    expect(requirements.bullets).toContain(
+      'Required exchange: Section (received) (allowed values: A and B).',
     )
-    expect(requirements).not.toContain('Optional note')
+    expect(requirements.bullets.join(' ')).not.toContain('Optional note')
   })
 
   it('lists required ADIF tags, format alternatives, and only enabled formats', () => {
@@ -333,16 +363,18 @@ describe('describeContestRuleset', () => {
     })
 
     expect(
-      descriptions.filter((description) => description.startsWith('Required ')),
+      descriptions.filter((description) =>
+        summaryIntroduction(description).startsWith('Required '),
+      ),
     ).toHaveLength(2)
     expect(
       descriptions.some((description) =>
-        description.startsWith('Required Cabrillo'),
+        summaryIntroduction(description).startsWith('Required Cabrillo'),
       ),
     ).toBe(true)
     expect(
       descriptions.some((description) =>
-        description.startsWith('Required ADIF'),
+        summaryIntroduction(description).startsWith('Required ADIF'),
       ),
     ).toBe(true)
   })

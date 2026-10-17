@@ -81,6 +81,23 @@ describe('PublicContestView', () => {
                 rules: [
                   ...details.ruleset.rules,
                   {
+                    id: 'categories',
+                    rule: {
+                      kind: 'categories',
+                      dimensions: [
+                        {
+                          key: 'power',
+                          label: 'Power class',
+                          choices: [
+                            { key: 'qrp', label: 'QRP' },
+                            { key: 'low', label: 'Low Power' },
+                            { key: 'high', label: 'High Power' },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                  {
                     id: 'format',
                     rule: { kind: 'format_mapping', format: 'cabrillo' },
                   },
@@ -105,6 +122,15 @@ describe('PublicContestView', () => {
     )
     expect(wrapper.text()).toContain('Allowed band values: 20m and 40m')
     expect(wrapper.text()).toContain('Allowed mode values: CW')
+    expect(wrapper.text()).toContain('QRP is up to 5 W')
+    expect(wrapper.text()).toContain('Low Power is up to 100 W')
+    expect(wrapper.text()).toContain('High Power is up to the legal limit')
+    const detailLists = wrapper.findAll(
+      '.ruleset-overview ul.summary-detail-list',
+    )
+    expect(detailLists).toHaveLength(2)
+    expect(detailLists[0]?.findAll('li')).toHaveLength(1)
+    expect(detailLists[1]?.findAll('li').length).toBeGreaterThan(8)
   })
 
   it('renders manager Markdown above the generated summary and strips unsafe HTML', async () => {

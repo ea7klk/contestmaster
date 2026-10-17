@@ -2,6 +2,14 @@ import type { RulesetDraft } from '../api/rulesets'
 
 type JsonRecord = Record<string, unknown>
 
+export interface SummaryWithBullets {
+  introduction: string
+  bullets: string[]
+  notes?: string[]
+}
+
+export type ContestSummaryItem = string | SummaryWithBullets
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -73,17 +81,15 @@ const adifExchangeTags: Record<string, { sent: string; received: string }> = {
   itu_zone: { sent: 'MY_ITU_ZONE', received: 'ITUZ' },
 }
 
-function describeRequiredExchangeFields(
+function requiredExchangeEntries(
   rule: JsonRecord | undefined,
   format: string,
-  condition?: string,
-): string {
-  if (!rule || !Array.isArray(rule.fields)) return ''
+): string[] {
+  if (!rule || !Array.isArray(rule.fields)) return []
   const requiredFields = rule.fields.filter(
     (field): field is JsonRecord => isRecord(field) && field.required !== false,
   )
-  if (!requiredFields.length) return ''
-  const entries = requiredFields.map((field) => {
+  return requiredFields.map((field) => {
     const label = stringValue(
       field.label,
       stringValue(field.key, 'exchange value'),
@@ -103,13 +109,22 @@ function describeRequiredExchangeFields(
         : ''
     return `${label} (${directionText})${tagText}${formatValueConstraints(field)}`
   })
+}
+
+function describeRequiredExchangeFields(
+  rule: JsonRecord | undefined,
+  format: string,
+  condition?: string,
+): string {
+  const entries = requiredExchangeEntries(rule, format)
+  if (!entries.length) return ''
   return ` Required contest exchange fields and constraints${condition ? ` when ${condition}` : ''}: ${entries.join('; ')}.`
 }
 
 function describeLogSubmissionRequirements(
   ruleset: RulesetDraft,
   contest?: { name: string; slug: string },
-): string[] {
+): ContestSummaryItem[] {
   const configuredRules = ruleset.rules.filter((configured) =>
     isRecord(configured.rule),
   )
@@ -160,7 +175,27 @@ function describeLogSubmissionRequirements(
         const contestHeader = contest
           ? `CONTEST must match “${contest.name}” or “${contest.slug}”`
           : 'CONTEST must match the selected contest'
-        return `Required Cabrillo fields: START-OF-LOG: 2.0 or 3.0 and END-OF-LOG: records (the importer also accepts legacy unversioned markers); non-empty CALLSIGN and CONTEST headers (${contestHeader}); and, for every QSO, frequency or band, mode, date (UTC YYYY-MM-DD), time (UTC HHMM; the importer also accepts HHMMSS), sent callsign, sent RST, sent exchange, received callsign, received RST, and received exchange. Callsigns use A-Z, 0-9, or /; reports and exchange tokens must be non-empty. ${bandConstraint(format)} ${modeConstraint(format)}${exchangeDetails}`
+        return {
+          introduction: 'Required Cabrillo fields:',
+          bullets: [
+            'START-OF-LOG: 2.0 or 3.0. The importer also accepts legacy unversioned markers.',
+            'END-OF-LOG: terminates the log records.',
+            `CALLSIGN: non-empty header value. CONTEST: non-empty header value; ${contestHeader}.`,
+            'Each QSO must include frequency or band.',
+            'Each QSO must include mode.',
+            'Each QSO must include date in UTC as YYYY-MM-DD.',
+            'Each QSO must include time in UTC as HHMM (HHMMSS is also accepted).',
+            'Each QSO must include sent callsign, sent RST, and sent exchange.',
+            'Each QSO must include received callsign, received RST, and received exchange.',
+            'Callsigns may contain A–Z, 0–9, and /. RST reports and exchange tokens must be non-empty.',
+            bandConstraint(format),
+            modeConstraint(format),
+            ...requiredExchangeEntries(exchange, format).map(
+              (entry) =>
+                `Required exchange: ${entry}${exchangeCondition ? ` when ${exchangeCondition}` : ''}.`,
+            ),
+          ],
+        }
       }
       return `Required ADIF fields: identify the station with STATION_CALLSIGN or OPERATOR in the header or a QSO record; every QSO record must end with <EOR> and include QSO_DATE (valid UTC date as YYYYMMDD), TIME_ON (HHMM or HHMMSS UTC), CALL (callsign), MODE or SUBMODE, BAND or FREQ in MHz, and sent and received exchange data. ${bandConstraint(format)} ${modeConstraint(format)}${exchangeDetails}`
     })
@@ -170,9 +205,8 @@ const categoryMeanings: Record<string, string> = {
   operator:
     'classifies the operator arrangement; the contest rules define operator eligibility, operating-time, and transmitter limits',
   power:
-    'classifies station transmit power. QRP, Low Power, and High Power are labels, not universal wattage limits; the contest rules define exact output thresholds and where power is measured',
-  band:
-    'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
+    'classifies station transmit output power. By default, QRP is up to 5 W, Low Power is up to 100 W, and High Power is up to the legal limit. Contest-specific published rules take precedence and define the measurement point',
+  band: 'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
   mode: 'classifies operating modes; the contest rules define included modes and mixed-mode requirements',
   assisted:
     'indicates whether operating assistance is used; the contest rules define which tools count as assistance',
@@ -188,9 +222,9 @@ const categoryMeanings: Record<string, string> = {
 }
 
 const powerChoiceMeanings: Record<string, string> = {
-  qrp: 'Very-low-power class; the exact maximum output and measurement point vary by contest.',
-  low: 'Low-power class; the exact maximum output and measurement point vary by contest.',
-  high: 'High-power class; exact thresholds or ranges and the measurement point vary by contest.',
+  qrp: 'Maximum transmit output is 5 W unless the contest rules specify otherwise.',
+  low: 'Maximum transmit output is 100 W unless the contest rules specify otherwise.',
+  high: 'Transmit output may be up to the applicable legal limit unless the contest rules specify otherwise.',
 }
 
 function categoryDimensionKind(key: string, label: string): string {
@@ -212,11 +246,14 @@ function categoryDimensionKind(key: string, label: string): string {
   return key
 }
 
-function categoryChoiceMeaning(dimensionKey: string, choice: JsonRecord): string {
+function categoryChoiceMeaning(
+  dimensionKey: string,
+  choice: JsonRecord,
+): string {
   const customDescription = stringValue(choice.description)
   if (customDescription) return customDescription
   return dimensionKey === 'power'
-    ? powerChoiceMeanings[stringValue(choice.key)] ?? ''
+    ? (powerChoiceMeanings[stringValue(choice.key)] ?? '')
     : ''
 }
 
@@ -261,7 +298,7 @@ function describeCondition(value: unknown): string {
   return 'the configured condition'
 }
 
-function summarizeRule(rule: JsonRecord): string {
+function summarizeRule(rule: JsonRecord): ContestSummaryItem {
   switch (rule.kind) {
     case 'submission': {
       const latePolicy = {
@@ -281,8 +318,7 @@ function summarizeRule(rule: JsonRecord): string {
         : []
       const dimensions = dimensionRows.map((dimension) => {
         const choiceRows = Array.isArray(dimension.choices)
-          ? dimension.choices
-              .filter(isRecord)
+          ? dimension.choices.filter(isRecord)
           : []
         const choices = choiceRows.map((choice) =>
           stringValue(choice.label, stringValue(choice.key)),
@@ -307,9 +343,7 @@ function summarizeRule(rule: JsonRecord): string {
               : ''
           })
           .filter(Boolean)
-        const values = choices.length
-          ? `: ${names(choices, '')}`
-          : ''
+        const values = choices.length ? `: ${names(choices, '')}` : ''
         const choiceText = choiceDefinitions.length
           ? ` Choice details: ${choiceDefinitions.join('; ')}.`
           : ''
@@ -333,7 +367,7 @@ function summarizeRule(rule: JsonRecord): string {
       if (dimensions.length === 0) {
         return 'Entry categories are configured for this contest.'
       }
-      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank. The dimension meanings and choices are: ${dimensions.join(' ')} Exact qualifications and limits are contest-specific; the official published rules are authoritative.`
+      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank.`
       const declarationChoices = dimensionRows.flatMap((dimension) => {
         const dimensionLabel = stringValue(
           dimension.label,
@@ -349,15 +383,22 @@ function summarizeRule(rule: JsonRecord): string {
               )
           : []
       })
-      const declarationText = declarationChoices.length
-        ? ` The ruleset marks ${names(declarationChoices, 'the marked choices')} as requiring a declaration.`
-        : ''
-      const exclusionText = exclusions.length
-        ? ` These dimensions cannot be combined: ${exclusions
-            .map((group) => names(group, 'configured dimensions'))
-            .join('; ')}.`
-        : ''
-      return `${summary}${declarationText}${exclusionText}`
+      const notes = [
+        'Exact qualifications and limits are contest-specific; the official published rules are authoritative.',
+        ...(declarationChoices.length
+          ? [
+              `The ruleset marks ${names(declarationChoices, 'the marked choices')} as requiring a declaration.`,
+            ]
+          : []),
+        ...(exclusions.length
+          ? [
+              `These dimensions cannot be combined: ${exclusions
+                .map((group) => names(group, 'configured dimensions'))
+                .join('; ')}.`,
+            ]
+          : []),
+      ]
+      return { introduction: summary, bullets: dimensions, notes }
     }
     case 'exchange': {
       const fields = Array.isArray(rule.fields)
@@ -567,15 +608,24 @@ function summarizeRule(rule: JsonRecord): string {
 export function describeContestRuleset(
   ruleset: RulesetDraft | null,
   contest?: { name: string; slug: string },
-): string[] {
+): ContestSummaryItem[] {
   if (!ruleset || !Array.isArray(ruleset.rules)) return []
   const descriptions = ruleset.rules.flatMap((configured) => {
     if (!isRecord(configured) || !isRecord(configured.rule)) return []
     const summary = summarizeRule(configured.rule)
+    if (configured.when === undefined || configured.when === null)
+      return [summary]
+    const conditionPrefix = `Only when ${describeCondition(configured.when)}: `
+    if (typeof summary === 'string') {
+      return [
+        `${conditionPrefix}${summary.charAt(0).toLowerCase()}${summary.slice(1)}`,
+      ]
+    }
     return [
-      configured.when === undefined || configured.when === null
-        ? summary
-        : `Only when ${describeCondition(configured.when)}: ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`,
+      {
+        ...summary,
+        introduction: `${conditionPrefix}${summary.introduction.charAt(0).toLowerCase()}${summary.introduction.slice(1)}`,
+      },
     ]
   })
   return [

@@ -5,7 +5,11 @@ import { ApiError } from '../api/client'
 import { getPublicContest, type PublicContestDetails } from '../api/results'
 import { formatUtcDateTime } from '../i18n'
 import { renderContestMarkdown } from './contestMarkdown'
-import { describeContestRuleset } from './publicContestDescription'
+import {
+  describeContestRuleset,
+  type ContestSummaryItem,
+  type SummaryWithBullets,
+} from './publicContestDescription'
 
 const props = defineProps<{ slug: string }>()
 const contest = ref<PublicContestDetails | null>(null)
@@ -19,6 +23,9 @@ const rulesetSummary = computed(() =>
       : undefined,
   ),
 )
+function hasBullets(item: ContestSummaryItem): item is SummaryWithBullets {
+  return typeof item !== 'string'
+}
 const contestDescriptionHtml = computed(() =>
   renderContestMarkdown(contest.value?.description ?? null),
 )
@@ -82,7 +89,21 @@ onMounted(async () => {
         </p>
         <ul v-if="rulesetSummary.length">
           <li v-for="(item, index) in rulesetSummary" :key="index">
-            {{ item }}
+            <template v-if="hasBullets(item)">
+              {{ item.introduction }}
+              <ul class="summary-detail-list">
+                <li
+                  v-for="(bullet, bulletIndex) in item.bullets"
+                  :key="bulletIndex"
+                >
+                  {{ bullet }}
+                </li>
+              </ul>
+              <p v-for="(note, noteIndex) in item.notes" :key="noteIndex">
+                {{ note }}
+              </p>
+            </template>
+            <template v-else>{{ item }}</template>
           </li>
         </ul>
         <p v-else>{{ $tr('Detailed contest rules are not available yet.') }}</p>
@@ -161,6 +182,13 @@ onMounted(async () => {
 .ruleset-overview ul {
   margin-bottom: 0;
   padding-left: 1.25rem;
+}
+.ruleset-overview ul.summary-detail-list {
+  margin-top: 0.45rem;
+  padding-left: 1.5rem;
+}
+.ruleset-overview li > p {
+  margin: 0.45rem 0 0;
 }
 .ruleset-overview li + li {
   margin-top: 0.45rem;
