@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.app.config import Settings
+from backend.app.config import PROJECT_ENV_FILE, Settings
 
 
 def valid_staging_settings(**overrides):
@@ -56,3 +56,23 @@ def test_enabled_metrics_require_a_long_bearer_secret():
         )
     )
     assert settings.metrics_bearer_token.get_secret_value() == "T" * 48
+
+
+def test_smtp_username_and_password_must_be_configured_together():
+    with pytest.raises(ValidationError, match="email_smtp_username and email_smtp_password"):
+        Settings(**valid_staging_settings(email_smtp_username="contestmaster@example.test"))
+    with pytest.raises(ValidationError, match="email_smtp_username and email_smtp_password"):
+        Settings(
+            **valid_staging_settings(email_smtp_password="a mailbox password")
+        )
+
+
+def test_project_env_file_location_is_absolute_and_independent_of_current_directory(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    configured_env_file = Settings.model_config["env_file"]
+    assert configured_env_file == PROJECT_ENV_FILE
+    assert configured_env_file.is_absolute()
+    assert configured_env_file.name == ".env"

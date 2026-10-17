@@ -18,6 +18,7 @@ dependencies = [
 contestmaster-master-data = "backend.app.master_data.cli:main"
 contestmaster-admin = "backend.app.identity_cli:main"
 contestmaster-db = "backend.app.database_cli:main"
+contestmaster-email = "backend.app.email_cli:main"
 
 [dependency-groups]
 dev = [

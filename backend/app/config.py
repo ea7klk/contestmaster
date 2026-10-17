@@ -5,9 +5,14 @@ from urllib.parse import urlsplit
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ENV_FILE = PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
+    )
 
     app_env: str = "development"
     database_url: str = "sqlite:///./var/contestmaster.db"
@@ -19,7 +24,7 @@ class Settings(BaseSettings):
     email_smtp_host: str | None = None
     email_smtp_port: int = 587
     email_smtp_username: str | None = None
-    email_smtp_password: str | None = None
+    email_smtp_password: SecretStr | None = None
     email_from_address: str | None = None
     frontend_base_url: str = "http://localhost:5173"
     entry_receipt_secret: str = "development-only-change-before-deploy"
@@ -62,6 +67,17 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "metrics_bearer_token must contain at least 32 bytes when metrics are enabled"
+            )
+
+        smtp_username = (self.email_smtp_username or "").strip()
+        smtp_password = (
+            self.email_smtp_password.get_secret_value().strip()
+            if self.email_smtp_password is not None
+            else ""
+        )
+        if bool(smtp_username) != bool(smtp_password):
+            raise ValueError(
+                "email_smtp_username and email_smtp_password must be configured together"
             )
 
         if self.app_env in {"staging", "production"}:
