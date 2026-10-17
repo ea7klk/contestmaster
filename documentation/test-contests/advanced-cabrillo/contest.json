@@ -78,8 +78,8 @@
               "required": true,
               "choices": [
                 {
-                  "key": "band_20m",
-                  "label": "20 metres"
+                  "key": "all_bands",
+                  "label": "All bands"
                 }
               ]
             },
@@ -150,8 +150,13 @@
               {
                 "kind": "compare",
                 "fact": "qso.band",
-                "operator": "eq",
-                "value": "20m"
+                "operator": "in",
+                "value": [
+                  "20m",
+                  "40m",
+                  "15m",
+                  "10m"
+                ]
               },
               {
                 "kind": "compare",
@@ -164,7 +169,10 @@
             ]
           },
           "allowed_bands": [
-            "20m"
+            "20m",
+            "40m",
+            "15m",
+            "10m"
           ],
           "allowed_modes": [
             "CW"
@@ -213,7 +221,10 @@
           "kind": "points",
           "fact": "band",
           "values": {
-            "20m": 4
+            "20m": 4,
+            "40m": 4,
+            "15m": 4,
+            "10m": 4
           },
           "default_points": 0
         }
@@ -311,11 +322,13 @@
         "rule": {
           "kind": "operating_constraints",
           "max_operating_minutes": 180,
-          "operating_session_gap_minutes": 240,
+          "operating_session_gap_minutes": 60,
           "minimum_off_time_minutes": 60,
           "required_off_periods": 1,
           "off_period_gap_minutes": 60,
-          "maximum_band_changes": 0,
+          "maximum_band_changes": 1,
+          "band_change_window_minutes": 60,
+          "minimum_band_dwell_minutes": 60,
           "maximum_transmitters": 2
         }
       },
@@ -389,9 +402,9 @@
               }
             },
             {
-              "external_value": "20M",
+              "external_value": "ALL",
               "category_values": {
-                "band_class": "band_20m"
+                "band_class": "all_bands"
               }
             },
             {

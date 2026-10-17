@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,6 +18,12 @@ from backend.app.rulesets.validation import validate_ruleset
 ROOT = Path(__file__).resolve().parent
 MIN_20M_FREQUENCY_KHZ = Decimal(14_000)
 MAX_20M_FREQUENCY_KHZ = Decimal(14_350)
+FIXTURE_BAND_RANGES_KHZ = {
+    "10m": (Decimal(28_000), Decimal(29_700)),
+    "15m": (Decimal(21_000), Decimal(21_450)),
+    "20m": (MIN_20M_FREQUENCY_KHZ, MAX_20M_FREQUENCY_KHZ),
+    "40m": (Decimal(7_000), Decimal(7_300)),
+}
 
 
 def _frequency_khz(folder: str, qso) -> Decimal:
@@ -46,9 +52,7 @@ def _score_generated_contest(folder: str) -> dict[str, object]:
         content = path.read_text(encoding="utf-8")
         if folder in {"cabrillo", "advanced-cabrillo"}:
             mapping = next(
-                rule.rule
-                for rule in definition.rules
-                if rule.rule.kind == "format_mapping"
+                rule.rule for rule in definition.rules if rule.rule.kind == "format_mapping"
             )
             parsed = parse_cabrillo(content, qso_columns=mapping.qso_columns or None)
         else:
@@ -180,7 +184,13 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             assert all(qso.callsign_sent == path.stem for qso in parsed.qsos)
             for qso in parsed.qsos:
                 frequency_khz = _frequency_khz(folder, qso)
-                assert MIN_20M_FREQUENCY_KHZ <= frequency_khz <= MAX_20M_FREQUENCY_KHZ
+                if folder == "advanced-cabrillo":
+                    band = band_from_frequency_mhz(str(frequency_khz / 1000))
+                    assert band in FIXTURE_BAND_RANGES_KHZ
+                    low_khz, high_khz = FIXTURE_BAND_RANGES_KHZ[band]
+                    assert low_khz <= frequency_khz <= high_khz
+                else:
+                    assert MIN_20M_FREQUENCY_KHZ <= frequency_khz <= MAX_20M_FREQUENCY_KHZ
                 frequencies_khz.add(frequency_khz)
             total_calls += len(parsed.qsos)
             matched_calls += sum(qso.callsign_received in participants for qso in parsed.qsos)
@@ -247,9 +257,7 @@ def _score_advanced_cabrillo() -> dict[str, object]:
         if item.rule.kind == "format_mapping"
     )
     serialized_mappings = [mapping.model_dump(mode="json") for mapping in mappings]
-    format_rule = next(
-        item.rule for item in definition.rules if item.rule.kind == "format_mapping"
-    )
+    format_rule = next(item.rule for item in definition.rules if item.rule.kind == "format_mapping")
     scores = {}
     for entry_id, path in enumerate(sorted((ROOT / folder / "logs").glob("*.log")), start=1):
         parsed = parse_cabrillo(
@@ -301,9 +309,7 @@ def test_advanced_cabrillo_fixture_scores_with_advanced_rules_without_review():
     format_rule = next(
         item.rule
         for item in RulesetDefinition.model_validate(
-            json.loads((ROOT / "advanced-cabrillo" / "contest.json").read_text())[
-                "ruleset"
-            ]
+            json.loads((ROOT / "advanced-cabrillo" / "contest.json").read_text())["ruleset"]
         ).rules
         if item.rule.kind == "format_mapping"
     )
@@ -315,10 +321,7 @@ def test_advanced_cabrillo_fixture_scores_with_advanced_rules_without_review():
         for path in paths
     }
     reciprocal_lookups = {
-        station: {
-            (qso.callsign_received, qso.occurred_at): qso
-            for qso in qsos
-        }
+        station: {(qso.callsign_received, qso.occurred_at): qso for qso in qsos}
         for station, qsos in parsed_logs.items()
     }
     for station, qsos in parsed_logs.items():
@@ -328,23 +331,62 @@ def test_advanced_cabrillo_fixture_scores_with_advanced_rules_without_review():
         for qso in qsos:
             if qso.callsign_received not in parsed_logs:
                 continue
-            reciprocal = reciprocal_lookups[qso.callsign_received].get(
-                (station, qso.occurred_at)
-            )
+            reciprocal = reciprocal_lookups[qso.callsign_received].get((station, qso.occurred_at))
             assert reciprocal is not None
             assert qso.exchange_sent == reciprocal.exchange_received
             assert qso.exchange_received == reciprocal.exchange_sent
 
     assert all(50 <= len(qsos) <= 250 for qsos in parsed_logs.values())
     assert all(
-        len({qso.fields["transmitter"] for qso in qsos}) <= 2
-        for qsos in parsed_logs.values()
+        len({qso.fields["transmitter"] for qso in qsos}) <= 2 for qsos in parsed_logs.values()
     )
     assert all(
-        MIN_20M_FREQUENCY_KHZ <= Decimal(qso.frequency) <= MAX_20M_FREQUENCY_KHZ
+        band_from_frequency_mhz(str(Decimal(qso.frequency) / 1000)) in FIXTURE_BAND_RANGES_KHZ
         for qsos in parsed_logs.values()
         for qso in qsos
     )
+    operating_rule = next(
+        item.rule
+        for item in RulesetDefinition.model_validate(
+            json.loads((ROOT / "advanced-cabrillo" / "contest.json").read_text())["ruleset"]
+        ).rules
+        if item.rule.kind == "operating_constraints"
+    )
+    assert operating_rule.minimum_band_dwell_minutes == 60
+    assert operating_rule.maximum_band_changes == 1
+    assert operating_rule.band_change_window_minutes == 60
+    for qsos in parsed_logs.values():
+        bands = [band_from_frequency_mhz(str(Decimal(qso.frequency) / 1000)) for qso in qsos]
+        assert set(bands) == set(FIXTURE_BAND_RANGES_KHZ)
+        for qso, band in zip(qsos, bands, strict=True):
+            session = next(
+                session
+                for session in generator.BAND_SESSIONS
+                if session[0] <= qso.occurred_at < session[1]
+            )
+            assert band == session[2]
+        band_changes = [
+            (left.occurred_at, right.occurred_at)
+            for left, right, left_band, right_band in zip(
+                qsos, qsos[1:], bands, bands[1:], strict=False
+            )
+            if left_band != right_band
+        ]
+        assert all(
+            (current - previous) >= timedelta(minutes=operating_rule.minimum_band_dwell_minutes)
+            for previous, current in band_changes
+        )
+        change_instants = [current for _previous, current in band_changes]
+        assert all(
+            sum(
+                instant
+                <= candidate
+                < instant + timedelta(minutes=operating_rule.band_change_window_minutes)
+                for candidate in change_instants
+            )
+            <= operating_rule.maximum_band_changes
+            for instant in change_instants
+        )
     scores = _score_advanced_cabrillo()
     ordered = sorted(scores.items(), key=lambda item: item[1].final_score, reverse=True)
     assert [name for name, _score in ordered[:3]] == ["K0AAA", "K0AAB", "K0AAC"]
