@@ -232,15 +232,33 @@ def _cross_reference_errors(
                 )
         elif rule.kind == "format_mapping":
             if check_import_mapping_consistency:
-                if rule.format == "cabrillo" and rule.qso_columns:
-                    configured_columns = tuple(rule.qso_columns)
-                    if configured_columns != DEFAULT_QSO_COLUMNS:
+                if rule.format == "cabrillo":
+                    configured_columns = rule.qso_columns
+                    configured_set = set(configured_columns)
+                    missing_columns = set(DEFAULT_QSO_COLUMNS) - configured_set
+                    unsupported_columns = (
+                        configured_set - set(DEFAULT_QSO_COLUMNS) - {"transmitter"}
+                    )
+                    invalid_column_template = (
+                        not configured_columns
+                        or missing_columns
+                        or len(configured_columns) != len(configured_set)
+                        or unsupported_columns
+                        or (
+                            "transmitter" in configured_set
+                            and configured_columns[-1] != "transmitter"
+                        )
+                    )
+                    if invalid_column_template:
                         errors.append(
                             {
                                 "path": f"rules[{index}].qso_columns",
                                 "message": (
-                                    "Cabrillo QSO fields must follow the WWROF-defined field "
-                                    "order: " + ", ".join(DEFAULT_QSO_COLUMNS) + "."
+                                    "Cabrillo QSO columns must explicitly include each required "
+                                    "WWROF field exactly once: "
+                                    + ", ".join(DEFAULT_QSO_COLUMNS)
+                                    + ". Field order may follow the contest template; the optional "
+                                    "transmitter field must be last."
                                 ),
                             }
                         )

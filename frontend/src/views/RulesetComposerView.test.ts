@@ -452,8 +452,9 @@ describe('RulesetComposerView', () => {
             message: 'Ruleset configuration is invalid.',
             details: [
               {
-                location: ['rules', 0],
-                message: 'Schedule is required.',
+                location: ['rules[7]', 'qso_columns'],
+                message:
+                  'Cabrillo QSO columns must explicitly include each required WWROF field exactly once. Field order may follow the contest template; the optional transmitter field must be last.',
                 type: 'invalid',
               },
             ],
@@ -472,9 +473,10 @@ describe('RulesetComposerView', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain(
       'configuration is invalid',
     )
-    expect(wrapper.get('.error-list').text()).toContain('Schedule is required')
+    expect(wrapper.get('.error-list').text()).toContain('WWROF field')
+    expect(wrapper.get('.error-list').text()).toContain('qso_columns')
     expect(wrapper.get('.validation-guidance').text()).toContain('contradiction')
-    expect(wrapper.get('.error-list').text()).toContain('rules › 0')
+    expect(wrapper.get('.error-list').text()).toContain('rules[7]')
     expect(wrapper.find('.validation-panel').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Save validated ruleset version')
   })

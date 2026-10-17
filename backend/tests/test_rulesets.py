@@ -10,13 +10,14 @@ from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.engine import RuleExecutionError, ScoringEntry, score_entry
 from backend.app.rulesets.operating import evaluate_operating_constraints
-from backend.app.rulesets.persistence import load_ruleset_version
+from backend.app.rulesets.persistence import load_ruleset_version, save_ruleset_version
 from backend.app.rulesets.schema import (
     BonusRule,
     CategoryRule,
     Condition,
     ExchangeRule,
     OperatingConstraintRule,
+    RulesetDefinition,
     SubmissionRule,
 )
 from backend.app.rulesets.submission import (
@@ -245,7 +246,7 @@ def test_validation_endpoint_reports_cross_rule_errors_as_field_details():
 def test_validation_endpoint_reports_import_conflicts_with_field_paths():
     payload = valid_payload()
     format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
-    format_rule["qso_columns"] = ["mode", "frequency", *format_rule["qso_columns"][2:]]
+    format_rule["qso_columns"] = ["mode", "frequency", *format_rule["qso_columns"][2:-1]]
     format_rule["category_mappings"] = []
 
     response = TestClient(app).post("/api/v1/rulesets/validate", json=payload)
@@ -298,18 +299,118 @@ def test_ruleset_can_enable_multiple_distinct_log_formats_only_once_each():
     assert any("only once" in str(issue["message"]) for issue in error.value.errors)
 
 
-def test_ruleset_validation_rejects_cabrillo_column_order_that_conflicts_with_wwrof():
+def test_ruleset_validation_accepts_wwrof_fields_in_contest_template_order():
     payload = valid_payload()
     format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
-    format_rule["qso_columns"] = ["band", *format_rule["qso_columns"]]
+    original_columns = format_rule["qso_columns"]
+    format_rule["qso_columns"] = ["mode", "frequency", *original_columns[2:]]
+
+    assert validate_ruleset(payload).ruleset_key == "sample-sprint"
+
+
+def test_ruleset_validation_rejects_cabrillo_columns_missing_required_fields():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = format_rule["qso_columns"][:-1]
 
     with pytest.raises(RulesetValidationError) as error:
         validate_ruleset(payload)
 
     assert any(
-        issue["path"].endswith("qso_columns") and "WWROF-defined field order" in issue["message"]
+        issue["path"].endswith("qso_columns") and "required WWROF field" in issue["message"]
         for issue in error.value.errors
     )
+
+
+def test_ruleset_validation_rejects_omitted_cabrillo_qso_columns():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = []
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any(
+        issue["path"].endswith("qso_columns")
+        and "explicitly include" in issue["message"]
+        and "WWROF field" in issue["message"]
+        for issue in error.value.errors
+    )
+
+
+def test_ruleset_persistence_rejects_omitted_cabrillo_qso_columns_before_saving():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = []
+    definition = RulesetDefinition.model_validate(payload)
+
+    with pytest.raises(RulesetValidationError):
+        save_ruleset_version(None, definition, created_by_user_id=None)
+
+
+def test_ruleset_validation_accepts_optional_transmitter_column_after_required_fields():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"].append("transmitter")
+
+    assert validate_ruleset(payload).ruleset_key == "sample-sprint"
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "exchange_received",
+            "transmitter",
+            "band",
+        ],
+        [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "exchange_received",
+            "transmitter",
+            "transmitter",
+        ],
+        [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "transmitter",
+            "exchange_received",
+        ],
+    ],
+)
+def test_ruleset_validation_rejects_unsupported_or_duplicate_cabrillo_columns(columns):
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    format_rule["qso_columns"] = columns
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any(issue["path"].endswith("qso_columns") for issue in error.value.errors)
 
 
 def test_ruleset_validation_rejects_required_categories_not_mapped_for_an_import_format():
