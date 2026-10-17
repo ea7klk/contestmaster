@@ -38,7 +38,12 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
             fields = ", ".join(f"{field.label} ({field.value_type})" for field in rule.fields)
             summary = f"Exchange fields: {fields}"
         elif rule.kind == "duplicates":
-            summary = f"Duplicate scope {', '.join(rule.scope)}; effect {rule.effect}"
+            multiplier_credit = (
+                "; duplicates may count for multipliers" if rule.count_for_multipliers else ""
+            )
+            summary = (
+                f"Duplicate scope {', '.join(rule.scope)}; effect {rule.effect}{multiplier_credit}"
+            )
         elif rule.kind == "points":
             summary = f"Integer points from {rule.fact}"
         elif rule.kind == "multiplier":

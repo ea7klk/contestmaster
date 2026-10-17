@@ -249,6 +249,13 @@ class DuplicateRule(StrictModel):
     )
     effect: Literal["ignore", "not_credited", "penalty", "needs_review"]
     penalty_points: NonNegativeInteger = 0
+    count_for_multipliers: bool = Field(
+        default=False,
+        description=(
+            "Whether a duplicate contact that otherwise passes eligibility may supply "
+            "multiplier credit while still receiving no QSO points."
+        ),
+    )
 
     @model_validator(mode="after")
     def penalty_requires_points(self) -> DuplicateRule:

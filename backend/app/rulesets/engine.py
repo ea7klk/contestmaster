@@ -367,6 +367,9 @@ def score_entry(
                 status = "not_credited" if rule.action == "not_credited" else "needs_review"
                 reasons.append("eligibility_rule_failed")
 
+        eligible_before_duplicates = status == "credited"
+        duplicate_detected = False
+        duplicate_multiplier_allowed = True
         for configured_rule in duplicate_rules:
             rule = configured_rule.rule
             if not isinstance(rule, DuplicateRule) or not _condition_applies(
@@ -375,11 +378,16 @@ def score_entry(
                 continue
             key = _scope_value(rule, qso)
             if key is None:
+                duplicate_multiplier_allowed = False
                 if status == "credited":
                     status = "needs_review"
                 reasons.append("duplicate_key_incomplete")
                 continue
             if key in seen[configured_rule.id]:
+                duplicate_detected = True
+                duplicate_multiplier_allowed = (
+                    duplicate_multiplier_allowed and rule.count_for_multipliers
+                )
                 reasons.append("duplicate")
                 if rule.effect in {"ignore", "not_credited"}:
                     status = "not_credited"
@@ -391,6 +399,9 @@ def score_entry(
             else:
                 seen[configured_rule.id].add(key)
 
+        multiplier_eligible = status == "credited" or (
+            eligible_before_duplicates and duplicate_detected and duplicate_multiplier_allowed
+        )
         for configured_rule in penalty_rules:
             rule = configured_rule.rule
             if not isinstance(rule, PenaltyRule) or not _condition_applies(
@@ -406,11 +417,14 @@ def score_entry(
                 qso_penalties += rule.points
             elif rule.action == "remove_contact":
                 status = "not_credited"
+                multiplier_eligible = False
             elif rule.action in {"needs_review", "reclassify"}:
                 if status == "credited":
                     status = "needs_review"
+                multiplier_eligible = False
             elif rule.action == "disqualify":
                 status = "not_credited"
+                multiplier_eligible = False
 
         # The latest persisted adjudication decision is an explicit human ruling. It is
         # applied after automatic rule checks and before score components are calculated.
@@ -420,6 +434,7 @@ def score_entry(
             if override_status not in {"credited", "not_credited", "needs_review"}:
                 raise RuleExecutionError("QSO decision override has an unsupported status")
             status = override_status
+            multiplier_eligible = override_status == "credited"
             reasons.append(str(override.get("reason_code", "review_override")))
 
         points = 0
@@ -434,32 +449,34 @@ def score_entry(
                 point_value = _point_value(rule, qso)
                 if point_value is None:
                     status = "needs_review"
+                    multiplier_eligible = False
                     reasons.append(f"missing_point_mapping:{configured_rule.id}")
                     points = 0
                     break
                 points += point_value
-            if status == "credited":
-                for configured_rule in multiplier_rules:
-                    rule = configured_rule.rule
-                    if not isinstance(rule, MultiplierRule) or not _condition_applies(
-                        configured_rule, context
-                    ):
-                        continue
-                    value = _safe_value(rule.source_fact, context)
-                    scope = _scope_value(rule, qso) if rule.scope != "contest" else ("*",)
-                    if value is None or scope is None:
-                        status = "needs_review"
-                        reasons.append(f"missing_multiplier_value:{configured_rule.id}")
-                        continue
-                    unique_key = (
-                        f"{configured_rule.id}:{'|'.join(scope)}:{str(value).strip().upper()}"
-                    )
-                    if unique_key not in multiplier_keys:
-                        qso_multiplier_keys.append(unique_key)
+        if multiplier_eligible:
+            for configured_rule in multiplier_rules:
+                rule = configured_rule.rule
+                if not isinstance(rule, MultiplierRule) or not _condition_applies(
+                    configured_rule, context
+                ):
+                    continue
+                value = _safe_value(rule.source_fact, context)
+                scope = _scope_value(rule, qso) if rule.scope != "contest" else ("*",)
+                if value is None or scope is None:
+                    status = "needs_review"
+                    multiplier_eligible = False
+                    reasons.append(f"missing_multiplier_value:{configured_rule.id}")
+                    continue
+                unique_key = f"{configured_rule.id}:{'|'.join(scope)}:{str(value).strip().upper()}"
+                if unique_key not in multiplier_keys:
+                    qso_multiplier_keys.append(unique_key)
+
+        if multiplier_eligible:
+            multiplier_keys.update(qso_multiplier_keys)
 
         if status == "credited":
             eligible_contexts.append((qso, context))
-            multiplier_keys.update(qso_multiplier_keys)
 
         results[qso.qso_id] = {
             "qso_id": qso.qso_id,

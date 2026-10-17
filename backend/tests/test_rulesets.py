@@ -598,6 +598,73 @@ def test_scoring_is_deterministic_integer_only_and_keeps_explanations():
     assert result.model_dump(mode="json") == rerun.model_dump(mode="json")
 
 
+def test_duplicate_qso_can_supply_multiplier_without_points():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["count_for_multipliers"] = True
+    entry = sample_entry()
+    second_qso = entry.qsos[1].model_copy(update={"entity": "VE"})
+    entry = entry.model_copy(update={"qsos": [entry.qsos[0], second_qso]})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    duplicate_score = next(item for item in result.qso_scores if item.qso_id == 2)
+    assert duplicate_score.status == "not_credited"
+    assert duplicate_score.points == 0
+    assert len(duplicate_score.multiplier_keys) == 1
+    assert result.points_total == 2
+    assert result.multiplier_count == 2
+
+
+def test_duplicate_multiplier_option_does_not_bypass_other_eligibility_rules():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["count_for_multipliers"] = True
+    eligibility_rule = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility_rule["rule"]["allowed_modes"] = ["SSB"]
+    entry = sample_entry()
+    second_qso = entry.qsos[1].model_copy(update={"entity": "VE"})
+    entry = entry.model_copy(update={"qsos": [entry.qsos[0], second_qso]})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.points_total == 0
+    assert result.multiplier_count == 0
+    assert all(not item.multiplier_keys for item in result.qso_scores)
+
+
+def test_every_matching_duplicate_rule_must_allow_multiplier_credit():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["count_for_multipliers"] = True
+    payload["rules"].append(
+        {
+            "id": "duplicates-by-mode",
+            "rule": {
+                "kind": "duplicates",
+                "scope": ["worked_callsign", "mode"],
+                "effect": "not_credited",
+                "count_for_multipliers": False,
+            },
+        }
+    )
+    entry = sample_entry()
+    second_qso = entry.qsos[1].model_copy(update={"entity": "VE"})
+    entry = entry.model_copy(update={"qsos": [entry.qsos[0], second_qso]})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.points_total == 2
+    assert result.multiplier_count == 1
+    assert next(item for item in result.qso_scores if item.qso_id == 2).multiplier_keys == []
+
+
 def test_bonus_evidence_key_replaces_legacy_required_boolean_in_json():
     payload = valid_payload()
     legacy = next(item for item in payload["rules"] if item["id"] == "entry-bonus")

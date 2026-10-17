@@ -66,7 +66,7 @@ RULE_TYPES: tuple[RuleType, ...] = (
     RuleType(
         "duplicates",
         "Duplicate scope",
-        "Configure duplicate identity and consequence.",
+        "Configure duplicate identity and consequence, including optional multiplier credit.",
         "automatic",
         DuplicateRule,
     ),
