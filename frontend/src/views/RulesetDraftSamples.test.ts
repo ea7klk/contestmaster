@@ -109,7 +109,24 @@ describe('documented contest starter drafts', () => {
 
       expect(sentDrafts).toHaveLength(1)
       expect(sentDrafts[0]?.ruleset_key).toBe(draft.ruleset_key)
-      expect(sentDrafts[0]?.rules).toEqual(draft.rules)
+      expect(sentDrafts[0]?.rules).toMatchObject(draft.rules)
+      for (const configured of sentDrafts[0]?.rules as Array<{
+        rule: Record<string, unknown>
+      }>) {
+        if (
+          configured.rule.kind !== 'format_mapping' ||
+          configured.rule.format !== 'cabrillo'
+        )
+          continue
+        const mappings = configured.rule.category_mappings as Array<
+          Record<string, unknown>
+        >
+        expect(
+          mappings.every(
+            (mapping) => typeof mapping.external_field === 'string',
+          ),
+        ).toBe(true)
+      }
     },
   )
 })

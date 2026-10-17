@@ -613,9 +613,15 @@ class FormatMappingRule(StrictModel):
 
     @model_validator(mode="after")
     def unique_external_categories(self) -> FormatMappingRule:
-        keys = [mapping.external_value.casefold() for mapping in self.category_mappings]
-        if len(keys) != len(set(keys)):
-            raise ValueError("external category mappings must be unique, case-insensitively")
+        seen_categories: set[tuple[str, str]] = set()
+        for mapping in self.category_mappings:
+            key = (mapping.external_field, mapping.external_value.casefold())
+            if key in seen_categories:
+                raise ValueError(
+                    f"{mapping.external_value!r} is mapped more than once for "
+                    f"{mapping.external_field} (category values are case-insensitive)"
+                )
+            seen_categories.add(key)
         if len(self.qso_columns) != len(set(self.qso_columns)):
             raise ValueError("QSO columns must not contain duplicate fields")
         if any(

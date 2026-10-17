@@ -168,6 +168,18 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
         )
 
 
+def test_all_documented_ruleset_drafts_validate():
+    for path in sorted((ROOT.parent / "ruleset-drafts").glob("*.json")):
+        definition = RulesetDefinition.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        validate_ruleset(definition)
+        for configured in definition.rules:
+            if configured.rule.kind == "format_mapping" and configured.rule.format == "cabrillo":
+                assert all(
+                    mapping.external_field
+                    for mapping in configured.rule.category_mappings
+                ), path.name
+
+
 def test_generated_logs_are_reproducible_unique_and_parseable():
     expectations = (("cabrillo", 110), ("adif", 56))
     for folder, expected_count in expectations:

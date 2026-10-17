@@ -356,6 +356,20 @@ def test_format_mapping_rejects_non_wwrof_category_values():
         RulesetDefinition.model_validate(payload)
 
 
+def test_format_mapping_reports_duplicate_category_values_within_the_same_tag():
+    payload = valid_payload()
+    format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
+    duplicate = format_rule["category_mappings"][0].copy()
+    duplicate["category_values"] = {"operator": "multi_operator"}
+    format_rule["category_mappings"].append(duplicate)
+
+    with pytest.raises(
+        ValidationError,
+        match="SINGLE-OP.*CATEGORY-OPERATOR.*case-insensitive",
+    ):
+        RulesetDefinition.model_validate(payload)
+
+
 def test_format_mapping_binds_category_values_to_the_selected_wwrof_header():
     payload = valid_payload()
     format_rule = next(item["rule"] for item in payload["rules"] if item["id"] == "format")
