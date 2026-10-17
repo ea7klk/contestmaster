@@ -7,7 +7,9 @@ import sys
 
 from pydantic import ValidationError
 
+from backend.app.config import get_settings
 from backend.app.email_delivery import EmailDeliveryError, send_email
+from backend.app.logging_config import configure_logging
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -20,6 +22,11 @@ def main(argv: list[str] | None = None) -> None:
     arguments = parser.parse_args(argv)
 
     try:
+        try:
+            settings = get_settings()
+        except ValidationError:
+            settings = None
+        configure_logging(settings.log_level if settings is not None else "INFO")
         send_email(
             arguments.to,
             "Contestmaster SMTP configuration test",

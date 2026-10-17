@@ -15,6 +15,7 @@ class FakeSMTP:
     fail_at: str | None = None
     sent_messages = []
     authentications = []
+    esmtp_features = {"auth": "PLAIN LOGIN"}
 
     def __init__(self, host, port, timeout):
         assert host == "mail.example.test"
@@ -30,22 +31,30 @@ class FakeSMTP:
         return None
 
     def ehlo(self):
-        return None
+        return 250, b"mail.example.test ready"
 
     def starttls(self, context):
         assert isinstance(context, ssl.SSLContext)
         if self.fail_at == "starttls":
-            raise ssl.SSLError("private TLS diagnostic")
+            raise smtplib.SMTPResponseException(454, b"TLS not available now")
+        return 220, b"TLS go ahead"
 
     def login(self, username, password):
         self.authentications.append((username, password))
         if self.fail_at == "authentication":
-            raise smtplib.SMTPAuthenticationError(535, b"private credentials rejected")
+            raise smtplib.SMTPAuthenticationError(
+                535,
+                b"authentication failed for contestmaster@mail.example.test",
+            )
+        return 235, b"authentication successful"
 
     def send_message(self, message):
         self.sent_messages.append(message)
         if self.fail_at == "send":
-            raise smtplib.SMTPDataError(554, b"private message rejection")
+            raise smtplib.SMTPDataError(
+                554,
+                b"message rejected for recipient@example.test; token=private-token",
+            )
 
 
 @pytest.fixture(autouse=True)
@@ -82,11 +91,52 @@ def test_send_email_uses_starttls_authentication_and_optional_test_body():
     assert "smtp-secret" not in message.get_content()
 
 
+def test_success_logs_each_smtp_stage_without_private_message_fields(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="contestmaster.email_delivery")
+    email_delivery.send_email(
+        "private-recipient@example.test",
+        "Private subject",
+        "private message content",
+        "https://example.test/private-token",
+    )
+
+    stage_records = [
+        record for record in caplog.records if record.getMessage() == "email_delivery_stage"
+    ]
+    assert [(record.stage, record.status) for record in stage_records] == [
+        ("connection", "started"),
+        ("greeting", "succeeded"),
+        ("starttls", "succeeded"),
+        ("greeting_after_tls", "succeeded"),
+        ("authentication", "started"),
+        ("authentication", "succeeded"),
+        ("send", "succeeded"),
+    ]
+    assert stage_records[0].smtp_host == "mail.example.test"
+    assert stage_records[0].smtp_port == 587
+    assert stage_records[0].tls_mode == "STARTTLS"
+    assert stage_records[0].auth_configured is True
+    auth_record = next(record for record in stage_records if record.stage == "authentication")
+    assert auth_record.auth_mechanisms == "PLAIN LOGIN"
+
+    formatted_logs = "\n".join(JsonFormatter().format(record) for record in caplog.records)
+    for private_value in (
+        "private-recipient@example.test",
+        "Private subject",
+        "private message content",
+        "private-token",
+        "smtp-secret",
+    ):
+        assert private_value not in formatted_logs
+
+
 @pytest.mark.parametrize(
     ("failure_stage", "expected_kind"),
     [
         ("connection", "OSError"),
-        ("starttls", "SSLError"),
+        ("starttls", "SMTPResponseException"),
         ("authentication", "SMTPAuthenticationError"),
         ("send", "SMTPDataError"),
     ],
@@ -107,7 +157,10 @@ def test_delivery_failures_are_stage_specific_and_do_not_log_private_data(
     assert error.value.stage == failure_stage
     assert error.value.failure_kind == expected_kind
     record = next(
-        record for record in caplog.records if record.name == "contestmaster.email_delivery"
+        record
+        for record in caplog.records
+        if record.name == "contestmaster.email_delivery"
+        and record.getMessage() == "email_delivery_failed"
     )
     assert record.stage == failure_stage
     assert record.failure_kind == expected_kind
@@ -115,10 +168,38 @@ def test_delivery_failures_are_stage_specific_and_do_not_log_private_data(
     payload = json.loads(formatted_log)
     assert payload["stage"] == failure_stage
     assert payload["failure_kind"] == expected_kind
+    if failure_stage == "authentication":
+        assert payload["smtp_code"] == 535
+        assert payload["auth_mechanisms"] == "PLAIN LOGIN"
+        assert "contestmaster@mail.example.test" not in formatted_log
+    if failure_stage == "send":
+        assert payload["smtp_code"] == 554
+        assert payload["smtp_reply"] == "message rejected for [redacted-email]; token=[redacted]"
     assert "private-recipient@example.test" not in formatted_log
     assert "smtp-secret" not in formatted_log
     assert "private-token" not in formatted_log
     assert "private message content" not in formatted_log
+
+
+def test_smtp_response_text_is_sanitized_and_bounded():
+    error = smtplib.SMTPDataError(
+        554,
+        b"reject recipient@example.test https://example.test/private-token "
+        b"password=smtp-secret " + b"x" * 400,
+    )
+
+    smtp_code, reply = email_delivery._smtp_failure_details(
+        error,
+        sensitive_values=("smtp-secret", "https://example.test/private-token"),
+    )
+
+    assert smtp_code == 554
+    assert reply is not None
+    assert len(reply) <= 240
+    assert "recipient@example.test" not in reply
+    assert "private-token" not in reply
+    assert "smtp-secret" not in reply
+    assert "[redacted-url]" in reply
 
 
 def test_missing_smtp_configuration_has_a_safe_configuration_error(monkeypatch, caplog):
@@ -141,6 +222,9 @@ def test_missing_smtp_configuration_has_a_safe_configuration_error(monkeypatch, 
 
 def test_smtp_cli_requires_and_uses_an_explicit_recipient(monkeypatch, capsys):
     delivered = []
+    configured_levels = []
+    monkeypatch.setattr(email_cli, "get_settings", lambda: SimpleNamespace(log_level="DEBUG"))
+    monkeypatch.setattr(email_cli, "configure_logging", configured_levels.append)
     monkeypatch.setattr(email_cli, "send_email", lambda *args: delivered.append(args))
 
     email_cli.main(["test", "--to", "operator@example.test"])
@@ -154,3 +238,4 @@ def test_smtp_cli_requires_and_uses_an_explicit_recipient(monkeypatch, capsys):
         )
     ]
     assert capsys.readouterr().out == "SMTP test message sent successfully.\n"
+    assert configured_levels == ["DEBUG"]

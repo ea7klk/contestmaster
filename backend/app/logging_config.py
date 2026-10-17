@@ -36,6 +36,14 @@ class JsonFormatter(logging.Formatter):
             "stage",
             "status",
             "changed",
+            "smtp_host",
+            "smtp_port",
+            "tls_mode",
+            "auth_configured",
+            "smtp_code",
+            "smtp_reply",
+            "auth_mechanisms",
+            "elapsed_ms",
         ):
             if hasattr(record, field):
                 payload[field] = getattr(record, field)
