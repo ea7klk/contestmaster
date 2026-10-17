@@ -8,6 +8,8 @@ Category dimensions and choices support optional `description` text. Use it to r
 
 The examples use a simple integer score formula as a valid baseline. They contain reusable rules only: enter start/end times, periodicity, and the log-submission cutoff in contest configuration. A source edition is included in every file to make the provenance visible in the composer.
 
+Cabrillo drafts use the importer's canonical QSO column keys (`frequency`, `mode`, `date`, `time`, and the sent/received station and exchange fields), and map their configured categories from Cabrillo header values. The public contest page uses these mappings to generate its two-QSO sample. It translates shared catalog modes to Cabrillo QSO tokens, for example SSB to `PH`, RTTY to `RY`, and FT8/FT4 to `DG`. It also recognizes the former draft column aliases so contests imported before the draft correction continue to display an example; for standard operator and power categories it can derive sample header values when category mappings are absent.
+
 ## Drafts
 
 | Mode family | Contest | Draft |

@@ -6,6 +6,17 @@ import {
 } from './publicContestDescription'
 import { setLocale, supportedLocales } from '../i18n'
 import type { RulesetDraft } from '../api/rulesets'
+import advancedCabrilloFixture from '../../../documentation/test-contests/advanced-cabrillo/contest.json'
+import cqWwSsbDraft from '../../../documentation/ruleset-drafts/cq-ww-ssb.json'
+import arrlInternationalDigitalDraft from '../../../documentation/ruleset-drafts/arrl-international-digital.json'
+import arrlSweepstakesCwDraft from '../../../documentation/ruleset-drafts/arrl-november-sweepstakes-cw.json'
+import arrlSweepstakesPhoneDraft from '../../../documentation/ruleset-drafts/arrl-november-sweepstakes-phone.json'
+import arrlRttyRoundupDraft from '../../../documentation/ruleset-drafts/arrl-rtty-roundup.json'
+import cqWwCwDraft from '../../../documentation/ruleset-drafts/cq-ww-cw.json'
+import cqWwRttyDraft from '../../../documentation/ruleset-drafts/cq-ww-rtty.json'
+import rsgbFt4Draft from '../../../documentation/ruleset-drafts/rsgb-ft4-international-activity-day.json'
+import sarlFt4Draft from '../../../documentation/ruleset-drafts/sarl-africa-ft4-dx.json'
+import worldWideDigiDraft from '../../../documentation/ruleset-drafts/world-wide-digi-dx.json'
 
 function summaryText(item: ContestSummaryItem): string {
   return typeof item === 'string'
@@ -18,6 +29,99 @@ function summaryIntroduction(item: ContestSummaryItem): string {
 }
 
 describe('describeContestRuleset', () => {
+  it.each([
+    ['ARRL International Digital', arrlInternationalDigitalDraft],
+    ['ARRL Sweepstakes CW', arrlSweepstakesCwDraft],
+    ['ARRL Sweepstakes Phone', arrlSweepstakesPhoneDraft],
+    ['ARRL RTTY Roundup', arrlRttyRoundupDraft],
+    ['CQ WW CW', cqWwCwDraft],
+    ['CQ WW RTTY', cqWwRttyDraft],
+    ['CQ WW SSB', cqWwSsbDraft],
+    ['RSGB FT4', rsgbFt4Draft],
+    ['SARL FT4', sarlFt4Draft],
+    ['World Wide Digi', worldWideDigiDraft],
+  ])('generates two QSO lines for the importable %s Cabrillo draft', (_name, draft) => {
+    const sample = generateCabrilloExample(
+      draft as unknown as RulesetDraft,
+      {
+        name: 'Sample Contest',
+        slug: 'sample-contest',
+        starts_at: '2026-10-20T00:00:00Z',
+        ends_at: '2026-10-21T00:00:00Z',
+      },
+    )
+
+    expect(sample).not.toBeNull()
+    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
+  })
+
+  it('generates a Cabrillo example from the supported advanced test-contest fixture', () => {
+    const fixture = advancedCabrilloFixture as unknown as {
+      contest: {
+        name: string
+        slug: string
+        starts_at: string
+        ends_at: string
+      }
+      ruleset: RulesetDraft
+    }
+    const sample = generateCabrilloExample(fixture.ruleset, fixture.contest)
+
+    expect(sample).not.toBeNull()
+    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
+    expect(sample).toContain('END-OF-LOG:')
+  })
+
+  it('generates a Cabrillo example from the importable CQ WW SSB draft', () => {
+    const sample = generateCabrilloExample(
+      cqWwSsbDraft as unknown as RulesetDraft,
+      {
+        name: 'CQ WW SSB',
+        slug: 'cq-ww-ssb',
+        starts_at: '2026-10-20T00:00:00Z',
+        ends_at: '2026-10-22T00:00:00Z',
+      },
+    )
+
+    expect(sample).not.toBeNull()
+    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
+    expect(sample).toContain(' PH ')
+  })
+
+  it('keeps rendering drafts imported before Cabrillo column and category fixes', () => {
+    const legacyDraft = structuredClone(cqWwSsbDraft) as unknown as RulesetDraft
+    const format = legacyDraft.rules.find(
+      (configured) => configured.rule.kind === 'format_mapping',
+    )
+    if (!format || format.rule.kind !== 'format_mapping')
+      throw new Error('Expected a Cabrillo format mapping in the fixture')
+    format.rule.qso_columns = [
+      'band',
+      'mode',
+      'date',
+      'time_on',
+      'callsign',
+      'rst_sent',
+      'exch_sent',
+      'call_rcvd',
+      'rst_rcvd',
+      'exch_rcvd',
+    ]
+    format.rule.category_mappings = []
+
+    const sample = generateCabrilloExample(legacyDraft, {
+      name: 'CQ WW SSB',
+      slug: 'cq-ww-ssb',
+      starts_at: '2026-10-20T00:00:00Z',
+      ends_at: '2026-10-22T00:00:00Z',
+    })
+
+    expect(sample).not.toBeNull()
+    expect(sample).toContain('CATEGORY-OPERATOR: SINGLE-OP')
+    expect(sample).toContain('CATEGORY-POWER: QRP')
+    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
+  })
+
   it('generates a two-QSO Cabrillo sample using the contest ruleset', () => {
     const ruleset: RulesetDraft = {
       schema_version: 2,
@@ -98,6 +202,42 @@ describe('describeContestRuleset', () => {
       expect(generateCabrilloExample(ruleset, contest)).toBe(sample)
     }
     setLocale('en', undefined)
+  })
+
+  it.each([
+    ['SSB', 'PH'],
+    ['RTTY', 'RY'],
+    ['FT8', 'DG'],
+    ['FT4', 'DG'],
+    ['PSK31', 'DG'],
+  ])('uses Cabrillo mode token %s -> %s in the generated example', (contestMode, cabrilloMode) => {
+    const sample = generateCabrilloExample(
+      {
+        schema_version: 2,
+        ruleset_key: 'mode-token-example',
+        version: '2026',
+        rules: [
+          {
+            id: 'eligibility',
+            rule: {
+              kind: 'eligibility',
+              allowed_bands: ['20m'],
+              allowed_modes: [contestMode],
+            },
+          },
+          { id: 'cabrillo', rule: { kind: 'format_mapping', format: 'cabrillo' } },
+        ],
+      },
+      {
+        name: 'Mode mapping test',
+        slug: 'mode-mapping-test',
+        starts_at: '2026-10-20T00:00:00Z',
+        ends_at: '2026-10-20T06:00:00Z',
+      },
+    )
+
+    expect(sample).not.toBeNull()
+    expect(sample?.match(new RegExp(`^QSO: \\d+ ${cabrilloMode} `, 'gm'))).toHaveLength(2)
   })
 
   it('omits the Cabrillo sample when the contest accepts another format only', () => {

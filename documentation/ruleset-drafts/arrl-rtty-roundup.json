@@ -150,12 +150,23 @@
         "kind": "format_mapping",
         "format": "cabrillo",
         "qso_columns": [
-          "band",
+          "frequency",
           "mode",
-          "callsign",
-          "time_on",
+          "date",
+          "time",
+          "callsign_sent",
+          "rst_sent",
           "exchange_sent",
+          "callsign_received",
+          "rst_received",
           "exchange_received"
+        ],
+        "category_mappings": [
+          {"external_value": "SINGLE-OP", "category_values": {"operator": "single_operator"}},
+          {"external_value": "MULTI-OP", "category_values": {"operator": "multi_operator"}},
+          {"external_value": "QRP", "category_values": {"power": "qrp"}},
+          {"external_value": "LOW", "category_values": {"power": "low"}},
+          {"external_value": "HIGH", "category_values": {"power": "high"}}
         ],
         "preserve_unknown_fields": true
       }

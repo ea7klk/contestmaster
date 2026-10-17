@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { expectAccessible } from '../test/a11y'
 import { setLocale } from '../i18n'
+import type { RulesetDraft } from '../api/rulesets'
+import cqWwSsbDraft from '../../../documentation/ruleset-drafts/cq-ww-ssb.json'
 import PublicContestView from './PublicContestView.vue'
 
 const details = {
@@ -91,6 +93,32 @@ describe('PublicContestView', () => {
     expect(sample).toContain('START-OF-LOG: 3.0')
     expect(sample).toContain('CALLSIGN: N0TEST')
     await setLocale('en', undefined)
+  })
+
+  it('shows the sample from the importable CQ WW SSB draft', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...details,
+              ruleset: cqWwSsbDraft as unknown as RulesetDraft,
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+
+    const example = wrapper.get('.cabrillo-example')
+    expect(example.get('pre code').text().match(/^QSO: \d+ PH /gm)).toHaveLength(2)
   })
 
   it('updates generated summaries when the selected language changes', async () => {

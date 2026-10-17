@@ -109,6 +109,18 @@ const defaultCabrilloQsoColumns = [
   'rst_received',
   'exchange_received',
 ]
+const cabrilloQsoColumnAliases: Record<string, string> = {
+  band: 'frequency',
+  freq: 'frequency',
+  time_on: 'time',
+  callsign: 'callsign_sent',
+  call_sent: 'callsign_sent',
+  exch_sent: 'exchange_sent',
+  call_rcvd: 'callsign_received',
+  callsign_rcvd: 'callsign_received',
+  rst_rcvd: 'rst_received',
+  exch_rcvd: 'exchange_received',
+}
 
 const sampleFrequencyByBand: Record<string, number> = {
   '160m': 1810,
@@ -132,7 +144,29 @@ const sampleFrequencyByBand: Record<string, number> = {
   '9cm': 3400100,
   '6cm': 5760100,
 }
-const standardCabrilloModes = new Set(['CW', 'PH', 'FM', 'RY', 'DG'])
+const cabrilloModeByContestMode: Record<string, string> = {
+  CW: 'CW',
+  PH: 'PH',
+  SSB: 'PH',
+  AM: 'PH',
+  PHONE: 'PH',
+  FM: 'FM',
+  RY: 'RY',
+  RTTY: 'RY',
+  DG: 'DG',
+  DIGITAL: 'DG',
+  PSK31: 'DG',
+  PSK63: 'DG',
+  FT8: 'DG',
+  FT4: 'DG',
+  JT65: 'DG',
+  JT9: 'DG',
+  MSK144: 'DG',
+  JS8: 'DG',
+  OLIVIA: 'DG',
+  MFSK: 'DG',
+  SSTV: 'DG',
+}
 
 function sampleExchangeValue(
   field: JsonRecord,
@@ -211,9 +245,6 @@ function sampleCategoryHeader(
     .filter((dimension) => dimension.required !== false)
     .map((dimension) => stringValue(dimension.key))
   const mappingRows = Array.isArray(mappings) ? mappings.filter(isRecord) : []
-  if (requiredKeys.length === 0) return []
-  if (mappingRows.length === 0) return null
-
   const categoryNames: Record<string, string> = {
     assisted: 'ASSISTED',
     band: 'BAND',
@@ -226,6 +257,33 @@ function sampleCategoryHeader(
     transmitter: 'TRANSMITTER',
     transmitter_count: 'TRANSMITTER',
   }
+  if (requiredKeys.length === 0) return []
+  if (mappingRows.length === 0) {
+    const defaults: Record<string, Record<string, string>> = {
+      operator: {
+        single_operator: 'SINGLE-OP',
+        multi_operator: 'MULTI-OP',
+      },
+      power: { qrp: 'QRP', low: 'LOW', high: 'HIGH' },
+    }
+    const headers: string[] = []
+    for (const key of requiredKeys) {
+      const categoryName = categoryNames[key.toLowerCase()]
+      const dimension = dimensions.find((item) => item.key === key)
+      const choices = Array.isArray(dimension?.choices)
+        ? dimension.choices.filter(isRecord)
+        : []
+      const firstChoice = choices[0]
+      const value =
+        typeof firstChoice?.key === 'string'
+          ? defaults[key.toLowerCase()]?.[firstChoice.key] ?? null
+          : null
+      if (!categoryName || !value) return null
+      headers.push(`CATEGORY-${categoryName}: ${value}`)
+    }
+    return headers
+  }
+
   const selectedHeaders: string[] = []
   const remaining = new Set(requiredKeys)
   while (remaining.size > 0) {
@@ -311,9 +369,9 @@ export function generateCabrilloExample(
   if (!frequency) return null
   const allowedModes = eligibility ? stringList(eligibility.allowed_modes) : []
   const mode = allowedModes.length
-    ? allowedModes.find((candidate) =>
-        standardCabrilloModes.has(candidate.toUpperCase()),
-      )
+    ? allowedModes
+        .map((candidate) => cabrilloModeByContestMode[candidate.toUpperCase()])
+        .find((candidate) => candidate !== undefined)
     : 'CW'
   if (!mode) return null
   const exchangeRule = rules.find((rule) => rule.kind === 'exchange')
@@ -353,7 +411,10 @@ export function generateCabrilloExample(
     headerLines.push(`${header}: ${value}`)
   }
 
-  const configuredColumns = stringList(formatConfig.rule.qso_columns)
+  const configuredColumns = stringList(formatConfig.rule.qso_columns).map(
+    (column) =>
+      cabrilloQsoColumnAliases[column.toLowerCase()] ?? column.toLowerCase(),
+  )
   const columns = configuredColumns.length
     ? configuredColumns
     : defaultCabrilloQsoColumns
