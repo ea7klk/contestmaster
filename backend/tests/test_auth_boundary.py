@@ -630,6 +630,7 @@ def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(ident
     assert created.status_code == 201
     contest = created.json()
     assert contest["series_id"] is not None
+    assert contest["series_name"] == "Annual Sprint"
     assert contest["is_series_anchor"] is True
     assert contest["series_cutoff_offset_seconds"] == 172800
     assert contest["series_automatic_window_days"] == 90

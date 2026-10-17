@@ -122,6 +122,60 @@ describe('ContestEditorView', () => {
     await expectAccessible(wrapper.element)
   })
 
+  it('confirms series deletion with the canonical name from a generated edition', async () => {
+    const edition = {
+      ...contest,
+      name: 'Annual Sprint — 2027-05-08',
+      slug: 'annual-sprint-9-20270508',
+      series_id: 9,
+      series_name: 'Annual Sprint',
+      is_series_anchor: false,
+      series_edition_count: 4,
+      series_cutoff_offset_seconds: 172800,
+      series_automatic_window_days: 90,
+    }
+    const routerPush = vi.fn()
+    const prompt = vi.fn(() => 'Annual Sprint')
+    const deleteRequests: Array<Record<string, unknown>> = []
+    vi.stubGlobal('prompt', prompt)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests/31') && init?.method === 'GET')
+          return ok(edition)
+        if (path.endsWith('/contests/series/9/exceptions'))
+          return ok({ items: [] })
+        if (path.endsWith('/contests/series/9') && init?.method === 'DELETE') {
+          deleteRequests.push(JSON.parse(String(init.body)))
+          return new Response(null, { status: 204 })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mount(ContestEditorView, {
+      props: { contestId: '31' },
+      global: {
+        provide: { [routerKey]: { push: routerPush } },
+        stubs: {
+          RouterLink: { template: '<a :href="to"><slot /></a>', props: ['to'] },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('button.danger-button').trigger('click')
+    await flushPromises()
+
+    expect(prompt.mock.calls[0]?.[0]).toContain(
+      'Type Annual Sprint to confirm.',
+    )
+    expect(prompt.mock.calls[0]?.[0]).not.toContain(edition.name)
+    expect(deleteRequests).toEqual([{ confirm_name: 'Annual Sprint' }])
+    expect(routerPush).toHaveBeenCalledWith('/manage/contests')
+  })
+
   it('creates a recurring series with a relative cutoff and rolling window', async () => {
     const submissions: Array<Record<string, unknown>> = []
     vi.stubGlobal(

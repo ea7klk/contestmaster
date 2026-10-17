@@ -320,6 +320,7 @@ def contest_output(contest: Contest) -> dict[str, object]:
         "log_submission_cutoff_at": contest.log_submission_cutoff_at,
         "cutoff_is_override": contest.cutoff_is_override,
         "series_id": contest.series_id,
+        "series_name": series.name if series is not None else None,
         "series_occurrence_date": (
             contest.series_occurrence_date.isoformat()
             if contest.series_occurrence_date is not None

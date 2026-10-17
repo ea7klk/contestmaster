@@ -42,6 +42,7 @@ interface ContestForm {
   automatic_creation_enabled: boolean
   automatic_window_days: number
   series_id: number | null
+  series_name: string | null
   is_series_anchor: boolean
   series_edition_count: number
   auto_recalculate_on_upload: boolean
@@ -68,6 +69,7 @@ function emptyForm(): ContestForm {
     automatic_creation_enabled: false,
     automatic_window_days: 365,
     series_id: null,
+    series_name: null,
     is_series_anchor: false,
     series_edition_count: 0,
     auto_recalculate_on_upload: false,
@@ -150,6 +152,7 @@ function contestForm(contest: Contest): ContestForm {
     automatic_creation_enabled: contest.series_automatic_window_days != null,
     automatic_window_days: contest.series_automatic_window_days ?? 365,
     series_id: contest.series_id ?? null,
+    series_name: contest.series_name ?? null,
     is_series_anchor: contest.is_series_anchor ?? false,
     series_edition_count: contest.series_edition_count ?? 1,
     auto_recalculate_on_upload: contest.auto_recalculate_on_upload,
@@ -295,10 +298,11 @@ async function removeException(occurrenceDate: string) {
 
 async function deleteSeries() {
   if (form.series_id === null || deletingSeries.value) return
+  const seriesName = form.series_name ?? form.name
   const confirmation = globalThis.prompt(
-    `Delete the entire series and all its contest editions? Type ${form.name} to confirm.`,
+    `Delete the entire series and all its contest editions? Type ${seriesName} to confirm.`,
   )
-  if (confirmation !== form.name) return
+  if (confirmation !== seriesName) return
   deletingSeries.value = true
   errorMessage.value = ''
   try {
@@ -365,7 +369,8 @@ async function save() {
       statusMessage.value = `Contest ${contest.name} created as a draft.`
     } else {
       const targetId = editingId.value ?? activeContestId.value
-      if (targetId === null) throw new Error('The contest could not be identified.')
+      if (targetId === null)
+        throw new Error('The contest could not be identified.')
       await updateContest(targetId, draft)
       activeContestId.value = targetId
       statusMessage.value = 'Contest details saved.'
@@ -816,7 +821,10 @@ watch(
           }}
         </button>
       </form>
-      <ResourceAdministrators resource-kind="contest" :resource-id="activeContestId" />
+      <ResourceAdministrators
+        resource-kind="contest"
+        :resource-id="activeContestId"
+      />
     </template>
   </section>
 </template>

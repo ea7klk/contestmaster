@@ -28,6 +28,7 @@ export interface Contest {
   log_submission_cutoff_at: string
   cutoff_is_override?: boolean
   series_id?: number | null
+  series_name?: string | null
   series_occurrence_date?: string | null
   is_series_anchor?: boolean
   series_cutoff_offset_seconds?: number | null
