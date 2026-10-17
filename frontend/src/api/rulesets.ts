@@ -16,6 +16,7 @@ export interface JsonSchema {
   minItems?: number
   properties?: Record<string, JsonSchema>
   patternProperties?: Record<string, JsonSchema>
+  propertyNames?: JsonSchema
   required?: string[]
   title?: string
   type?: string | string[]

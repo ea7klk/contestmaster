@@ -135,7 +135,7 @@ describe('ContestEditorView', () => {
       series_automatic_window_days: 90,
     }
     const routerPush = vi.fn()
-    const prompt = vi.fn(() => 'Annual Sprint')
+    const prompt = vi.fn((_message: string) => 'Annual Sprint')
     const deleteRequests: Array<Record<string, unknown>> = []
     vi.stubGlobal('prompt', prompt)
     vi.stubGlobal(
