@@ -18,64 +18,63 @@ function summaryIntroduction(item: ContestSummaryItem): string {
 
 describe('describeContestRuleset', () => {
   it('generates a two-QSO Cabrillo sample using the contest ruleset', () => {
-    const sample = generateCabrilloExample(
-      {
-        schema_version: 2,
-        ruleset_key: 'sample-cabrillo',
-        version: '2026',
-        rules: [
-          {
-            id: 'eligibility',
-            rule: {
-              kind: 'eligibility',
-              allowed_bands: ['40m'],
-              allowed_modes: ['CW'],
-            },
+    const ruleset = {
+      schema_version: 2,
+      ruleset_key: 'sample-cabrillo',
+      version: '2026',
+      rules: [
+        {
+          id: 'eligibility',
+          rule: {
+            kind: 'eligibility',
+            allowed_bands: ['40m'],
+            allowed_modes: ['CW'],
           },
-          {
-            id: 'exchange',
-            rule: {
-              kind: 'exchange',
-              fields: [
-                { key: 'serial', direction: 'both', value_type: 'serial' },
-              ],
-            },
+        },
+        {
+          id: 'exchange',
+          rule: {
+            kind: 'exchange',
+            fields: [
+              { key: 'serial', direction: 'both', value_type: 'serial' },
+            ],
           },
-          {
-            id: 'categories',
-            rule: {
-              kind: 'categories',
-              dimensions: [
-                {
-                  key: 'power',
-                  label: 'Power',
-                  choices: [{ key: 'low', label: 'Low power' }],
-                },
-              ],
-            },
+        },
+        {
+          id: 'categories',
+          rule: {
+            kind: 'categories',
+            dimensions: [
+              {
+                key: 'power',
+                label: 'Power',
+                choices: [{ key: 'low', label: 'Low power' }],
+              },
+            ],
           },
-          {
-            id: 'format',
-            rule: {
-              kind: 'format_mapping',
-              format: 'cabrillo',
-              category_mappings: [
-                {
-                  external_value: 'LOW',
-                  category_values: { power: 'low' },
-                },
-              ],
-            },
+        },
+        {
+          id: 'format',
+          rule: {
+            kind: 'format_mapping',
+            format: 'cabrillo',
+            category_mappings: [
+              {
+                external_value: 'LOW',
+                category_values: { power: 'low' },
+              },
+            ],
           },
-        ],
-      },
-      {
-        name: 'Autumn Test',
-        slug: 'autumn-test',
-        starts_at: '2026-10-20T00:00:00Z',
-        ends_at: '2026-10-20T06:00:00Z',
-      },
-    )
+        },
+      ],
+    } as const
+    const contest = {
+      name: 'Autumn Test',
+      slug: 'autumn-test',
+      starts_at: '2026-10-20T00:00:00Z',
+      ends_at: '2026-10-20T06:00:00Z',
+    }
+    const sample = generateCabrilloExample(ruleset, contest)
 
     expect(sample).not.toBeNull()
     expect(sample).toContain('START-OF-LOG: 3.0')
@@ -90,6 +89,14 @@ describe('describeContestRuleset', () => {
       'QSO: 7040 CW 2026-10-20 0000 N0TEST 599 002 W1XYZ 599 034',
     )
     expect(sample?.endsWith('END-OF-LOG:')).toBe(true)
+
+    // Cabrillo is an interchange format: generated examples and field tokens
+    // must stay byte-for-byte stable when the surrounding prose is translated.
+    for (const locale of supportedLocales) {
+      setLocale(locale, undefined)
+      expect(generateCabrilloExample(ruleset, contest)).toBe(sample)
+    }
+    setLocale('en', undefined)
   })
 
   it('omits the Cabrillo sample when the contest accepts another format only', () => {

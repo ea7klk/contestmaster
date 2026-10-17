@@ -78,6 +78,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Show public upcoming and currently running contests in a distinct home-page section using the public API. Display UTC start/end times, keep unpublished contests private, and remove a contest when its end instant is reached. Each item should link to public details; the main account-free log-submission action stays prominent.
 - Keep the labelled hamburger menu visible and left-aligned at every screen width. It controls a collapsed navigation panel and must preserve keyboard access, focus behavior, and role-based links.
 - Avoid duplicating backend rules in the browser. Frontend checks may improve feedback, but the server remains authoritative.
+- When translating generated contest descriptions, translate explanatory prose only. Keep Cabrillo examples, standard Cabrillo field names/tokens, and values in protocol examples unchanged in every locale.
 
 ## Security, privacy, and operations
 
