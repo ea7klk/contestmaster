@@ -10,6 +10,8 @@ Keep app-authored interface text in the Vue I18n catalogs under `frontend/src/i1
 
 Do not translate callsigns, uploaded log contents, ruleset keys, master-data values, sponsor names, or contest-manager-authored descriptions. These are application data, not interface messages. Built-in category and exchange presets may show localized labels while keeping their configured values stable.
 
+Keep Cabrillo examples, standard Cabrillo field names/tokens, and protocol values unchanged in every locale. Translate only the explanatory prose around those literals; contest-specific sample values must remain exactly as configured.
+
 Date and number displays should use the shared helpers in `frontend/src/i18n/index.ts`. Contest instants are formatted in UTC and retain an explicit `UTC` suffix. Scores and scoring counts use integer formatting and reject fractional values.
 
 ## Verification

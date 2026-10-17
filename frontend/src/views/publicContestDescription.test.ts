@@ -268,6 +268,12 @@ describe('describeContestRuleset', () => {
         'END-OF-LOG',
         'CALLSIGN',
         'CONTEST',
+        'FREQ or BAND',
+        'MODE',
+        'DATE',
+        'TIME',
+        'RST, EXCHANGE sent',
+        'RST, EXCHANGE received',
         'Autumn Test',
         'autumn-test',
         'YYYY-MM-DD',
@@ -556,7 +562,7 @@ describe('describeContestRuleset', () => {
       'CALLSIGN: non-empty header value. CONTEST: non-empty header value; CONTEST must match the selected contest.',
     )
     expect(requirements.bullets).toContain(
-      'Each QSO must include date in UTC as YYYY-MM-DD.',
+      'Each QSO must include date in UTC as YYYY-MM-DD. (DATE)',
     )
     expect(requirements.bullets).toContain(
       'Allowed band values: 20m and 40m; frequency values must fall within these bands.',

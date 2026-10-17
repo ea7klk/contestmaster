@@ -560,18 +560,18 @@ function describeLogSubmissionRequirements(
               'CALLSIGN: non-empty header value. CONTEST: non-empty header value; {contestHeader}.',
               { contestHeader },
             ),
-            tx('Each QSO must include frequency or band.'),
-            tx('Each QSO must include mode.'),
-            tx('Each QSO must include date in UTC as YYYY-MM-DD.'),
+            `${tx('Each QSO must include frequency or band.')} (FREQ or BAND)`,
+            `${tx('Each QSO must include mode.')} (MODE)`,
+            `${tx('Each QSO must include date in UTC as YYYY-MM-DD.')} (DATE)`,
             tx(
               'Each QSO must include time in UTC as HHMM (HHMMSS is also accepted).',
-            ),
+            ) + ' (TIME)',
             tx(
               'Each QSO must include sent callsign, sent RST, and sent exchange.',
-            ),
+            ) + ' (CALLSIGN, RST, EXCHANGE sent)',
             tx(
               'Each QSO must include received callsign, received RST, and received exchange.',
-            ),
+            ) + ' (CALLSIGN, RST, EXCHANGE received)',
             tx(
               'Callsigns may contain A–Z, 0–9, and /. RST reports and exchange tokens must be non-empty.',
             ),
