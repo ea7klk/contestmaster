@@ -29,6 +29,12 @@ describe('UserAdminView', () => {
     const wrapper = mount(UserAdminView)
     await flushPromises()
     await expectAccessible(wrapper.element)
+    expect(wrapper.get('.user-admin-card').element).toBeTruthy()
+    for (const fieldId of ['new-user-name', 'new-user-email', 'new-user-display', 'new-user-password', 'new-user-role']) {
+      expect(wrapper.get(`#${fieldId}`).element.closest('label')).not.toBeNull()
+    }
+    expect(wrapper.findAll('.user-admin-table-scroll')).toHaveLength(2)
+    expect(wrapper.findAll('.user-admin-table colgroup')).toHaveLength(2)
     expect(wrapper.text()).toContain('operator@example.test')
     await wrapper.get('#new-user-name').setValue('manager')
     await wrapper.get('#new-user-email').setValue('manager@example.test')
