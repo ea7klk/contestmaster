@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models import Contest, ContestSeries, ContestSeriesException, ContestStatus
-from backend.app.scheduling import Recurrence, ScheduleResolutionError, recurrence_date
+from backend.app.scheduling import Recurrence, ScheduleResolutionError, recurrence_dates
 
 
 def seconds_since_midnight(value: datetime) -> int:
@@ -95,47 +95,48 @@ def generate_due_editions(
             }
             for year in range(current.year, horizon.year + 2):
                 try:
-                    occurrence_date = recurrence_date(recurrence, year)
+                    occurrence_dates = recurrence_dates(recurrence, year)
                 except ScheduleResolutionError:
                     # Invalid annual dates (for example February 29) do not occur every year.
                     continue
-                if occurrence_date in existing_dates:
-                    continue
-                exception = exceptions.get(occurrence_date)
-                if exception is not None and exception.action == "skip":
-                    skipped += 1
-                    continue
-                actual_date = (
-                    exception.moved_to_date
-                    if exception is not None and exception.action == "move"
-                    else occurrence_date
-                )
-                starts_at = _edition_start(series, actual_date)
-                ends_at = starts_at + timedelta(seconds=series.duration_seconds)
-                if starts_at < current or starts_at > horizon:
-                    continue
-                slug = f"{series.base_slug[:95].rstrip('-')}-{series.id}-{actual_date:%Y%m%d}"
-                session.add(
-                    Contest(
-                        owner_user_id=series.owner_user_id,
-                        ruleset_version_id=series.ruleset_version_id,
-                        name=f"{series.name[:180]} — {actual_date.isoformat()}",
-                        slug=slug,
-                        description=series.description,
-                        starts_at=starts_at,
-                        ends_at=ends_at,
-                        periodicity=series.periodicity,
-                        series_id=series.id,
-                        series_occurrence_date=occurrence_date,
-                        is_series_anchor=False,
-                        log_submission_cutoff_at=ends_at
-                        + timedelta(seconds=series.cutoff_offset_seconds),
-                        cutoff_is_override=False,
-                        status=ContestStatus.DRAFT,
-                        auto_recalculate_on_upload=series.auto_recalculate_on_upload,
+                for occurrence_date in occurrence_dates:
+                    if occurrence_date in existing_dates:
+                        continue
+                    exception = exceptions.get(occurrence_date)
+                    if exception is not None and exception.action == "skip":
+                        skipped += 1
+                        continue
+                    actual_date = (
+                        exception.moved_to_date
+                        if exception is not None and exception.action == "move"
+                        else occurrence_date
                     )
-                )
-                existing_dates.add(occurrence_date)
-                generated += 1
+                    starts_at = _edition_start(series, actual_date)
+                    ends_at = starts_at + timedelta(seconds=series.duration_seconds)
+                    if starts_at < current or starts_at > horizon:
+                        continue
+                    slug = f"{series.base_slug[:95].rstrip('-')}-{series.id}-{actual_date:%Y%m%d}"
+                    session.add(
+                        Contest(
+                            owner_user_id=series.owner_user_id,
+                            ruleset_version_id=series.ruleset_version_id,
+                            name=f"{series.name[:180]} — {actual_date.isoformat()}",
+                            slug=slug,
+                            description=series.description,
+                            starts_at=starts_at,
+                            ends_at=ends_at,
+                            periodicity=series.periodicity,
+                            series_id=series.id,
+                            series_occurrence_date=occurrence_date,
+                            is_series_anchor=False,
+                            log_submission_cutoff_at=ends_at
+                            + timedelta(seconds=series.cutoff_offset_seconds),
+                            cutoff_is_override=False,
+                            status=ContestStatus.DRAFT,
+                            auto_recalculate_on_upload=series.auto_recalculate_on_upload,
+                        )
+                    )
+                    existing_dates.add(occurrence_date)
+                    generated += 1
         session.commit()
     return {"generated": generated, "skipped": skipped}

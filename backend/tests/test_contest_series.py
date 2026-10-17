@@ -124,6 +124,36 @@ def test_generation_applies_skip_and_move_exceptions(session_factory):
         assert edition.starts_at == datetime(2027, 5, 8, 12, tzinfo=UTC)
 
 
+def test_generation_materializes_each_selected_month_and_weekday(session_factory):
+    with session_factory() as session:
+        _, series = create_series(session, window=90)
+        series.periodicity = {
+            "frequency": "nth_weekday",
+            "month": [1, 3],
+            "weekday": [0, 4],
+            "occurrence": 1,
+        }
+        session.commit()
+        series_id = series.id
+
+    result = generate_due_editions(session_factory, now=datetime(2026, 1, 1, tzinfo=UTC))
+    assert result == {"generated": 4, "skipped": 0}
+    with session_factory() as session:
+        editions = list(
+            session.scalars(
+                select(Contest)
+                .where(Contest.series_id == series_id, Contest.is_series_anchor.is_(False))
+                .order_by(Contest.starts_at)
+            )
+        )
+        assert [edition.starts_at for edition in editions] == [
+            datetime(2026, 1, 2, 12, tzinfo=UTC),
+            datetime(2026, 1, 5, 12, tzinfo=UTC),
+            datetime(2026, 3, 2, 12, tzinfo=UTC),
+            datetime(2026, 3, 6, 12, tzinfo=UTC),
+        ]
+
+
 def test_manual_series_does_not_generate_editions(session_factory):
     with session_factory() as session:
         _, series = create_series(session, window=None)

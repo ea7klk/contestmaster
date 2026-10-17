@@ -475,6 +475,33 @@ def test_contest_schedule_preview_api_uses_contest_configuration():
     assert invalid.status_code == 422
 
 
+def test_contest_schedule_preview_supports_multiple_months_and_weekdays():
+    response = TestClient(app).post(
+        "/api/v1/contests/schedule-preview",
+        json={
+            "year": 2026,
+            "starts_at": "2026-01-09T08:00:00Z",
+            "ends_at": "2026-01-09T09:00:00Z",
+            "periodicity": {
+                "frequency": "nth_weekday",
+                "month": [1, 3],
+                "weekday": [0, 4],
+                "occurrence": 2,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["starts_at"] == "2026-01-09T08:00:00Z"
+    assert [item["starts_at"] for item in response.json()["occurrences"]] == [
+        "2026-01-09T08:00:00Z",
+        "2026-01-12T08:00:00Z",
+        "2026-03-09T08:00:00Z",
+        "2026-03-13T08:00:00Z",
+        "2027-01-08T08:00:00Z",
+    ]
+
+
 def test_recurrence_rejects_zero_occurrence_at_schema_boundary():
     with pytest.raises(ValidationError, match="occurrence must be"):
         Recurrence.model_validate(

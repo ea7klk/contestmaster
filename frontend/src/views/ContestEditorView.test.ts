@@ -180,4 +180,94 @@ describe('ContestEditorView', () => {
     )
     expect(submissions[0]?.automatic_window_days).toBe(90)
   })
+
+  it('saves multiple months and weekdays for an nth-weekday schedule', async () => {
+    const submissions: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests') && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          submissions.push(body)
+          return ok({ id: 55, ...body, status: 'draft', owner_user_id: 4 })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountEditor()
+    await flushPromises()
+    const inputs = wrapper.findAll('input')
+    await inputs[0]?.setValue('Nth Weekday Sprint')
+    await inputs[1]?.setValue('nth-weekday-sprint')
+    const datetimes = wrapper.findAll('input[type="datetime-local"]')
+    await datetimes[0]?.setValue('2026-01-02T08:00')
+    await datetimes[1]?.setValue('2026-01-02T09:00')
+    await datetimes[2]?.setValue('2026-01-09T09:00')
+    const scheduleSelects = wrapper.findAll('.schedule-controls select')
+    await scheduleSelects[0]?.setValue('nth_weekday')
+
+    const monthChecks = wrapper
+      .findAll('fieldset.schedule-selection')
+      .at(0)!
+      .findAll('input')
+    await monthChecks[2]?.setValue(true)
+    const weekdayChecks = wrapper
+      .findAll('fieldset.schedule-selection')
+      .at(1)!
+      .findAll('input')
+    await weekdayChecks[0]?.setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(submissions[0]?.periodicity).toEqual({
+      frequency: 'nth_weekday',
+      month: [1, 3],
+      weekday: [0, 5],
+      occurrence: 1,
+    })
+  })
+
+  it('loads multiple recurrence selections and saves nth full-weekend months', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    const recurringContest = {
+      ...contest,
+      starts_at: '2026-01-03T08:00:00Z',
+      ends_at: '2026-01-03T09:00:00Z',
+      periodicity: {
+        frequency: 'nth_full_weekend',
+        month: [1, 5],
+        occurrence: 1,
+      },
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me')) return ok(user)
+        if (path.endsWith('/contests/31') && init?.method === 'GET')
+          return ok(recurringContest)
+        if (path.endsWith('/contests/31') && init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          updates.push(body)
+          return ok({ ...recurringContest, ...body })
+        }
+        throw new Error(`Unexpected request: ${path}`)
+      }),
+    )
+    const wrapper = mountEditor('31')
+    await flushPromises()
+    const monthChecks = wrapper.findAll('fieldset.schedule-selection input')
+    expect((monthChecks[0]?.element as HTMLInputElement).checked).toBe(true)
+    expect((monthChecks[4]?.element as HTMLInputElement).checked).toBe(true)
+    expect((monthChecks[1]?.element as HTMLInputElement).checked).toBe(false)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(updates[0]?.periodicity).toEqual({
+      frequency: 'nth_full_weekend',
+      month: [1, 5],
+      occurrence: 1,
+    })
+  })
 })

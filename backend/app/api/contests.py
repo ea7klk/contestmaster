@@ -50,7 +50,7 @@ from backend.app.scheduling import (
     Recurrence,
     ResolvedSchedule,
     ScheduleResolutionError,
-    recurrence_date,
+    recurrence_dates,
     resolve_contest_schedule,
     resolve_next_contest_schedules,
 )
@@ -160,7 +160,7 @@ class ContestWrite(BaseModel):
             raise ValueError("Recurring cutoff offsets must use whole hours or whole days")
         if self.periodicity is not None:
             starts_at_utc = self.starts_at.astimezone(UTC)
-            if recurrence_date(self.periodicity, starts_at_utc.year) != starts_at_utc.date():
+            if starts_at_utc.date() not in recurrence_dates(self.periodicity, starts_at_utc.year):
                 raise ValueError("Contest start date must match its configured UTC periodicity")
         elif self.cutoff_offset_seconds is not None or self.automatic_window_days is not None:
             raise ValueError("Recurring-series settings require contest periodicity")
@@ -621,10 +621,10 @@ def set_series_exception(
     series = _series_for_user(session, series_id, principal)
     recurrence = Recurrence.model_validate(series.periodicity)
     try:
-        scheduled_date = recurrence_date(recurrence, payload.occurrence_date.year)
+        scheduled_dates = recurrence_dates(recurrence, payload.occurrence_date.year)
     except ScheduleResolutionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if scheduled_date != payload.occurrence_date:
+    if payload.occurrence_date not in scheduled_dates:
         raise HTTPException(
             status_code=422,
             detail="The exception date does not match a scheduled recurrence.",
@@ -635,10 +635,10 @@ def set_series_exception(
         )
     if payload.action == "move" and payload.moved_to_date is not None:
         try:
-            destination_occurrence = recurrence_date(recurrence, payload.moved_to_date.year)
+            destination_occurrences = recurrence_dates(recurrence, payload.moved_to_date.year)
         except ScheduleResolutionError:
-            destination_occurrence = None
-        if destination_occurrence == payload.moved_to_date:
+            destination_occurrences = []
+        if payload.moved_to_date in destination_occurrences:
             raise HTTPException(
                 status_code=409,
                 detail="The moved date is already reserved for another scheduled occurrence.",

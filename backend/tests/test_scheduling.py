@@ -7,6 +7,7 @@ from backend.app.scheduling import (
     Recurrence,
     ScheduleResolutionError,
     recurrence_date,
+    recurrence_dates,
     resolve_next_contest_schedules,
 )
 
@@ -56,3 +57,56 @@ def test_five_occurrence_preview_keeps_start_time_and_event_duration_in_utc():
 def test_full_weekend_occurrence_is_required_for_nth_pattern():
     with pytest.raises(ValidationError, match="requires an occurrence"):
         Recurrence(frequency="nth_full_weekend", month=2)
+
+
+def test_nth_weekday_resolves_multiple_months_and_weekdays():
+    recurrence = Recurrence(
+        frequency="nth_weekday",
+        month=[3, 1],
+        weekday=[0, 4],
+        occurrence=2,
+    )
+
+    assert recurrence_dates(recurrence, 2026) == [
+        date(2026, 1, 9),
+        date(2026, 1, 12),
+        date(2026, 3, 9),
+        date(2026, 3, 13),
+    ]
+
+
+def test_nth_full_weekend_skips_selected_months_without_fifth_weekend():
+    recurrence = Recurrence(frequency="nth_full_weekend", month=[1, 3, 4, 5], occurrence=5)
+
+    assert recurrence_dates(recurrence, 2026) == [date(2026, 5, 30)]
+
+
+def test_multi_month_and_weekday_schedule_preview_is_sorted_and_repeats_each_selection():
+    recurrence = Recurrence(
+        frequency="nth_weekday",
+        month=[1, 3],
+        weekday=[0, 4],
+        occurrence=2,
+    )
+    resolved = resolve_next_contest_schedules(
+        recurrence,
+        datetime(2026, 1, 9, 8, tzinfo=UTC),
+        datetime(2026, 1, 9, 9, tzinfo=UTC),
+        count=4,
+    )
+
+    assert [item.starts_at for item in resolved] == [
+        datetime(2026, 1, 9, 8, tzinfo=UTC),
+        datetime(2026, 1, 12, 8, tzinfo=UTC),
+        datetime(2026, 3, 9, 8, tzinfo=UTC),
+        datetime(2026, 3, 13, 8, tzinfo=UTC),
+    ]
+
+
+def test_multi_selection_must_not_contain_duplicates_or_be_empty():
+    with pytest.raises(ValidationError, match="unique"):
+        Recurrence(frequency="nth_weekday", month=[1, 1], weekday=[0], occurrence=1)
+    with pytest.raises(ValidationError, match="unique"):
+        Recurrence(frequency="nth_weekday", month=[1], weekday=[0, 0], occurrence=1)
+    with pytest.raises(ValidationError, match="non-empty"):
+        Recurrence(frequency="nth_weekday", month=[], weekday=[0], occurrence=1)

@@ -29,8 +29,10 @@ interface ContestForm {
   ends_at: string
   periodicity_frequency: 'fixed' | ContestPeriodicity['frequency']
   periodicity_month: number
+  periodicity_months: number[]
   periodicity_day: number
   periodicity_weekday: number
+  periodicity_weekdays: number[]
   periodicity_occurrence: number
   log_submission_cutoff_at: string
   cutoff_offset_value: number
@@ -53,8 +55,10 @@ function emptyForm(): ContestForm {
     ends_at: '',
     periodicity_frequency: 'fixed',
     periodicity_month: 1,
+    periodicity_months: [1],
     periodicity_day: 1,
     periodicity_weekday: 5,
+    periodicity_weekdays: [5],
     periodicity_occurrence: 1,
     log_submission_cutoff_at: '',
     cutoff_offset_value: 7,
@@ -91,6 +95,15 @@ const editingId = computed(() => {
 const pageTitle = computed(() =>
   editingId.value === null ? 'Create a contest' : 'Edit contest',
 )
+const weekdayOptions = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+]
 
 function utcInputValue(instant: string): string {
   const date = new Date(instant)
@@ -99,6 +112,8 @@ function utcInputValue(instant: string): string {
 }
 
 function contestForm(contest: Contest): ContestForm {
+  const selectedMonths = contest.periodicity?.month
+  const selectedWeekdays = contest.periodicity?.weekday
   return {
     name: contest.name,
     slug: contest.slug,
@@ -106,9 +121,19 @@ function contestForm(contest: Contest): ContestForm {
     starts_at: utcInputValue(contest.starts_at),
     ends_at: utcInputValue(contest.ends_at),
     periodicity_frequency: contest.periodicity?.frequency ?? 'fixed',
-    periodicity_month: contest.periodicity?.month ?? 1,
+    periodicity_month:
+      (Array.isArray(selectedMonths) ? selectedMonths[0] : selectedMonths) ?? 1,
+    periodicity_months: Array.isArray(selectedMonths)
+      ? [...selectedMonths]
+      : [selectedMonths ?? 1],
     periodicity_day: contest.periodicity?.day ?? 1,
-    periodicity_weekday: contest.periodicity?.weekday ?? 5,
+    periodicity_weekday:
+      (Array.isArray(selectedWeekdays)
+        ? selectedWeekdays[0]
+        : selectedWeekdays) ?? 5,
+    periodicity_weekdays: Array.isArray(selectedWeekdays)
+      ? [...selectedWeekdays]
+      : [selectedWeekdays ?? 5],
     periodicity_occurrence: contest.periodicity?.occurrence ?? 1,
     log_submission_cutoff_at: utcInputValue(contest.log_submission_cutoff_at),
     cutoff_offset_value: (() => {
@@ -135,6 +160,10 @@ function toUtcInstant(value: string): string {
 
 function configuredPeriodicity(source: ContestForm): ContestPeriodicity | null {
   if (source.periodicity_frequency === 'fixed') return null
+  const selectionValue = (values: number[]) => {
+    const sorted = [...values].sort((left, right) => left - right)
+    return sorted.length === 1 ? sorted[0] : sorted
+  }
   if (source.periodicity_frequency === 'annual_date') {
     return {
       frequency: source.periodicity_frequency,
@@ -145,15 +174,15 @@ function configuredPeriodicity(source: ContestForm): ContestPeriodicity | null {
   if (source.periodicity_frequency === 'nth_weekday') {
     return {
       frequency: source.periodicity_frequency,
-      month: source.periodicity_month,
-      weekday: source.periodicity_weekday,
+      month: selectionValue(source.periodicity_months),
+      weekday: selectionValue(source.periodicity_weekdays),
       occurrence: source.periodicity_occurrence,
     }
   }
   if (source.periodicity_frequency === 'nth_full_weekend') {
     return {
       frequency: 'nth_full_weekend',
-      month: source.periodicity_month,
+      month: selectionValue(source.periodicity_months),
       occurrence: source.periodicity_occurrence,
     }
   }
@@ -312,6 +341,16 @@ async function load() {
 
 async function save() {
   if (saving.value) return
+  if (
+    (form.periodicity_frequency === 'nth_weekday' &&
+      (!form.periodicity_months.length || !form.periodicity_weekdays.length)) ||
+    (form.periodicity_frequency === 'nth_full_weekend' &&
+      !form.periodicity_months.length)
+  ) {
+    errorMessage.value =
+      'Select at least one month and weekday for this schedule.'
+    return
+  }
   saving.value = true
   errorMessage.value = ''
   statusMessage.value = ''
@@ -465,7 +504,12 @@ watch(
                 </option>
               </select>
             </label>
-            <label v-if="form.periodicity_frequency !== 'fixed'"
+            <label
+              v-if="
+                form.periodicity_frequency !== 'fixed' &&
+                form.periodicity_frequency !== 'nth_weekday' &&
+                form.periodicity_frequency !== 'nth_full_weekend'
+              "
               >{{ $tr('UTC month') }}
               <select v-model.number="form.periodicity_month">
                 <option v-for="month in 12" :key="month" :value="month">
@@ -473,6 +517,36 @@ watch(
                 </option>
               </select>
             </label>
+            <fieldset
+              v-if="
+                form.periodicity_frequency === 'nth_weekday' ||
+                form.periodicity_frequency === 'nth_full_weekend'
+              "
+              class="full-width schedule-selection"
+            >
+              <legend>{{ $tr('Months') }}</legend>
+              <p>
+                {{
+                  $tr(
+                    'Choose every month in which this recurrence should occur.',
+                  )
+                }}
+              </p>
+              <div class="schedule-checkbox-grid">
+                <label
+                  v-for="month in 12"
+                  :key="month"
+                  class="schedule-checkbox"
+                >
+                  <input
+                    v-model="form.periodicity_months"
+                    type="checkbox"
+                    :value="month"
+                  />
+                  {{ formatUtcMonth(month) }}
+                </label>
+              </div>
+            </fieldset>
             <label v-if="form.periodicity_frequency === 'annual_date'"
               >{{ $tr('UTC day of month')
               }}<input
@@ -487,26 +561,33 @@ watch(
                 form.periodicity_frequency === 'nth_full_weekend'
               "
             >
-              <label v-if="form.periodicity_frequency === 'nth_weekday'"
-                >{{ $tr('Weekday')
-                }}<select v-model.number="form.periodicity_weekday">
-                  <option
-                    v-for="(weekday, index) in [
-                      'Monday',
-                      'Tuesday',
-                      'Wednesday',
-                      'Thursday',
-                      'Friday',
-                      'Saturday',
-                      'Sunday',
-                    ]"
-                    :key="weekday"
-                    :value="index"
-                  >
-                    {{ weekday }}
-                  </option>
-                </select></label
+              <fieldset
+                v-if="form.periodicity_frequency === 'nth_weekday'"
+                class="full-width schedule-selection"
               >
+                <legend>{{ $tr('Weekdays') }}</legend>
+                <p>
+                  {{
+                    $tr(
+                      'Choose every weekday on which this occurrence should happen.',
+                    )
+                  }}
+                </p>
+                <div class="schedule-checkbox-grid">
+                  <label
+                    v-for="(weekday, index) in weekdayOptions"
+                    :key="weekday"
+                    class="schedule-checkbox"
+                  >
+                    <input
+                      v-model="form.periodicity_weekdays"
+                      type="checkbox"
+                      :value="index"
+                    />
+                    {{ $tr(weekday) }}
+                  </label>
+                </div>
+              </fieldset>
               <label
                 >{{
                   form.periodicity_frequency === 'nth_full_weekend'
@@ -519,9 +600,21 @@ watch(
                   <option :value="3">{{ $tr('Third') }}</option>
                   <option :value="4">{{ $tr('Fourth') }}</option>
                   <option :value="5">{{ $tr('Fifth') }}</option>
-                  <option :value="-1">{{ $tr('Last') }}</option>
+                  <option
+                    v-if="form.periodicity_frequency === 'nth_weekday'"
+                    :value="-1"
+                  >
+                    {{ $tr('Last') }}
+                  </option>
                 </select></label
               >
+              <p v-if="form.periodicity_occurrence === 5" class="full-width">
+                {{
+                  $tr(
+                    'If a selected month has no fifth matching weekday or full weekend, that month is skipped.',
+                  )
+                }}
+              </p>
             </template>
             <template v-if="form.periodicity_frequency !== 'fixed'">
               <button
@@ -801,6 +894,32 @@ watch(
 .schedule-controls legend {
   padding: 0 0.35rem;
   font-weight: 700;
+}
+.schedule-selection {
+  display: grid;
+  gap: 0.55rem;
+  border: 0;
+  padding: 0;
+}
+.schedule-selection p {
+  margin: 0;
+  color: var(--color-muted);
+}
+.schedule-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+.schedule-controls label.schedule-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+.schedule-checkbox input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
 }
 .checkbox-field {
   display: flex;

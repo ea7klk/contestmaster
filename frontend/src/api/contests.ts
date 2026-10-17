@@ -10,9 +10,9 @@ export interface ContestPeriodicity {
     | 'first_full_weekend'
     | 'last_full_weekend'
     | 'nth_full_weekend'
-  month: number
+  month: number | number[]
   day?: number
-  weekday?: number
+  weekday?: number | number[]
   occurrence?: number
 }
 

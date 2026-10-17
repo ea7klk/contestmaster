@@ -54,10 +54,10 @@ The contest manager owns UTC start and end instants and optional periodicity. Co
 Supported recurrence selectors are:
 
 - **Annual date:** same month and day every year.
-- **Nth weekday:** occurrence 1–5 or last (`-1`) of a chosen weekday within a month.
-- **First, last, or Nth full weekend:** a full Saturday/Sunday pair entirely within the chosen month; the schedule starts Saturday at its configured UTC time. Nth weekend supports occurrences 1–5.
+- **Nth weekday:** occurrence 1–5 or last (`-1`) for any selected weekday within any selected month. Each selected month and weekday combination creates an occurrence.
+- **First, last, or Nth full weekend:** a full Saturday/Sunday pair entirely within the chosen month; the schedule starts Saturday at its configured UTC time. Nth weekend supports occurrences 1–5 and can target multiple selected months.
 
-The API's `POST /api/v1/contests/schedule-preview` returns five upcoming occurrences, preserving the configured UTC time and event duration. An annual date that does not exist in a year, a fifth weekday that does not exist, or a fifth full weekend that does not fit in a month is omitted/rejected as appropriate.
+The API's `POST /api/v1/contests/schedule-preview` returns five upcoming occurrences, preserving the configured UTC time and event duration. An annual date that does not exist in a year is omitted. If a selected month lacks the selected fifth weekday or fifth full weekend, that month/weekday combination is skipped while other valid selections continue. Older imports may continue to provide a single month or weekday as a number; multiple selections are stored as arrays.
 
 For recurring contests, **automatic edition creation** is optional. Set a rolling window from 1 to 730 days; the API's single-process internal timer checks at startup and hourly, then creates missing editions as drafts within that window. Leave it disabled to manage editions manually. The manager can add an exception to skip or move a scheduled date. A skipped edition that already has logs cannot be removed; keep it as an edition instead. Deleting a series requires typing its name and removes all editions and their dependent data.
 

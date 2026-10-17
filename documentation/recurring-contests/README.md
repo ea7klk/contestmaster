@@ -7,10 +7,10 @@ A recurring series stores a UTC recurrence pattern, the first edition's UTC star
 Supported patterns are:
 
 - Annual calendar date.
-- Nth weekday in a month, including the last weekday.
-- First, last, or Nth full weekend (Saturday and Sunday both fall within the month).
+- Nth weekday in selected months, including one or more selected weekdays and the last occurrence.
+- First, last, or Nth full weekend (Saturday and Sunday both fall within the month); Nth full weekends can be selected across multiple months.
 
-All recurrence dates and times are resolved in UTC. The schedule preview returns the next five occurrences. If a date pattern does not occur in a given year (such as February 29 in a non-leap year), that year is skipped.
+All recurrence dates and times are resolved in UTC. The schedule preview returns the next five occurrences. If an annual date does not occur in a given year (such as February 29 in a non-leap year), that year is skipped. When a selected month has no fifth weekday or fifth full weekend, that month/weekday combination is skipped while other selected dates still recur. Existing single month and weekday values remain accepted in imported contest JSON; multi-selections use arrays.
 
 ## Edition creation and exceptions
 
