@@ -41,6 +41,48 @@ const details = {
 }
 
 describe('PublicContestView', () => {
+  it('shows a monospace two-QSO Cabrillo file example for Cabrillo contests', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...details,
+              ruleset: {
+                ...details.ruleset,
+                rules: [
+                  ...details.ruleset.rules,
+                  {
+                    id: 'format',
+                    rule: { kind: 'format_mapping', format: 'cabrillo' },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    )
+    const wrapper = mount(PublicContestView, {
+      props: { slug: 'autumn-test' },
+      global: {
+        plugins: [createRouter({ history: createMemoryHistory(), routes: [] })],
+      },
+    })
+    await flushPromises()
+
+    const example = wrapper.get('.cabrillo-example')
+    expect(example.get('h3').text()).toBe(
+      'Cabrillo example with two valid QSO lines',
+    )
+    expect(example.get('pre code').text().match(/^QSO:/gm)).toHaveLength(2)
+    expect(example.get('pre code').text()).toContain('END-OF-LOG:')
+    expect(getComputedStyle(example.get('pre').element).fontFamily).toMatch(
+      /monospace/i,
+    )
+  })
+
   it('updates generated summaries when the selected language changes', async () => {
     vi.stubGlobal(
       'fetch',

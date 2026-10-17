@@ -7,6 +7,7 @@ import { formatUtcDateTime, i18n } from '../i18n'
 import { renderContestMarkdown } from './contestMarkdown'
 import {
   describeContestRuleset,
+  generateCabrilloExample,
   type ContestSummaryItem,
   type SummaryWithBullets,
 } from './publicContestDescription'
@@ -24,6 +25,16 @@ const rulesetSummary = computed(() => {
       ? { name: contest.value.name, slug: contest.value.slug }
       : undefined,
   )
+})
+const cabrilloExample = computed(() => {
+  const current = contest.value
+  if (!current) return null
+  return generateCabrilloExample(current.ruleset ?? null, {
+    name: current.name,
+    slug: current.slug,
+    starts_at: current.starts_at,
+    ends_at: current.ends_at,
+  })
 })
 function hasBullets(item: ContestSummaryItem): item is SummaryWithBullets {
   return typeof item !== 'string'
@@ -109,6 +120,16 @@ onMounted(async () => {
           </li>
         </ul>
         <p v-else>{{ $tr('Detailed contest rules are not available yet.') }}</p>
+        <section
+          v-if="cabrilloExample"
+          class="cabrillo-example"
+          aria-labelledby="cabrillo-example-title"
+        >
+          <h3 id="cabrillo-example-title">
+            {{ $tr('Cabrillo example with two valid QSO lines') }}
+          </h3>
+          <pre><code>{{ cabrilloExample }}</code></pre>
+        </section>
       </section>
       <dl class="contest-dates">
         <div>
@@ -194,6 +215,24 @@ onMounted(async () => {
 }
 .ruleset-overview li + li {
   margin-top: 0.45rem;
+}
+.cabrillo-example {
+  margin-top: 1.25rem;
+}
+.cabrillo-example h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+.cabrillo-example pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 0.9rem;
+  border-radius: 0.35rem;
+  background: var(--code-surface, #f4eee9);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre;
 }
 .contest-dates div {
   display: grid;

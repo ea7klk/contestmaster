@@ -97,6 +97,302 @@ const adifExchangeTags: Record<string, { sent: string; received: string }> = {
   itu_zone: { sent: 'MY_ITU_ZONE', received: 'ITUZ' },
 }
 
+const defaultCabrilloQsoColumns = [
+  'frequency',
+  'mode',
+  'date',
+  'time',
+  'callsign_sent',
+  'rst_sent',
+  'exchange_sent',
+  'callsign_received',
+  'rst_received',
+  'exchange_received',
+]
+
+const sampleFrequencyByBand: Record<string, number> = {
+  '160m': 1810,
+  '80m': 3560,
+  '60m': 5357,
+  '40m': 7040,
+  '30m': 10120,
+  '20m': 14025,
+  '17m': 18080,
+  '15m': 21025,
+  '12m': 24900,
+  '10m': 28025,
+  '6m': 50100,
+  '4m': 70100,
+  '2m': 144100,
+  '1.25m': 222100,
+  '70cm': 432100,
+  '33cm': 902100,
+  '23cm': 1296100,
+  '13cm': 2320100,
+  '9cm': 3400100,
+  '6cm': 5760100,
+}
+const standardCabrilloModes = new Set(['CW', 'PH', 'FM', 'RY', 'DG'])
+
+function sampleExchangeValue(
+  field: JsonRecord,
+  index: number,
+  direction: 'sent' | 'received' | 'entry',
+): string | null {
+  const valueType = stringValue(field.value_type, 'text')
+  const maxLength =
+    typeof field.max_length === 'number' ? field.max_length : 256
+  if (valueType === 'enum') {
+    const firstChoice = stringList(field.choices)[0]
+    return firstChoice && firstChoice.length <= maxLength ? firstChoice : null
+  }
+
+  if (valueType === 'integer' || valueType === 'serial') {
+    const minimum =
+      typeof field.min_integer === 'number'
+        ? field.min_integer
+        : valueType === 'serial'
+          ? 1
+          : 0
+    const maximum =
+      typeof field.max_integer === 'number'
+        ? field.max_integer
+        : Number.MAX_SAFE_INTEGER
+    const value =
+      valueType === 'serial'
+        ? minimum + index + (direction === 'received' ? 32 : 0)
+        : minimum
+    if (value > maximum) return null
+    const token = String(value).padStart(Math.min(3, maxLength), '0')
+    return token.length <= maxLength ? token : null
+  }
+
+  const fieldKey = stringValue(field.key).toLowerCase()
+  const candidates =
+    valueType === 'callsign'
+      ? direction === 'received'
+        ? ['K1ABC', 'W1XYZ', 'N0TEST']
+        : ['N0TEST', 'K1ABC', 'W1XYZ']
+      : valueType === 'grid'
+        ? ['FN31', 'EM10', 'FN20']
+        : valueType === 'zone'
+          ? ['05', '14', '28']
+          : fieldKey === 'rst'
+            ? ['599']
+            : fieldKey === 'section'
+              ? ['DX', 'ABC']
+              : ['TEST', '599', '1', '001', 'FN31', 'K1ABC', 'DX', 'A']
+  const pattern = typeof field.pattern === 'string' ? field.pattern : null
+  let expression: RegExp | null = null
+  if (pattern) {
+    try {
+      expression = new RegExp(`^(?:${pattern})$`)
+    } catch {
+      return null
+    }
+  }
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate.length <= maxLength &&
+        (!expression || expression.test(candidate)),
+    ) ?? null
+  )
+}
+
+function sampleCategoryHeader(
+  categoryRule: JsonRecord | undefined,
+  mappings: unknown,
+): string | null | undefined {
+  const dimensions = Array.isArray(categoryRule?.dimensions)
+    ? categoryRule.dimensions.filter(isRecord)
+    : []
+  const requiredKeys = dimensions
+    .filter((dimension) => dimension.required !== false)
+    .map((dimension) => stringValue(dimension.key))
+  const mappingRows = Array.isArray(mappings) ? mappings.filter(isRecord) : []
+  if (requiredKeys.length === 0) return undefined
+  if (requiredKeys.length !== 1 || mappingRows.length === 0) return null
+
+  const selected = mappingRows.find((mapping) => {
+    const values = isRecord(mapping.category_values)
+      ? mapping.category_values
+      : {}
+    return requiredKeys.every((key) => {
+      const choice = values[key]
+      const dimension = dimensions.find((item) => item.key === key)
+      const choices = Array.isArray(dimension?.choices)
+        ? dimension.choices.filter(isRecord).map((item) => item.key)
+        : []
+      return (
+        typeof choice === 'string' &&
+        (choices.length === 0 || choices.includes(choice))
+      )
+    })
+  })
+  if (!selected) return requiredKeys.length ? null : undefined
+  const externalValue = stringValue(selected.external_value)
+  const categoryNames: Record<string, string> = {
+    assisted: 'ASSISTED',
+    band: 'BAND',
+    mode: 'MODE',
+    operator: 'OPERATOR',
+    overlay: 'OVERLAY',
+    power: 'POWER',
+    station: 'STATION',
+    transmitter: 'TRANSMITTER',
+  }
+  const mappedKeys = isRecord(selected.category_values)
+    ? Object.keys(selected.category_values)
+    : []
+  const categoryName = categoryNames[requiredKeys[0]?.toLowerCase() ?? '']
+  return externalValue && mappedKeys.length === 1 && categoryName
+    ? `CATEGORY-${categoryName}: ${externalValue}`
+    : null
+}
+
+/** Build a minimal Cabrillo 3.0 example from ruleset constraints, or omit it when unsafe. */
+export function generateCabrilloExample(
+  ruleset: RulesetDraft | null,
+  contest?: {
+    name: string
+    slug: string
+    starts_at: string
+    ends_at: string
+  },
+): string | null {
+  if (!ruleset || !contest || !Array.isArray(ruleset.rules)) return null
+  const configuredRules = ruleset.rules.filter(
+    (configured) => isRecord(configured) && isRecord(configured.rule),
+  )
+  const formatConfig = configuredRules.find(
+    (configured) =>
+      configured.rule.kind === 'format_mapping' &&
+      stringValue(configured.rule.format).toLowerCase() === 'cabrillo',
+  )
+  if (!formatConfig || isRecord(formatConfig.when)) return null
+
+  const rules = configuredRules.map((configured) => configured.rule)
+  const eligibility = rules.find((rule) => rule.kind === 'eligibility')
+  if (
+    configuredRules.some(
+      (configured) =>
+        (configured.rule.kind === 'eligibility' ||
+          configured.rule.kind === 'exchange' ||
+          configured.rule.kind === 'categories') &&
+        isRecord(configured.when),
+    )
+  )
+    return null
+
+  const allowedBands = eligibility ? stringList(eligibility.allowed_bands) : []
+  const band = allowedBands.length
+    ? allowedBands.find((value) => sampleFrequencyByBand[value.toLowerCase()])
+    : '20m'
+  if (!band) return null
+  const frequency = sampleFrequencyByBand[band.toLowerCase()]
+  if (!frequency) return null
+  const allowedModes = eligibility ? stringList(eligibility.allowed_modes) : []
+  const mode = allowedModes.length
+    ? allowedModes.find((candidate) =>
+        standardCabrilloModes.has(candidate.toUpperCase()),
+      )
+    : 'CW'
+  if (!mode) return null
+  const exchangeRule = rules.find((rule) => rule.kind === 'exchange')
+  const exchangeFields = Array.isArray(exchangeRule?.fields)
+    ? exchangeRule.fields.filter(isRecord)
+    : []
+  const categoryRule = rules.find((rule) => rule.kind === 'categories')
+  const categoryHeader = sampleCategoryHeader(
+    categoryRule,
+    formatConfig.rule.category_mappings,
+  )
+  if (categoryHeader === null) return null
+
+  const start = Date.parse(contest.starts_at)
+  const end = Date.parse(contest.ends_at)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  const qsoInstant = Math.ceil(start / 60_000) * 60_000
+  if (qsoInstant >= end) return null
+
+  const headerFields = isRecord(formatConfig.rule.header_fields)
+    ? formatConfig.rule.header_fields
+    : {}
+  const headerName = (key: string, fallback: string) =>
+    stringValue(headerFields[key], fallback).toUpperCase()
+  const headerLines = [
+    'START-OF-LOG: 3.0',
+    `${headerName('contest', 'CONTEST')}: ${contest.slug || contest.name}`,
+    `${headerName('callsign', 'CALLSIGN')}: N0TEST`,
+  ]
+  if (categoryHeader) headerLines.push(categoryHeader)
+
+  for (const field of exchangeFields.filter(
+    (item) => item.direction === 'entry',
+  )) {
+    const header = headerName(stringValue(field.key), stringValue(field.key))
+    const value = sampleExchangeValue(field, 0, 'entry')
+    if (!value) return null
+    headerLines.push(`${header}: ${value}`)
+  }
+
+  const configuredColumns = stringList(formatConfig.rule.qso_columns)
+  const columns = configuredColumns.length
+    ? configuredColumns
+    : defaultCabrilloQsoColumns
+  if (
+    columns.length !== defaultCabrilloQsoColumns.length ||
+    !defaultCabrilloQsoColumns.every((column) => columns.includes(column))
+  )
+    return null
+
+  const makeExchange = (direction: 'sent' | 'received', index: number) => {
+    const fields = exchangeFields.filter(
+      (field) => field.direction === direction || field.direction === 'both',
+    )
+    if (fields.length === 0) return 'TEST'
+    const tokens = fields.map((field) =>
+      sampleExchangeValue(field, index, direction),
+    )
+    return tokens.every((value): value is string => value !== null)
+      ? tokens.join(' ')
+      : null
+  }
+
+  const qsos = [0, 1].map((index) => {
+    const exchangeSent = makeExchange('sent', index)
+    const exchangeReceived = makeExchange('received', index)
+    if (exchangeSent === null || exchangeReceived === null) return null
+    const instant = new Date(qsoInstant).toISOString()
+    const date = instant.slice(0, 10)
+    const time = instant.slice(11, 16).replace(':', '')
+    const fields: Record<string, string> = {
+      frequency: String(frequency),
+      mode,
+      date,
+      time,
+      callsign_sent: 'N0TEST',
+      rst_sent: '599',
+      exchange_sent: exchangeSent,
+      callsign_received: index === 0 ? 'K1ABC' : 'W1XYZ',
+      rst_received: '599',
+      exchange_received: exchangeReceived,
+    }
+    for (const column of columns) {
+      if (!(column in fields)) fields[column] = 'TEST'
+    }
+    return columns.map((column) => fields[column] ?? '').join(' ')
+  })
+  if (qsos.some((line) => line === null)) return null
+  const validQsos = qsos.filter((line): line is string => line !== null)
+  return [
+    ...headerLines,
+    ...validQsos.map((qso) => `QSO: ${qso}`),
+    'END-OF-LOG:',
+  ].join('\n')
+}
+
 function requiredExchangeEntries(
   rule: JsonRecord | undefined,
   format: string,
