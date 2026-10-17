@@ -204,8 +204,7 @@ function describeLogSubmissionRequirements(
 const categoryMeanings: Record<string, string> = {
   operator:
     'classifies the operator arrangement; the contest rules define operator eligibility, operating-time, and transmitter limits',
-  power:
-    'classifies station transmit output power. By default, QRP is up to 5 W, Low Power is up to 100 W, and High Power is up to the legal limit. Contest-specific published rules take precedence and define the measurement point',
+  power: 'classifies station transmit output power',
   band: 'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
   mode: 'classifies operating modes; the contest rules define included modes and mixed-mode requirements',
   assisted:
@@ -222,9 +221,9 @@ const categoryMeanings: Record<string, string> = {
 }
 
 const powerChoiceMeanings: Record<string, string> = {
-  qrp: 'Maximum transmit output is 5 W unless the contest rules specify otherwise.',
-  low: 'Maximum transmit output is 100 W unless the contest rules specify otherwise.',
-  high: 'Transmit output may be up to the applicable legal limit unless the contest rules specify otherwise.',
+  qrp: 'Maximum transmit output: 5 W.',
+  low: 'Maximum transmit output: 100 W.',
+  high: 'Maximum transmit output: up to the applicable legal limit.',
 }
 
 function categoryDimensionKind(key: string, label: string): string {
@@ -383,6 +382,19 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
               )
           : []
       })
+      const hasGeneratedPowerLimits = dimensionRows.some((dimension) => {
+        const key = stringValue(dimension.key)
+        const label = stringValue(dimension.label, key)
+        if (categoryDimensionKind(key, label) !== 'power') return false
+        return Array.isArray(dimension.choices)
+          ? dimension.choices.some(
+              (choice) =>
+                isRecord(choice) &&
+                !stringValue(choice.description) &&
+                Object.hasOwn(powerChoiceMeanings, stringValue(choice.key)),
+            )
+          : false
+      })
       const notes = [
         'Exact qualifications and limits are contest-specific; the official published rules are authoritative.',
         ...(declarationChoices.length
@@ -395,6 +407,11 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
               `These dimensions cannot be combined: ${exclusions
                 .map((group) => names(group, 'configured dimensions'))
                 .join('; ')}.`,
+            ]
+          : []),
+        ...(hasGeneratedPowerLimits
+          ? [
+              'Unless contest rules specify otherwise, these are the assumed power limits; the official rules define where power is measured.',
             ]
           : []),
       ]

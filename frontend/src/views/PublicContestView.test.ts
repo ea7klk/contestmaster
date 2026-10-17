@@ -122,9 +122,16 @@ describe('PublicContestView', () => {
     )
     expect(wrapper.text()).toContain('Allowed band values: 20m and 40m')
     expect(wrapper.text()).toContain('Allowed mode values: CW')
-    expect(wrapper.text()).toContain('QRP is up to 5 W')
-    expect(wrapper.text()).toContain('Low Power is up to 100 W')
-    expect(wrapper.text()).toContain('High Power is up to the legal limit')
+    expect(wrapper.text()).toContain('QRP: Maximum transmit output: 5 W.')
+    expect(wrapper.text()).toContain(
+      'Low Power: Maximum transmit output: 100 W.',
+    )
+    expect(wrapper.text()).toContain(
+      'High Power: Maximum transmit output: up to the applicable legal limit.',
+    )
+    expect(
+      wrapper.text().match(/Unless contest rules specify otherwise/g),
+    ).toHaveLength(1)
     const detailLists = wrapper.findAll(
       '.ruleset-overview ul.summary-detail-list',
     )

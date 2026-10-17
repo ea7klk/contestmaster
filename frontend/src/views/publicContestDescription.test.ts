@@ -114,6 +114,7 @@ describe('describeContestRuleset', () => {
                 label: 'Power class',
                 required: false,
                 choices: [
+                  { key: 'qrp', label: 'QRP' },
                   { key: 'low', label: 'Low power' },
                   { key: 'high', label: 'High power' },
                 ],
@@ -129,13 +130,19 @@ describe('describeContestRuleset', () => {
     expect(summaryText(descriptions[0]!)).toContain(
       'Single operator and Multi operator',
     )
-    expect(summaryText(descriptions[0]!)).toContain('QRP is up to 5 W')
-    expect(summaryText(descriptions[0]!)).toContain('Low Power is up to 100 W')
-    expect(summaryText(descriptions[0]!)).toContain(
-      'High Power is up to the legal limit',
+    const powerSummary = summaryText(descriptions[0]!)
+    expect(powerSummary).toContain('QRP: Maximum transmit output: 5 W.')
+    expect(powerSummary).toContain('Low power: Maximum transmit output: 100 W.')
+    expect(powerSummary).toContain(
+      'High power: Maximum transmit output: up to the applicable legal limit.',
     )
-    expect(summaryText(descriptions[0]!)).toContain(
-      'Maximum transmit output is 100 W',
+    expect(
+      powerSummary.match(/Unless contest rules specify otherwise/g),
+    ).toHaveLength(1)
+    expect(
+      powerSummary.lastIndexOf('Unless contest rules specify otherwise'),
+    ).toBeGreaterThan(
+      powerSummary.indexOf('High power: Maximum transmit output'),
     )
     expect(summaryText(descriptions[0]!)).toContain(
       'Multi operator in Operator class as requiring a declaration',
@@ -183,6 +190,9 @@ describe('describeContestRuleset', () => {
     )
     expect(summaryText(descriptions[0]!)).toContain(
       'official published rules are authoritative',
+    )
+    expect(summaryText(descriptions[0]!)).not.toContain(
+      'Unless contest rules specify otherwise',
     )
   })
 
