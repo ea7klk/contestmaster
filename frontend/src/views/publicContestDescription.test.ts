@@ -108,7 +108,6 @@ describe('describeContestRuleset', () => {
       'rst_rcvd',
       'exch_rcvd',
     ]
-    format.rule.category_mappings = []
 
     const sample = generateCabrilloExample(legacyDraft, {
       name: 'CQ WW SSB',
@@ -123,7 +122,7 @@ describe('describeContestRuleset', () => {
     expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
   })
 
-  it('generates a standard example for the copied database QSO template', () => {
+  it('does not invent columns for the copied database QSO template', () => {
     const copiedContestDraft = structuredClone(
       rsgbFt4Draft,
     ) as unknown as RulesetDraft
@@ -150,11 +149,7 @@ describe('describeContestRuleset', () => {
       ends_at: '2026-10-20T23:59:00Z',
     })
 
-    expect(sample).not.toBeNull()
-    expect(sample).toContain('CATEGORY-OPERATOR: SINGLE-OP')
-    expect(sample).toContain('CATEGORY-POWER: QRP')
-    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
-    expect(sample).toContain(' DG ')
+    expect(sample).toBeNull()
   })
 
   it('generates a two-QSO Cabrillo sample using the contest ruleset', () => {

@@ -122,7 +122,7 @@ describe('PublicContestView', () => {
     expect(example.get('pre code').text().match(/^QSO: \d+ PH /gm)).toHaveLength(2)
   })
 
-  it('shows a standard sample and warning for the copied database ruleset', async () => {
+  it('explains why the copied database ruleset has no valid sample', async () => {
     const ruleset = structuredClone(rsgbFt4Draft) as unknown as RulesetDraft
     const format = ruleset.rules.find(
       (configured) => configured.rule.kind === 'format_mapping',
@@ -156,9 +156,9 @@ describe('PublicContestView', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('.cabrillo-example pre code').text()).toContain(' DG ')
-    expect(wrapper.get('.cabrillo-example .notice').text()).toContain(
-      'incomplete Cabrillo QSO column template',
+    expect(wrapper.find('.cabrillo-example').exists()).toBe(false)
+    expect(wrapper.get('.ruleset-overview .notice').text()).toContain(
+      'omits QSO columns required by the importer',
     )
   })
 

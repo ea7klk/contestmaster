@@ -93,15 +93,15 @@ describe('localization foundation', () => {
     await setLocale('en', undefined)
   })
 
-  it('translates the warning for incomplete saved Cabrillo templates', async () => {
+  it('translates the explanation for invalid saved Cabrillo templates', async () => {
     const source =
-      'The saved ruleset has an incomplete Cabrillo QSO column template. This example uses standard Cabrillo columns; log uploads may be rejected until a contest manager fixes the ruleset.'
+      'A valid Cabrillo sample cannot be generated because this ruleset omits QSO columns required by the importer. Correct the ruleset’s Cabrillo column configuration to see an example.'
     const expected = {
       en: source,
-      de: 'Der gespeicherte Regelsatz enthält eine unvollständige Cabrillo-QSO-Spaltenvorlage. Dieses Beispiel verwendet die standardmäßigen Cabrillo-Spalten; Log-Uploads können abgelehnt werden, bis ein Contest-Manager den Regelsatz korrigiert.',
-      fr: 'Le jeu de règles enregistré possède un modèle de colonnes QSO Cabrillo incomplet. Cet exemple utilise les colonnes Cabrillo standard ; les journaux peuvent être rejetés tant qu’un responsable du concours n’a pas corrigé le jeu de règles.',
-      es: 'El conjunto de reglas guardado tiene una plantilla incompleta de columnas QSO de Cabrillo. Este ejemplo usa las columnas estándar de Cabrillo; los registros podrían rechazarse hasta que un administrador del concurso corrija el conjunto de reglas.',
-      it: 'Il regolamento salvato contiene un modello incompleto di colonne QSO Cabrillo. Questo esempio usa le colonne Cabrillo standard; i log potrebbero essere rifiutati finché un responsabile del contest non corregge il regolamento.',
+      de: 'Ein gültiges Cabrillo-Beispiel kann nicht erstellt werden, weil diesem Regelsatz vom Importer benötigte QSO-Spalten fehlen. Korrigieren Sie die Cabrillo-Spaltenkonfiguration des Regelsatzes, um ein Beispiel anzuzeigen.',
+      fr: 'Impossible de générer un exemple Cabrillo valide, car ce jeu de règles omet des colonnes QSO requises par l’importateur. Corrigez la configuration des colonnes Cabrillo du jeu de règles pour afficher un exemple.',
+      es: 'No se puede generar un ejemplo válido de Cabrillo porque este conjunto de reglas omite columnas QSO necesarias para el importador. Corrija la configuración de columnas Cabrillo del conjunto de reglas para ver un ejemplo.',
+      it: 'Non è possibile generare un esempio Cabrillo valido perché questo regolamento omette colonne QSO richieste dall’importatore. Correggere la configurazione delle colonne Cabrillo del regolamento per visualizzare un esempio.',
     } as const
 
     for (const locale of supportedLocales) {

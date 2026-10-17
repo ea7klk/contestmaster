@@ -284,31 +284,7 @@ function sampleCategoryHeader(
     transmitter_count: 'TRANSMITTER',
   }
   if (requiredKeys.length === 0) return []
-  if (mappingRows.length === 0) {
-    const defaults: Record<string, Record<string, string>> = {
-      operator: {
-        single_operator: 'SINGLE-OP',
-        multi_operator: 'MULTI-OP',
-      },
-      power: { qrp: 'QRP', low: 'LOW', high: 'HIGH' },
-    }
-    const headers: string[] = []
-    for (const key of requiredKeys) {
-      const categoryName = categoryNames[key.toLowerCase()]
-      const dimension = dimensions.find((item) => item.key === key)
-      const choices = Array.isArray(dimension?.choices)
-        ? dimension.choices.filter(isRecord)
-        : []
-      const firstChoice = choices[0]
-      const value =
-        typeof firstChoice?.key === 'string'
-          ? defaults[key.toLowerCase()]?.[firstChoice.key] ?? null
-          : null
-      if (!categoryName || !value) return null
-      headers.push(`CATEGORY-${categoryName}: ${value}`)
-    }
-    return headers
-  }
+  if (mappingRows.length === 0) return null
 
   const selectedHeaders: string[] = []
   const remaining = new Set(requiredKeys)
@@ -438,10 +414,11 @@ export function generateCabrilloExample(
   }
 
   const configuredColumns = configuredCabrilloQsoColumns(formatConfig.rule)
-  const columns = configuredColumns.length &&
-    defaultCabrilloQsoColumns.every((column) => configuredColumns.includes(column))
+  const columns = configuredColumns.length
     ? configuredColumns
     : defaultCabrilloQsoColumns
+  if (!defaultCabrilloQsoColumns.every((column) => columns.includes(column)))
+    return null
   const extraColumns = columns.filter(
     (column) => !defaultCabrilloQsoColumns.includes(column),
   )
