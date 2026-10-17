@@ -27,6 +27,19 @@ def test_openapi_is_published_under_versioned_api_path():
     assert "post" in response.json()["paths"]["/api/v1/rulesets/admin/modes"]
     assert "ErrorEnvelope" in response.json()["components"]["schemas"]
     assert "422" in response.json()["paths"]["/api/v1/health/ready"]["get"]["responses"]
+    tags = {tag["name"]: tag["description"] for tag in response.json()["tags"]}
+    assert "Guest log submission" in tags["log submissions"]
+    assert "published standings" in tags["public results"]
+    assert "session" in response.json()["info"]["description"]
+
+
+def test_swagger_ui_is_available_at_versioned_api_path():
+    response = TestClient(app).get("/api/v1/docs")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "swagger-ui" in response.text
+    assert "/api/v1/openapi.json" in response.text
 
 
 def test_request_id_is_echoed_and_error_is_enveloped():

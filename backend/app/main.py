@@ -133,7 +133,74 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Contestmaster API",
     version="1.0.0",
-    description="Versioned REST API for the Contestmaster amateur radio contest engine.",
+    description=(
+        "Versioned REST API for the Contestmaster amateur-radio contest engine.\n\n"
+        "Use **Try it out** to inspect and call endpoints. The API base path is `/api/v1`; "
+        "the machine-readable contract is available at `/api/v1/openapi.json`. Public "
+        "contest, result, health, and guest log-submission operations are identified in "
+        "their endpoint groups.\n\n"
+        "Privileged and participant sessions use same-origin secure cookies. To try "
+        "protected operations, sign in through the web application at this origin (or "
+        "call the matching login endpoint here). Mutating authenticated requests also "
+        "require the `X-CSRF-Token` header. Login responses include `csrf_token`; copy "
+        "that value into the header when trying a protected mutation. See the API guide "
+        "for access scopes, pagination, and error response details."
+    ),
+    openapi_tags=[
+        {"name": "health", "description": "Liveness and database readiness checks."},
+        {"name": "master-data", "description": "Public master-data provisioning status."},
+        {
+            "name": "contests",
+            "description": (
+                "Contest management operations, scoped to the signed-in manager's access."
+            ),
+        },
+        {
+            "name": "public contests",
+            "description": "Unauthenticated published and upcoming contest information.",
+        },
+        {
+            "name": "log submissions",
+            "description": (
+                "Guest log submission, receipt access, and participant log workflows. "
+                "No privileged account is required."
+            ),
+        },
+        {
+            "name": "rulesets",
+            "description": "Ruleset validation, versioning, and scoped administrator assignments.",
+        },
+        {
+            "name": "operating-catalog",
+            "description": "Shared band and mode catalog access and maintenance.",
+        },
+        {
+            "name": "identity",
+            "description": (
+                "System-user sign-in, sessions, recovery, and administrator user management."
+            ),
+        },
+        {
+            "name": "participant identity",
+            "description": "Optional participant accounts, callsigns, and associated logs.",
+        },
+        {
+            "name": "adjudication",
+            "description": "Contest-scoped score-run review and QSO adjudication.",
+        },
+        {
+            "name": "results",
+            "description": "Contest-scoped score generation, review, and publication.",
+        },
+        {
+            "name": "public results",
+            "description": "Unauthenticated published standings and result exports.",
+        },
+        {
+            "name": "master-data administration",
+            "description": "Global-administrator-only master-data version and sync-run management.",
+        },
+    ],
     openapi_url=f"{settings.api_prefix}/openapi.json",
     docs_url=f"{settings.api_prefix}/docs",
     redoc_url=f"{settings.api_prefix}/redoc",

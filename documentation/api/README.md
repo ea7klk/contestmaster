@@ -1,6 +1,8 @@
 # API conventions
 
-The REST API uses the `/api/v1` prefix. FastAPI publishes OpenAPI JSON at `/api/v1/openapi.json` and interactive documentation at `/api/v1/docs`; the schema is generated from typed request and response models.
+The REST API uses the `/api/v1` prefix. FastAPI publishes OpenAPI JSON at `/api/v1/openapi.json` and interactive Swagger UI at `/api/v1/docs`; the schema is generated from typed request and response models. Swagger groups operations by domain and describes public, participant, contest-manager, and global-administrator scopes. Use **Try it out** to call endpoints from the browser.
+
+For authenticated operations, use the documentation from the same origin as the web application so the browser can send its session cookie. Sign in through the app or use the matching login endpoint in Swagger. Login responses include a `csrf_token`; copy it into the `X-CSRF-Token` header when trying an authenticated mutation. Public guest log submission does not need a privileged account. The endpoint descriptions and this guide document their distinct access requirements.
 
 ## Error envelope
 
