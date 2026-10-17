@@ -203,7 +203,7 @@ function sampleExchangeValue(
 function sampleCategoryHeader(
   categoryRule: JsonRecord | undefined,
   mappings: unknown,
-): string | null | undefined {
+): string[] | null {
   const dimensions = Array.isArray(categoryRule?.dimensions)
     ? categoryRule.dimensions.filter(isRecord)
     : []
@@ -211,44 +211,61 @@ function sampleCategoryHeader(
     .filter((dimension) => dimension.required !== false)
     .map((dimension) => stringValue(dimension.key))
   const mappingRows = Array.isArray(mappings) ? mappings.filter(isRecord) : []
-  if (requiredKeys.length === 0) return undefined
-  if (requiredKeys.length !== 1 || mappingRows.length === 0) return null
+  if (requiredKeys.length === 0) return []
+  if (mappingRows.length === 0) return null
 
-  const selected = mappingRows.find((mapping) => {
-    const values = isRecord(mapping.category_values)
-      ? mapping.category_values
-      : {}
-    return requiredKeys.every((key) => {
-      const choice = values[key]
-      const dimension = dimensions.find((item) => item.key === key)
-      const choices = Array.isArray(dimension?.choices)
-        ? dimension.choices.filter(isRecord).map((item) => item.key)
-        : []
-      return (
-        typeof choice === 'string' &&
-        (choices.length === 0 || choices.includes(choice))
-      )
-    })
-  })
-  if (!selected) return requiredKeys.length ? null : undefined
-  const externalValue = stringValue(selected.external_value)
   const categoryNames: Record<string, string> = {
     assisted: 'ASSISTED',
     band: 'BAND',
+    band_class: 'BAND',
     mode: 'MODE',
     operator: 'OPERATOR',
     overlay: 'OVERLAY',
     power: 'POWER',
     station: 'STATION',
     transmitter: 'TRANSMITTER',
+    transmitter_count: 'TRANSMITTER',
   }
-  const mappedKeys = isRecord(selected.category_values)
-    ? Object.keys(selected.category_values)
-    : []
-  const categoryName = categoryNames[requiredKeys[0]?.toLowerCase() ?? '']
-  return externalValue && mappedKeys.length === 1 && categoryName
-    ? `CATEGORY-${categoryName}: ${externalValue}`
-    : null
+  const selectedHeaders: string[] = []
+  const remaining = new Set(requiredKeys)
+  while (remaining.size > 0) {
+    const selected = mappingRows
+      .map((mapping) => {
+        const values = isRecord(mapping.category_values)
+          ? mapping.category_values
+          : {}
+        const covered = [...remaining].filter((key) => {
+          const choice = values[key]
+          const dimension = dimensions.find((item) => item.key === key)
+          const choices = Array.isArray(dimension?.choices)
+            ? dimension.choices.filter(isRecord).map((item) => item.key)
+            : []
+          return (
+            typeof choice === 'string' &&
+            (choices.length === 0 || choices.includes(choice))
+          )
+        })
+        return { mapping, covered }
+      })
+      .filter((candidate) => candidate.covered.length > 0)
+      .sort((left, right) => right.covered.length - left.covered.length)[0]
+    if (!selected) return null
+
+    const mappedKeys = isRecord(selected.mapping.category_values)
+      ? Object.keys(selected.mapping.category_values)
+      : []
+    const externalValue = stringValue(selected.mapping.external_value)
+    const headerDimension = selected.covered.find(
+      (key) => categoryNames[key.toLowerCase()],
+    )
+    const categoryName = headerDimension
+      ? categoryNames[headerDimension.toLowerCase()]
+      : undefined
+    if (!externalValue || !categoryName || mappedKeys.length === 0) return null
+    selectedHeaders.push(`CATEGORY-${categoryName}: ${externalValue}`)
+    selected.covered.forEach((key) => remaining.delete(key))
+  }
+  return selectedHeaders
 }
 
 /** Build a minimal Cabrillo 3.0 example from ruleset constraints, or omit it when unsafe. */
@@ -326,7 +343,6 @@ export function generateCabrilloExample(
     `${headerName('contest', 'CONTEST')}: ${contest.slug || contest.name}`,
     `${headerName('callsign', 'CALLSIGN')}: N0TEST`,
   ]
-  if (categoryHeader) headerLines.push(categoryHeader)
 
   for (const field of exchangeFields.filter(
     (item) => item.direction === 'entry',
@@ -341,9 +357,12 @@ export function generateCabrilloExample(
   const columns = configuredColumns.length
     ? configuredColumns
     : defaultCabrilloQsoColumns
+  const extraColumns = columns.filter(
+    (column) => !defaultCabrilloQsoColumns.includes(column),
+  )
   if (
-    columns.length !== defaultCabrilloQsoColumns.length ||
-    !defaultCabrilloQsoColumns.every((column) => columns.includes(column))
+    !defaultCabrilloQsoColumns.every((column) => columns.includes(column)) ||
+    extraColumns.some((column) => column !== 'transmitter')
   )
     return null
 
@@ -380,7 +399,8 @@ export function generateCabrilloExample(
       exchange_received: exchangeReceived,
     }
     for (const column of columns) {
-      if (!(column in fields)) fields[column] = 'TEST'
+      if (!(column in fields))
+        fields[column] = column === 'transmitter' ? '1' : 'TEST'
     }
     return columns.map((column) => fields[column] ?? '').join(' ')
   })
@@ -388,6 +408,7 @@ export function generateCabrilloExample(
   const validQsos = qsos.filter((line): line is string => line !== null)
   return [
     ...headerLines,
+    ...categoryHeader,
     ...validQsos.map((qso) => `QSO: ${qso}`),
     'END-OF-LOG:',
   ].join('\n')

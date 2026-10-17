@@ -126,7 +126,7 @@ onMounted(async () => {
           aria-labelledby="cabrillo-example-title"
         >
           <h3 id="cabrillo-example-title">
-            {{ $tr('Cabrillo example with two valid QSO lines') }}
+            Cabrillo example with two valid QSO lines
           </h3>
           <pre><code>{{ cabrilloExample }}</code></pre>
         </section>

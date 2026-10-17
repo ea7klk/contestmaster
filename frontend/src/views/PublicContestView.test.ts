@@ -81,6 +81,16 @@ describe('PublicContestView', () => {
     expect(getComputedStyle(example.get('pre').element).fontFamily).toMatch(
       /monospace/i,
     )
+    const sample = example.get('pre code').text()
+    await setLocale('de', undefined)
+    await nextTick()
+    expect(example.get('h3').text()).toBe(
+      'Cabrillo example with two valid QSO lines',
+    )
+    expect(example.get('pre code').text()).toBe(sample)
+    expect(sample).toContain('START-OF-LOG: 3.0')
+    expect(sample).toContain('CALLSIGN: N0TEST')
+    await setLocale('en', undefined)
   })
 
   it('updates generated summaries when the selected language changes', async () => {

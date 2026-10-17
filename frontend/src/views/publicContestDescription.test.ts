@@ -113,6 +113,100 @@ describe('describeContestRuleset', () => {
     ).toBeNull()
   })
 
+  it('generates separate category headers and a transmitter field for multi-category contests', () => {
+    const columns = [
+      'frequency',
+      'mode',
+      'date',
+      'time',
+      'callsign_sent',
+      'rst_sent',
+      'exchange_sent',
+      'callsign_received',
+      'rst_received',
+      'exchange_received',
+      'transmitter',
+    ]
+    const categories = [
+      ['operator', 'multi', 'MULTI-OP'],
+      ['power', 'low', 'LOW'],
+      ['band_class', 'all_bands', 'ALL'],
+      ['mode', 'cw', 'CW'],
+      ['transmitter_count', 'two', 'TWO'],
+    ] as const
+    const sample = generateCabrilloExample(
+      {
+        schema_version: 2,
+        ruleset_key: 'multi-category-cabrillo',
+        version: '2026',
+        rules: [
+          {
+            id: 'eligibility',
+            rule: {
+              kind: 'eligibility',
+              allowed_bands: ['20m', '40m'],
+              allowed_modes: ['CW'],
+            },
+          },
+          {
+            id: 'exchange',
+            rule: {
+              kind: 'exchange',
+              fields: [
+                {
+                  key: 'serial',
+                  direction: 'both',
+                  value_type: 'serial',
+                },
+              ],
+            },
+          },
+          {
+            id: 'categories',
+            rule: {
+              kind: 'categories',
+              dimensions: categories.map(([key, choice]) => ({
+                key,
+                label: key,
+                required: true,
+                choices: [{ key: choice }],
+              })),
+            },
+          },
+          {
+            id: 'format',
+            rule: {
+              kind: 'format_mapping',
+              format: 'cabrillo',
+              qso_columns: columns,
+              category_mappings: categories.map(
+                ([key, choice, external_value]) => ({
+                  external_value,
+                  category_values: { [key]: choice },
+                }),
+              ),
+            },
+          },
+        ],
+      },
+      {
+        name: 'Multi Category Test',
+        slug: 'multi-category-test',
+        starts_at: '2026-10-20T00:00:00Z',
+        ends_at: '2026-10-20T06:00:00Z',
+      },
+    )
+
+    expect(sample).not.toBeNull()
+    expect(sample).toContain('CATEGORY-OPERATOR: MULTI-OP')
+    expect(sample).toContain('CATEGORY-POWER: LOW')
+    expect(sample).toContain('CATEGORY-BAND: ALL')
+    expect(sample).toContain('CATEGORY-MODE: CW')
+    expect(sample).toContain('CATEGORY-TRANSMITTER: TWO')
+    expect(sample?.match(/^QSO:/gm)).toHaveLength(2)
+    expect(sample?.match(/ 1$/gm)).toHaveLength(2)
+  })
+
   it('localizes generated rules and keeps dynamic scoring values in every locale', async () => {
     const ruleset = {
       schema_version: 2 as const,
