@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from contact_graph import build_contact_plan  # noqa: E402
 
 PARTICIPANT_COUNT = 110
-CONTEST = "test-cabrillo-results-sprint"
+CONTEST = "CM-CABRILLO-RESULTS-SPRINT"
 QSO_DATE = "2024-09-14"
 STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 
@@ -38,7 +38,8 @@ def build_logs() -> dict[str, str]:
     for station in stations:
         qso_lines = []
         for contact in contact_plan[station]:
-            time_on = contact.occurred_at.strftime("%H%M%S")
+            # WWROF Cabrillo QSO times have UTC minute precision (HHMM).
+            time_on = contact.occurred_at.strftime("%H%M")
             qso_lines.append(
                 f"QSO: {contact.frequency_khz} CW "
                 f"{QSO_DATE} {time_on} {station} 599 {contact.sent_serial:03d} "

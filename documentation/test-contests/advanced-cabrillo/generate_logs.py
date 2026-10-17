@@ -27,7 +27,8 @@ ENTITY_PREFIXES = (
     "F4",  # France
 )
 SEED = "contestmaster-advanced-cabrillo-2500-v1"
-CONTEST = "test-advanced-cabrillo-rules-challenge"
+# Cabrillo v3 limits CONTEST to 32 characters.
+CONTEST = "CM-ADV-CABRILLO-CHALLENGE"
 QSO_DATE = "2024-09-14"
 STARTS_AT = datetime(2024, 9, 14, 12, 0, tzinfo=UTC)
 ENDS_AT = datetime(2024, 9, 14, 18, 0, tzinfo=UTC)
@@ -95,7 +96,8 @@ def build_logs() -> dict[str, str]:
             if frequency_key not in shared_frequencies:
                 shared_frequencies[frequency_key] = frequency_rng.randint(session[3], session[4])
             frequency_khz = shared_frequencies[frequency_key]
-            time_on = contact.occurred_at.strftime("%H%M%S")
+            # WWROF Cabrillo QSO times have UTC minute precision (HHMM).
+            time_on = contact.occurred_at.strftime("%H%M")
             qso_lines.append(
                 f"QSO: {frequency_khz} CW {QSO_DATE} {time_on} "
                 f"{station} 599 {contact.sent_serial:03d} "

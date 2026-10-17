@@ -378,48 +378,56 @@
           "format": "cabrillo",
           "category_mappings": [
             {
+              "external_field": "CATEGORY-OPERATOR",
               "external_value": "MULTI-OP",
               "category_values": {
                 "operator": "multi"
               }
             },
             {
+              "external_field": "CATEGORY-POWER",
               "external_value": "QRP",
               "category_values": {
                 "power": "qrp"
               }
             },
             {
+              "external_field": "CATEGORY-POWER",
               "external_value": "LOW",
               "category_values": {
                 "power": "low"
               }
             },
             {
+              "external_field": "CATEGORY-POWER",
               "external_value": "HIGH",
               "category_values": {
                 "power": "high"
               }
             },
             {
+              "external_field": "CATEGORY-BAND",
               "external_value": "ALL",
               "category_values": {
                 "band_class": "all_bands"
               }
             },
             {
+              "external_field": "CATEGORY-OVERLAY",
               "external_value": "ROOKIE",
               "category_values": {
                 "overlay": "rookie"
               }
             },
             {
+              "external_field": "CATEGORY-MODE",
               "external_value": "CW",
               "category_values": {
                 "mode": "cw"
               }
             },
             {
+              "external_field": "CATEGORY-TRANSMITTER",
               "external_value": "TWO",
               "category_values": {
                 "transmitter_count": "two"
@@ -427,6 +435,10 @@
             }
           ],
           "preserve_unknown_fields": true,
+          "header_fields": {
+            "callsign": "CALLSIGN",
+            "contest": "CONTEST"
+          },
           "qso_columns": [
             "frequency",
             "mode",

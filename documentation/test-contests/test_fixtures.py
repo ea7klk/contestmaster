@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from backend.app.api.contests import ContestImportPayload
 from backend.app.logs.adif import band_from_frequency_mhz, parse_adif
-from backend.app.logs.cabrillo import map_categories, parse_cabrillo
+from backend.app.logs.cabrillo import DEFAULT_QSO_COLUMNS, map_categories, parse_cabrillo
 from backend.app.rulesets.engine import ScoringEntry, ScoringQso, score_entry
-from backend.app.rulesets.schema import RulesetDefinition
+from backend.app.rulesets.schema import CABRILLO_CATEGORY_VALUES, RulesetDefinition
 from backend.app.rulesets.validation import validate_ruleset
 
 ROOT = Path(__file__).resolve().parent
@@ -107,6 +108,20 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
         validate_ruleset(ruleset)
         formats = [rule.rule.format for rule in ruleset.rules if rule.rule.kind == "format_mapping"]
         assert formats == [expected_format]
+        if expected_format == "cabrillo":
+            format_rule = next(
+                rule.rule for rule in ruleset.rules if rule.rule.kind == "format_mapping"
+            )
+            assert format_rule.qso_columns[: len(DEFAULT_QSO_COLUMNS)] == list(
+                DEFAULT_QSO_COLUMNS
+            )
+            assert format_rule.qso_columns[len(DEFAULT_QSO_COLUMNS) :] in ([], ["transmitter"])
+            assert len(format_rule.qso_columns) == len(set(format_rule.qso_columns))
+            assert format_rule.header_fields == {
+                "callsign": "CALLSIGN",
+                "contest": "CONTEST",
+            }
+            assert all(mapping.external_field for mapping in format_rule.category_mappings)
         submission = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "submission")
         assert submission.late_policy == "accept_late"
         publication = [
@@ -177,6 +192,22 @@ def test_generated_logs_are_reproducible_unique_and_parseable():
             assert parsed.errors == []
             if folder in {"cabrillo", "advanced-cabrillo"}:
                 assert parsed.headers["EMAIL"] == [f"{path.stem}@nomail.invalid"]
+                contest_header = parsed.headers["CONTEST"][0]
+                assert len(contest_header) <= 32
+                assert re.fullmatch(r"[A-Z0-9-]+", contest_header)
+                for header, values in parsed.headers.items():
+                    if header.startswith("CATEGORY-"):
+                        assert header in CABRILLO_CATEGORY_VALUES
+                        permitted_values = {
+                            value.casefold() for value in CABRILLO_CATEGORY_VALUES[header]
+                        }
+                        assert all(value.casefold() in permitted_values for value in values)
+                for line in content.splitlines():
+                    if line.startswith("QSO:"):
+                        fields = line.split()
+                        assert len(fields) == (12 if folder == "advanced-cabrillo" else 11)
+                        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", fields[3])
+                        assert re.fullmatch(r"\d{4}", fields[4])
             if folder == "advanced-cabrillo":
                 assert 50 <= len(parsed.qsos) <= 250
             else:

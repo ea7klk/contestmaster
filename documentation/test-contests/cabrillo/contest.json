@@ -27,7 +27,7 @@
       {"id": "received-serial-multiplier", "rule": {"kind": "multiplier", "source_fact": "exchange.received.serial", "scope": "contest", "label": "Unique received serials"}},
       {"id": "featured-log-bonus", "rule": {"kind": "bonus", "basis": "per_entry", "points": 1000, "minimum_eligible_qsos": 20}},
       {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "points_total"}, "steps": [{"operator": "add", "operand": {"variable": "bonus_points"}}, {"operator": "multiply", "operand": {"variable": "multiplier_count"}}]}},
-      {"id": "format-mapping", "rule": {"kind": "format_mapping", "format": "cabrillo", "qso_columns": ["frequency", "mode", "date", "time", "callsign_sent", "rst_sent", "exchange_sent", "callsign_received", "rst_received", "exchange_received"], "preserve_unknown_fields": true}}
+      {"id": "format-mapping", "rule": {"kind": "format_mapping", "header_fields": {"callsign": "CALLSIGN", "contest": "CONTEST"}, "format": "cabrillo", "qso_columns": ["frequency", "mode", "date", "time", "callsign_sent", "rst_sent", "exchange_sent", "callsign_received", "rst_received", "exchange_received"], "preserve_unknown_fields": true}}
     ]
   }
 }
