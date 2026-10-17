@@ -29,7 +29,7 @@ The series stores an elapsed cutoff offset from each edition's end. The editor a
 
 ## API and UI
 
-The contest editor exposes recurrence pattern selection, a five-occurrence preview, automatic rolling-window settings, exception management, and the series deletion action. The API exposes series exception list/create/delete operations and a protected series delete endpoint. Every endpoint checks the contest manager's ownership or global-administrator role. A series-linked edition cannot be deleted as a standalone contest.
+The contest editor exposes recurrence pattern selection, a five-occurrence preview, automatic rolling-window settings, exception management, and the series deletion action. The API exposes series exception list/create/delete operations and a protected series delete endpoint. Every endpoint checks the contest manager's ownership or global-administrator role. A series-linked edition cannot be deleted as a standalone contest. After whole-series deletion commits, the API closes the request session and runs SQLite `VACUUM` once for the file-backed database to reclaim free pages; vacuum failures are logged without changing the successful deletion response.
 
 ## Data model
 

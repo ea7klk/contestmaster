@@ -26,6 +26,7 @@ from backend.app.api.pagination import Page, page_meta, pagination_parameters, v
 from backend.app.audit import record_audit_event
 from backend.app.contest_deletion import DeletionConflictError, delete_contest_records
 from backend.app.contest_series import create_series_for_contest
+from backend.app.database_maintenance import vacuum_sqlite_after_commit
 from backend.app.db import get_session
 from backend.app.models import (
     Contest,
@@ -857,6 +858,7 @@ def delete_series(
     if payload.confirm_name != series.name:
         raise HTTPException(status_code=422, detail="Confirmation name does not match this series.")
     series_name = series.name
+    database_engine = session.get_bind()
     editions = list(session.scalars(select(Contest).where(Contest.series_id == series.id)))
     try:
         counts = {"editions": len(editions), "entries": 0, "score_runs": 0, "publications": 0}
@@ -891,6 +893,10 @@ def delete_series(
         session.rollback()
         logger.exception("contest_series_delete_failed", extra={"series_id": series_id})
         raise
+    session.close()
+    vacuum_sqlite_after_commit(
+        database_engine, resource_kind="contest_series", resource_id=series_id
+    )
     return Response(status_code=204)
 
 
@@ -914,6 +920,7 @@ def delete_contest(
         )
     contest_id = contest.id
     contest_slug = contest.slug
+    database_engine = session.get_bind()
     try:
         counts = delete_contest_records(session, contest)
         record_audit_event(
@@ -944,6 +951,8 @@ def delete_contest(
             status_code=409,
             detail="The contest has retained references that prevent safe deletion.",
         ) from exc
+    session.close()
+    vacuum_sqlite_after_commit(database_engine, resource_kind="contest", resource_id=contest_id)
     return Response(status_code=204)
 
 

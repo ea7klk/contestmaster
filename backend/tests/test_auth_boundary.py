@@ -599,7 +599,14 @@ def test_contest_api_scopes_managers_and_allows_admin_visibility(identity_databa
         assert events[1].event_metadata == {"changed_fields": ["name", "periodicity"]}
 
 
-def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(identity_database):
+def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(
+    identity_database, monkeypatch
+):
+    vacuum_calls = []
+    monkeypatch.setattr(
+        "backend.app.api.contests.vacuum_sqlite_after_commit",
+        lambda _engine, **details: vacuum_calls.append(details),
+    )
     add_user(
         identity_database,
         role=SystemRole.CONTEST_MANAGER,
@@ -720,6 +727,7 @@ def test_recurring_series_cutoff_exceptions_and_authorized_series_deletion(ident
         json={"confirm_name": "Annual Sprint"},
     )
     assert deleted.status_code == 204, deleted.text
+    assert vacuum_calls == [{"resource_kind": "contest_series", "resource_id": series_id}]
     assert client.get("/api/v1/contests").json()["meta"]["total"] == 0
 
 

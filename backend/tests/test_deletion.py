@@ -373,8 +373,13 @@ def login(client: TestClient, email: str) -> None:
 
 
 def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_participant(
-    deletion_database, deletion_fixture
+    deletion_database, deletion_fixture, monkeypatch
 ):
+    vacuum_calls = []
+    monkeypatch.setattr(
+        "backend.app.api.contests.vacuum_sqlite_after_commit",
+        lambda _engine, **details: vacuum_calls.append(details),
+    )
     client = TestClient(app)
     login(client, "manager@example.test")
     csrf = client.cookies.get("contestmaster_csrf")
@@ -391,6 +396,9 @@ def test_contest_delete_removes_dependent_logs_results_and_keeps_shared_particip
         headers={"X-CSRF-Token": csrf},
     )
     assert response.status_code == 204
+    assert vacuum_calls == [
+        {"resource_kind": "contest", "resource_id": deletion_fixture["contest_id"]}
+    ]
 
     with deletion_database() as session:
         assert session.connection().exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
