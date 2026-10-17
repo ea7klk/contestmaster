@@ -25,6 +25,60 @@ function names(values: string[], fallback: string): string {
   return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`
 }
 
+const categoryMeanings: Record<string, string> = {
+  operator:
+    'classifies the operator arrangement; the contest rules define operator eligibility, operating-time, and transmitter limits',
+  power:
+    'classifies station transmit power. QRP, Low Power, and High Power are labels, not universal wattage limits; the contest rules define exact output thresholds and where power is measured',
+  band:
+    'classifies all-band or single-band entry types; the contest rules define eligible bands and how band combinations are scored',
+  mode: 'classifies operating modes; the contest rules define included modes and mixed-mode requirements',
+  assisted:
+    'indicates whether operating assistance is used; the contest rules define which tools count as assistance',
+  transmitter:
+    'classifies transmitter configuration; the contest rules define simultaneous transmitter and band-change limits',
+  overlay:
+    'is an additional sponsor-defined classification that may apply alongside a main category',
+  station_class:
+    'classifies station type or capability; the contest rules define location, portability, and equipment requirements',
+  region:
+    'groups entries by geography; the contest rules define the region boundaries and assignment source',
+  category: 'is a sponsor-defined grouping of entries',
+}
+
+const powerChoiceMeanings: Record<string, string> = {
+  qrp: 'Very-low-power class; the exact maximum output and measurement point vary by contest.',
+  low: 'Low-power class; the exact maximum output and measurement point vary by contest.',
+  high: 'High-power class; exact thresholds or ranges and the measurement point vary by contest.',
+}
+
+function categoryDimensionKind(key: string, label: string): string {
+  const source = `${key} ${label}`.toLowerCase().replaceAll('_', ' ')
+  for (const [term, kind] of [
+    ['operator', 'operator'],
+    ['power', 'power'],
+    ['band', 'band'],
+    ['mode', 'mode'],
+    ['assist', 'assisted'],
+    ['transmitter', 'transmitter'],
+    ['overlay', 'overlay'],
+    ['station class', 'station_class'],
+    ['region', 'region'],
+    ['category', 'category'],
+  ]) {
+    if (source.includes(term)) return kind
+  }
+  return key
+}
+
+function categoryChoiceMeaning(dimensionKey: string, choice: JsonRecord): string {
+  const customDescription = stringValue(choice.description)
+  if (customDescription) return customDescription
+  return dimensionKey === 'power'
+    ? powerChoiceMeanings[stringValue(choice.key)] ?? ''
+    : ''
+}
+
 function describeCondition(value: unknown): string {
   if (!isRecord(value)) return 'the configured condition'
   if (value.kind === 'compare') {
@@ -85,22 +139,40 @@ function summarizeRule(rule: JsonRecord): string {
         ? rule.dimensions.filter(isRecord)
         : []
       const dimensions = dimensionRows.map((dimension) => {
-        const choices = Array.isArray(dimension.choices)
+        const choiceRows = Array.isArray(dimension.choices)
           ? dimension.choices
               .filter(isRecord)
-              .map((choice) =>
-                stringValue(choice.label, stringValue(choice.key)),
-              )
           : []
+        const choices = choiceRows.map((choice) =>
+          stringValue(choice.label, stringValue(choice.key)),
+        )
+        const key = stringValue(dimension.key)
         const label = stringValue(
           dimension.label,
           stringValue(dimension.key, 'Category'),
         )
+        const dimensionKind = categoryDimensionKind(key, label)
         const requirement =
           dimension.required === false ? 'optional' : 'required'
-        return choices.length
-          ? `${label} (${requirement}): ${names(choices, '')}`
-          : `${label} (${requirement})`
+        const meaning =
+          stringValue(dimension.description) ||
+          categoryMeanings[dimensionKind] ||
+          'is a sponsor-defined classification; check the official rules for its exact definition and limits'
+        const choiceDefinitions = choiceRows
+          .map((choice) => {
+            const meaning = categoryChoiceMeaning(dimensionKind, choice)
+            return meaning
+              ? `${stringValue(choice.label, stringValue(choice.key))}: ${meaning}`
+              : ''
+          })
+          .filter(Boolean)
+        const values = choices.length
+          ? `: ${names(choices, '')}`
+          : ''
+        const choiceText = choiceDefinitions.length
+          ? ` Choice details: ${choiceDefinitions.join('; ')}.`
+          : ''
+        return `${label} (${requirement})${values}. This ${meaning}.${choiceText}`
       })
       const exclusions = Array.isArray(rule.mutually_exclusive)
         ? rule.mutually_exclusive
@@ -120,7 +192,7 @@ function summarizeRule(rule: JsonRecord): string {
       if (dimensions.length === 0) {
         return 'Entry categories are configured for this contest.'
       }
-      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: ${dimensions.join('; ')}.`
+      const summary = `Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank. The dimension meanings and choices are: ${dimensions.join(' ')} Exact qualifications and limits are contest-specific; the official published rules are authoritative.`
       const declarationChoices = dimensionRows.flatMap((dimension) => {
         const dimensionLabel = stringValue(
           dimension.label,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.app.rulesets.engine import RuleExecutionError, evaluate_score_step
 from backend.app.rulesets.schema import (
+    CategoryDimension,
     RulesetDefinition,
     ScoreFormulaRule,
     rule_types_in,
@@ -15,6 +16,22 @@ EXAMPLE_VARIABLES = {
     "bonus_points": 10,
     "penalty_points": 5,
     "power_multiplier": 2,
+}
+
+CATEGORY_MEANINGS = {
+    "operator": "operator arrangement; sponsor rules define operator and operating limits",
+    "power": (
+        "station transmit power; sponsor rules define wattage thresholds and where "
+        "power is measured"
+    ),
+    "band": "band grouping; sponsor rules define eligible bands and scoring treatment",
+    "mode": "mode grouping; sponsor rules define included modes and mixed-mode requirements",
+    "assisted": "assistance class; sponsor rules define which tools count as assistance",
+    "transmitter": "transmitter class; sponsor rules define simultaneous transmitter limits",
+    "overlay": "additional sponsor-defined classification",
+    "station_class": "station type; sponsor rules define location and equipment requirements",
+    "region": "geographic grouping; sponsor rules define boundaries and assignment source",
+    "category": "sponsor-defined entry grouping",
 }
 
 
@@ -29,9 +46,8 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
         if rule.kind == "submission":
             summary = f"Late submission policy {rule.late_policy}"
         elif rule.kind == "categories":
-            dimensions = ", ".join(
-                f"{dimension.label}: {', '.join(choice.label for choice in dimension.choices)}"
-                for dimension in rule.dimensions
+            dimensions = "; ".join(
+                _summarize_category_dimension(dimension) for dimension in rule.dimensions
             )
             summary = f"Categories: {dimensions}"
         elif rule.kind == "exchange":
@@ -72,6 +88,34 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
             summary = rule.kind
         lines.append(f"- {configured.id}: {summary}{condition}.")
     return "\n".join(lines)
+
+
+def _summarize_category_dimension(dimension: CategoryDimension) -> str:
+    choices = ", ".join(
+        choice.label + (f" — {choice.description}" if choice.description else "")
+        for choice in dimension.choices
+    )
+    meaning = dimension.description or _category_meaning(dimension)
+    return f"{dimension.label}: {choices}; {meaning}"
+
+
+def _category_meaning(dimension: CategoryDimension) -> str:
+    source = f"{dimension.key} {dimension.label}".casefold().replace("_", " ")
+    for term, kind in (
+        ("operator", "operator"),
+        ("power", "power"),
+        ("band", "band"),
+        ("mode", "mode"),
+        ("assist", "assisted"),
+        ("transmitter", "transmitter"),
+        ("overlay", "overlay"),
+        ("station class", "station_class"),
+        ("region", "region"),
+        ("category", "category"),
+    ):
+        if term in source:
+            return CATEGORY_MEANINGS[kind]
+    return "sponsor-defined classification; official rules define exact meaning and limits"
 
 
 def worked_score_example(

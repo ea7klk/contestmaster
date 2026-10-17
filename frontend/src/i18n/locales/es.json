@@ -716,5 +716,10 @@
   "s_ff276823": "Próximo",
   "s_ff36a250": "Todas las categorias",
   "s_ffb0ff72": "Formato",
-  "s_ffda6982": "Las reglas detalladas del concurso aún no están disponibles."
+  "s_ffda6982": "Las reglas detalladas del concurso aún no están disponibles.",
+  "s_c61a0fe9": "Dimensiones habituales: Operator describe la configuración de operadores; Power describe la potencia de transmisión de la estación; Band y Mode clasifican los segmentos de operación; Assistance describe la ayuda permitida, como el uso de spots; Transmitters describe la configuración de transmisores; Overlay añade una clase definida por el organizador; Station class describe el tipo de estación; Region agrupa participantes geográficamente; Contest category la define el organizador. QRP suele significar muy baja potencia, pero no existen límites de vatios ni puntos de medición universales para las categorías QRP, Low Power y High Power. Las reglas del concurso definen los requisitos y límites exactos de cada dimensión y opción.",
+  "s_5a3cc0b9": "Explicación de la dimensión específica del concurso",
+  "s_77a9abef": "Indique la definición exacta, los umbrales, el punto de medición o los requisitos de clasificación de este concurso. El resumen público generado también remitirá a los participantes a las reglas oficiales.",
+  "s_fa1fd7c6": "Explicación de la opción específica del concurso",
+  "s_f0de16b7": "Describe los requisitos o límites específicos del concurso para este valor. Para QRP, Low Power y High Power, indique el umbral en vatios y el punto de medición."
 }

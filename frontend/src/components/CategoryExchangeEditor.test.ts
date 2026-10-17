@@ -30,6 +30,50 @@ describe('CategoryExchangeEditor', () => {
       label: 'Power',
     })
     expect(emitted.dimensions[0]?.choices.length).toBe(3)
+    await wrapper.setProps({ modelValue: emitted })
+    expect(wrapper.text()).toContain('no universal contest wattage thresholds')
+  })
+
+  it('lets authors add precise explanations to category dimensions and choices', async () => {
+    const wrapper = mount(CategoryExchangeEditor, {
+      props: {
+        kind: 'categories',
+        modelValue: {
+          kind: 'categories',
+          dimensions: [
+            {
+              key: 'power',
+              label: 'Power',
+              required: true,
+              choices: [{ key: 'qrp', label: 'QRP' }],
+            },
+          ],
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('measurement point, or qualification details')
+    await wrapper
+      .get('textarea[aria-label="Contest-specific dimension explanation"]')
+      .setValue('Measured at the antenna connector.')
+    const dimensionDraft = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+      dimensions: Array<Record<string, unknown>>
+    }
+    expect(dimensionDraft.dimensions[0]?.description).toBe(
+      'Measured at the antenna connector.',
+    )
+    await wrapper.setProps({ modelValue: dimensionDraft })
+
+    await wrapper
+      .get('textarea[aria-label="Contest-specific choice explanation"]')
+      .setValue('The contest limit is 5 W output.')
+    const choiceDraft = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+      dimensions: Array<{ choices: Array<Record<string, unknown>> }>
+    }
+    expect(choiceDraft.dimensions[0]?.choices[0]?.description).toBe(
+      'The contest limit is 5 W output.',
+    )
+    await expectAccessible(wrapper.element)
   })
 
   it('offers common exchange keys and explains key/label stability', async () => {
@@ -114,7 +158,7 @@ describe('CategoryExchangeEditor', () => {
 
     expect(wrapper.find('.controlled-row').exists()).toBe(true)
     expect(wrapper.find('.controlled-choice-list').exists()).toBe(true)
-    expect(wrapper.find('.controlled-choice').findAll('label')).toHaveLength(3)
+    expect(wrapper.find('.controlled-choice').findAll('label')).toHaveLength(4)
     expect(
       wrapper
         .find('.controlled-row')

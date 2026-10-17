@@ -168,6 +168,7 @@ function setPreset(index: number, key: string) {
     update(index, {
       key,
       label: categoryDimensions.find(([value]) => value === key)?.[1] ?? key,
+      description: null,
       choices: (categoryValues[key] ?? []).map(([choiceKey, label]) => ({
         key: choiceKey,
         label,
@@ -195,8 +196,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   const next = choices(row).map((item, i) =>
     i === choiceIndex
       ? preset
-        ? { ...item, key: preset[0], label: preset[1] }
-        : { ...item, key: '', label: '' }
+        ? { ...item, key: preset[0], label: preset[1], description: null }
+        : { ...item, key: '', label: '', description: null }
       : item,
   )
   updateChoices(index, next)
@@ -212,6 +213,13 @@ function setChoice(index: number, choiceIndex: number, key: string) {
         {{
           $tr(
             'are separate entry-classification axes, such as operator, power, band, mode, or assistance. Their choices are the values entrants may select, and together they determine the result categories. Stable keys are used in saved rules and data; labels are shown to entrants. Built-in labels follow their presets; custom labels can be changed without changing the stable key. Mark a dimension required only if the sponsor requires an entrant to choose one. “Requires declaration” means the choice needs an entry declaration such as a section or station class. Use mutually exclusive groups only for combinations the sponsor disallows.',
+          )
+        }}
+      </p>
+      <p class="field-help dimension-guidance">
+        {{
+          $tr(
+            'Common dimensions: Operator describes the operator arrangement; Power describes station transmit power; Band and Mode classify operating segments; Assistance describes permitted spotting or other outside help; Transmitters describes station transmitter configuration; Overlay adds a sponsor-defined class; Station class describes station type; Region groups entries geographically; Contest category is sponsor-defined. QRP conventionally means very low power, but QRP, Low Power, and High Power have no universal contest wattage thresholds or measurement points. The sponsor’s rules define the exact qualifications and limits for every dimension and choice.',
           )
         }}
       </p>
@@ -246,6 +254,25 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               update(index, { key: ($event.target as HTMLInputElement).value })
             "
         /></label>
+        <label class="category-description">
+          {{ $tr('Contest-specific dimension explanation') }}
+          <textarea
+            :aria-label="$tr('Contest-specific dimension explanation')"
+            :value="String(row.description ?? '')"
+            maxlength="800"
+            rows="2"
+            @input="
+              update(index, {
+                description: ($event.target as HTMLTextAreaElement).value || null,
+              })
+            "
+          />
+          <span class="field-help">{{
+            $tr(
+              'Add this contest’s exact definition, thresholds, measurement point, or qualification details. The generated public summary will also direct participants to the official rules.',
+            )
+          }}</span>
+        </label>
         <label
           >{{ $tr('Dimension label')
           }}<select
@@ -343,6 +370,34 @@ function setChoice(index: number, choiceIndex: number, key: string) {
                   )
                 "
             /></label>
+            <label class="choice-description">
+              {{ $tr('Contest-specific choice explanation') }}
+              <textarea
+                :aria-label="$tr('Contest-specific choice explanation')"
+                :value="String(choice.description ?? '')"
+                maxlength="600"
+                rows="2"
+                @input="
+                  updateChoices(
+                    index,
+                    choices(row).map((item, i) =>
+                      i === choiceIndex
+                        ? {
+                            ...item,
+                            description:
+                              ($event.target as HTMLTextAreaElement).value || null,
+                          }
+                        : item,
+                    ),
+                  )
+                "
+              />
+              <span class="field-help">{{
+                $tr(
+                  'Describe this value’s contest-specific qualification or limit. For QRP, Low Power, and High Power, specify the wattage threshold and measurement point.',
+                )
+              }}</span>
+            </label>
             <label
               >{{ $tr('Choice label')
               }}<select
@@ -698,6 +753,11 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   min-width: 0;
   gap: 0.3rem;
 }
+.controlled-row > .dimension-guidance,
+.controlled-row > .category-description,
+.controlled-choice > .choice-description {
+  grid-column: 1 / -1;
+}
 .controlled-row > label:has(input[type='checkbox']) {
   display: flex;
   align-items: center;
@@ -709,7 +769,9 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   justify-self: end;
 }
 .controlled-row input:not([type='checkbox']),
-.controlled-row select {
+.controlled-row select,
+.controlled-row textarea,
+.controlled-choice textarea {
   width: 100%;
   min-width: 0;
   min-height: 2.5rem;

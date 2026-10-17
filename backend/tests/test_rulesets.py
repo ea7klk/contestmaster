@@ -20,6 +20,7 @@ from backend.app.rulesets.schema import (
 from backend.app.rulesets.submission import (
     classify_submission,
 )
+from backend.app.rulesets.summary import summarize_ruleset
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
 from backend.app.scheduling import Recurrence, resolve_contest_schedule
 
@@ -179,6 +180,19 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
     }
     assert "eval" not in str(catalog)
     assert "schedule" not in {item["key"] for item in catalog}
+
+
+def test_ruleset_summary_includes_contest_specific_category_explanations():
+    payload = valid_payload()
+    categories = next(item for item in payload["rules"] if item["id"] == "categories")
+    dimension = categories["rule"]["dimensions"][0]
+    dimension["description"] = "Operators may rotate at the station."
+    dimension["choices"][0]["description"] = "One operator may transmit at a time."
+
+    summary = summarize_ruleset(validate_ruleset(payload))
+
+    assert "Operators may rotate at the station." in summary
+    assert "Single operator — One operator may transmit at a time." in summary
 
 
 def test_validation_endpoint_returns_summary_and_integer_worked_example():

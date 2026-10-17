@@ -89,6 +89,10 @@ class SubmissionRule(StrictModel):
 class CategoryChoice(StrictModel):
     key: Identifier
     label: Annotated[str, StringConstraints(min_length=1, max_length=160)]
+    description: Annotated[str, StringConstraints(max_length=600)] | None = Field(
+        default=None,
+        description="Optional contest-specific explanation of this category choice.",
+    )
     requires_declaration: bool = False
 
 
@@ -102,6 +106,13 @@ class CategoryDimension(StrictModel):
         description=(
             "Human-readable name shown to participants; changing it does not change the stable key."
         )
+    )
+    description: Annotated[str, StringConstraints(max_length=800)] | None = Field(
+        default=None,
+        description=(
+            "Optional explanation of this classification dimension, including any "
+            "contest-specific limits or definitions."
+        ),
     )
     required: bool = True
     choices: list[CategoryChoice] = Field(min_length=1, max_length=200)

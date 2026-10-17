@@ -716,5 +716,10 @@
   "s_ff276823": "Upcoming",
   "s_ff36a250": "All categories",
   "s_ffb0ff72": "Format",
-  "s_ffda6982": "Detailed contest rules are not available yet."
+  "s_ffda6982": "Detailed contest rules are not available yet.",
+  "s_c61a0fe9": "Common dimensions: Operator describes the operator arrangement; Power describes station transmit power; Band and Mode classify operating segments; Assistance describes permitted spotting or other outside help; Transmitters describes station transmitter configuration; Overlay adds a sponsor-defined class; Station class describes station type; Region groups entries geographically; Contest category is sponsor-defined. QRP conventionally means very low power, but QRP, Low Power, and High Power have no universal contest wattage thresholds or measurement points. The sponsor’s rules define the exact qualifications and limits for every dimension and choice.",
+  "s_5a3cc0b9": "Contest-specific dimension explanation",
+  "s_77a9abef": "Add this contest’s exact definition, thresholds, measurement point, or qualification details. The generated public summary will also direct participants to the official rules.",
+  "s_fa1fd7c6": "Contest-specific choice explanation",
+  "s_f0de16b7": "Describe this value’s contest-specific qualification or limit. For QRP, Low Power, and High Power, specify the wattage threshold and measurement point."
 }

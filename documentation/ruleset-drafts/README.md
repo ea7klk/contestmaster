@@ -4,6 +4,8 @@ Each JSON file in this folder is a separate schema-version-2 draft. In the Rules
 
 These are teaching and configuration starters, not official or complete implementations of the sponsor's rules. Check the linked official rules for the contest edition you intend to run. In particular, confirm dates, submission deadline, categories, exchange variants, mode/band eligibility, multipliers, point values, penalties, and adjudication. Several contests have geographic or participant-specific conditions that the current rules engine cannot yet express. Do not activate or publish a contest from one of these examples without that review. The files summarize no contest rule text; each points to its sponsor's rules page.
 
+Category dimensions and choices support optional `description` text. Use it to record the sponsor's precise qualification for the specific edition, especially power thresholds and the power measurement point. QRP, Low Power, and High Power labels do not imply universal contest limits; the generated public overview supplies general context and directs participants to the official rules for exact requirements.
+
 The examples use a simple integer score formula as a valid baseline. They contain reusable rules only: enter start/end times, periodicity, and the log-submission cutoff in contest configuration. A source edition is included in every file to make the provenance visible in the composer.
 
 ## Drafts

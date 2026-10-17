@@ -57,11 +57,15 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions).toEqual([
-      'Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: Operator (required): Single operator and Multi operator.',
+    expect(descriptions[0]).toContain('operator arrangement')
+    expect(descriptions[0]).toContain('Single operator and Multi operator')
+    expect(descriptions[0]).toContain('official published rules are authoritative')
+    expect(descriptions[1]).toBe(
       'Stations exchange Serial number (sent and received) and Section (received).',
+    )
+    expect(descriptions[2]).toBe(
       'Only when contact band is 20m: final score: contact points multiplied by multipliers plus bonus points. Scores use whole-number points.',
-    ])
+    )
   })
 
   it('explains category segmentation, required choices, declarations, and exclusions', () => {
@@ -104,9 +108,81 @@ describe('describeContestRuleset', () => {
       ],
     })
 
-    expect(descriptions).toEqual([
-      'Categories divide entries into separate classification dimensions. Participants select one value for each required dimension; optional dimensions may be left blank: Operator class (required): Single operator and Multi operator; Power class (optional): Low power and High power. The ruleset marks Multi operator in Operator class as requiring a declaration. These dimensions cannot be combined: Operator class and Power class.',
-    ])
+    expect(descriptions[0]).toContain('operator arrangement')
+    expect(descriptions[0]).toContain('Single operator and Multi operator')
+    expect(descriptions[0]).toContain('not universal wattage limits')
+    expect(descriptions[0]).toContain('Low-power class; the exact maximum output')
+    expect(descriptions[0]).toContain(
+      'Multi operator in Operator class as requiring a declaration',
+    )
+    expect(descriptions[0]).toContain(
+      'These dimensions cannot be combined: Operator class and Power class.',
+    )
+  })
+
+  it('uses ruleset-authored dimension and choice explanations in contest details', () => {
+    const descriptions = describeContestRuleset({
+      schema_version: 2,
+      ruleset_key: 'custom-power',
+      version: '1',
+      rules: [
+        {
+          id: 'categories',
+          rule: {
+            kind: 'categories',
+            dimensions: [
+              {
+                key: 'power',
+                label: 'Output class',
+                description: 'Measured at the antenna connector after the amplifier.',
+                choices: [
+                  {
+                    key: 'low',
+                    label: 'Low power',
+                    description: 'Maximum 100 W PEP at the antenna connector.',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(descriptions[0]).toContain(
+      'Measured at the antenna connector after the amplifier.',
+    )
+    expect(descriptions[0]).toContain(
+      'Low power: Maximum 100 W PEP at the antenna connector.',
+    )
+    expect(descriptions[0]).toContain('official published rules are authoritative')
+  })
+
+  it('identifies custom categories as sponsor-defined when no explanation is saved', () => {
+    const descriptions = describeContestRuleset({
+      schema_version: 2,
+      ruleset_key: 'custom-class',
+      version: '1',
+      rules: [
+        {
+          id: 'categories',
+          rule: {
+            kind: 'categories',
+            dimensions: [
+              {
+                key: 'junior_class',
+                label: 'Junior class',
+                choices: [{ key: 'junior', label: 'Junior' }],
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(descriptions[0]).toContain(
+      'This is a sponsor-defined classification; check the official rules for its exact definition and limits.',
+    )
   })
 
   it('handles absent and unknown rule types without crashing or inventing semantics', () => {
