@@ -1046,5 +1046,22 @@
   "s_e6379e41": "Nach oben verschieben",
   "s_2b87faa8": "Nach unten verschieben",
   "s_5ff9d6fe": "Version {name} aktivieren?",
-  "s_ddce129a": "Mit der Aktivierung wird diese Version für zukünftige Wettbewerbsstarts gültig. Wettbewerbe mit bereits festgelegter Version behalten ihre bisherigen Stammdaten."
+  "s_ddce129a": "Mit der Aktivierung wird diese Version für zukünftige Wettbewerbsstarts gültig. Wettbewerbe mit bereits festgelegter Version behalten ihre bisherigen Stammdaten.",
+  "s_cb83f9ca": "Audit-Protokoll",
+  "s_b2673f61": "Administrative Aktivitäten und Ergebnisberechnungen der letzten 90 Tage.",
+  "s_4480ef83": "Audit-Ereignisse durchsuchen",
+  "s_163b5790": "Zieltyp",
+  "s_215e86c5": "Von (Ortszeit)",
+  "s_05e9d6a8": "Bis (Ortszeit)",
+  "s_36a1e6ed": "Audit-Ereignisse werden geladen…",
+  "s_e0966b3b": "Keine Audit-Ereignisse entsprechen diesen Filtern.",
+  "s_e3bbc270": "Zeitpunkt (UTC)",
+  "s_b449dc5a": "Akteur",
+  "s_8b67f168": "Ziel",
+  "s_0cc2e245": "System oder Gast",
+  "s_136a35ae": "Details anzeigen",
+  "s_10f0f44b": "Anfrage-ID",
+  "s_2a0dae62": "Seiten des Audit-Protokolls",
+  "s_9de7d172": "Seite {page} von {pages}",
+  "s_b0e7233f": "Das Audit-Protokoll konnte nicht geladen werden."
 }

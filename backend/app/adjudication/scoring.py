@@ -21,6 +21,7 @@ from backend.app.adjudication.domain import (
     normalize_callsign,
     resolve_cty_callsign,
 )
+from backend.app.audit import record_audit_event
 from backend.app.logs.adif import band_from_frequency_mhz
 from backend.app.master_data.jobs import MissingContestMasterData
 from backend.app.metrics import record_score_run
@@ -634,7 +635,13 @@ def score_entry_revision(
 
 
 def recalculate_contest(
-    session: Session, contest_id: int, *, trigger_key: str, created_by_user_id: int | None = None
+    session: Session,
+    contest_id: int,
+    *,
+    trigger_key: str,
+    created_by_user_id: int | None = None,
+    trigger_kind: str = "system",
+    request_id: str | None = None,
 ) -> list[ScoreRun]:
     """Recalculate each entry's latest accepted revision once for a committed trigger."""
     contest = session.get(Contest, contest_id)
@@ -672,6 +679,22 @@ def recalculate_contest(
                     created_by_user_id=created_by_user_id,
                 )
             runs.append(run)
+            record_audit_event(
+                session,
+                actor_user_id=created_by_user_id,
+                action="score_run.calculated",
+                target_type="score_run",
+                target_id=run.id,
+                metadata={
+                    "contest_id": contest_id,
+                    "entry_id": entry.id,
+                    "revision_id": revision.id,
+                    "run_number": run.run_number,
+                    "status": run.status.value,
+                    "trigger": trigger_kind,
+                },
+                request_id=request_id,
+            )
             logger.info(
                 "score_run_finished",
                 extra={**event_fields, "score_run_id": run.id, "status": run.status.value},
@@ -680,6 +703,22 @@ def recalculate_contest(
             logger.exception("score_run_failed", extra=event_fields)
             failed_run = _record_failed_run(session, entry, revision, key, exc, created_by_user_id)
             runs.append(failed_run)
+            record_audit_event(
+                session,
+                actor_user_id=created_by_user_id,
+                action="score_run.calculation_failed",
+                target_type="score_run",
+                target_id=failed_run.id,
+                metadata={
+                    "contest_id": contest_id,
+                    "entry_id": entry.id,
+                    "revision_id": revision.id,
+                    "run_number": failed_run.run_number,
+                    "status": failed_run.status.value,
+                    "trigger": trigger_kind,
+                },
+                request_id=request_id,
+            )
             logger.info(
                 "score_run_finished",
                 extra={

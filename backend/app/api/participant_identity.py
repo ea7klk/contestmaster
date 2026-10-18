@@ -259,6 +259,15 @@ def register_participant(
     )
     session.add(link)
     session.flush()
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.account_registered",
+        target_type="participant",
+        target_id=participant.id,
+        metadata={"verification_required": True, "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     schedule_email_delivery(
         background_tasks,
@@ -441,6 +450,15 @@ def reset_participant_password(
         )
     ):
         browser_session.revoked_at = now
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.password_reset",
+        target_type="participant",
+        target_id=participant.id,
+        metadata={"credential_changed": True, "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return {"status": "password_updated"}
 
@@ -526,6 +544,7 @@ def participant_me(
 @router.patch("/me")
 def update_participant_profile(
     payload: ParticipantProfileUpdate,
+    request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
@@ -534,6 +553,15 @@ def update_participant_profile(
         raise HTTPException(status_code=404, detail="Participant account not found.")
     if "display_name" in payload.model_fields_set:
         participant.display_name = payload.display_name.strip() if payload.display_name else None
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.account_updated",
+        target_type="participant",
+        target_id=participant.id,
+        metadata={"fields": sorted(payload.model_fields_set), "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return {"id": participant.id, "display_name": participant.display_name}
 
@@ -541,6 +569,7 @@ def update_participant_profile(
 @router.post("/callsigns", status_code=201)
 def add_participant_callsign(
     payload: CallsignRequest,
+    request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
@@ -561,6 +590,16 @@ def add_participant_callsign(
         created_at=datetime.now(UTC),
     )
     session.add(item)
+    session.flush()
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.callsign_added",
+        target_type="participant",
+        target_id=actor.participant_id,
+        metadata={"callsign_id": item.id, "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return {"id": item.id, "callsign": item.callsign_submitted, "is_primary": False}
 
@@ -568,6 +607,7 @@ def add_participant_callsign(
 @router.patch("/callsigns/{callsign_id}/primary")
 def promote_participant_callsign(
     callsign_id: int,
+    request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, object]:
@@ -593,6 +633,15 @@ def promote_participant_callsign(
     item.is_primary = True
     participant.callsign_submitted = item.callsign_submitted
     participant.callsign_normalized = item.callsign_normalized
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.primary_callsign_changed",
+        target_type="participant",
+        target_id=participant.id,
+        metadata={"callsign_id": item.id, "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return {"id": item.id, "callsign": item.callsign_submitted, "is_primary": True}
 
@@ -600,6 +649,7 @@ def promote_participant_callsign(
 @router.delete("/callsigns/{callsign_id}", status_code=204)
 def remove_participant_callsign(
     callsign_id: int,
+    request: Request,
     actor: Annotated[ParticipantPrincipal, Depends(require_participant)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
@@ -613,7 +663,17 @@ def remove_participant_callsign(
         raise HTTPException(status_code=404, detail="Callsign not found.")
     if item.is_primary:
         raise HTTPException(status_code=409, detail="The primary callsign cannot be removed.")
+    participant_id = item.participant_id
     session.delete(item)
+    record_audit_event(
+        session,
+        actor_user_id=None,
+        action="participant.callsign_removed",
+        target_type="participant",
+        target_id=participant_id,
+        metadata={"callsign_id": callsign_id, "actor_kind": "participant"},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return Response(status_code=204)
 
@@ -794,6 +854,7 @@ def begin_participant_email_change(
 @router.post("/confirm-email-change")
 def confirm_participant_email_change(
     payload: MagicLinkConsume,
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, str]:
     now = datetime.now(UTC)
@@ -847,6 +908,19 @@ def confirm_participant_email_change(
             )
         ):
             old_session.revoked_at = now
+        record_audit_event(
+            session,
+            actor_user_id=None,
+            action="participant.email_changed",
+            target_type="participant",
+            target_id=change.participant_id,
+            metadata={
+                "change_id": change.id,
+                "fields": ["email"],
+                "actor_kind": "participant",
+            },
+            request_id=getattr(request.state, "request_id", None),
+        )
     session.commit()
     return {"status": "confirmed", "complete": str(change.completed_at is not None).lower()}
 

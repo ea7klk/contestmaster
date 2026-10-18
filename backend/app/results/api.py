@@ -136,6 +136,8 @@ def generate_results(
         contest_id,
         trigger_key=f"manager-result-generation:{idempotency_key}",
         created_by_user_id=principal.user_id,
+        trigger_kind="manager",
+        request_id=getattr(request.state, "request_id", None),
     )
     session.commit()
     unresolved = unresolved_items(session, contest)

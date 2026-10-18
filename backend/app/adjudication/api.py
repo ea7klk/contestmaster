@@ -189,6 +189,8 @@ def review_qso(
         contest_id,
         trigger_key=f"review:{decision.id}",
         created_by_user_id=principal.user_id,
+        trigger_kind="adjudication",
+        request_id=getattr(request.state, "request_id", None),
     )
     session.commit()
     return {

@@ -15,6 +15,7 @@ from backend.app.api.auth import issue_session
 from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
+    AuditEvent,
     Contest,
     ContestMasterDataVersion,
     ContestStatus,
@@ -239,6 +240,15 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
         failed = recalculate_contest(session, contest_id, trigger_key="pinned-data-retry")[0]
         assert failed.status is ScoreRunStatus.FAILED
         assert "cty" in failed.master_data_snapshot["error"]
+        session.flush()
+        failed_event = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "score_run.calculation_failed",
+                AuditEvent.target_id == str(failed.id),
+            )
+        )
+        assert failed_event is not None
+        assert failed_event.event_metadata["status"] == "failed"
         source = MasterDataSource(
             source_key="cty-test",
             name="cty test",
@@ -302,6 +312,15 @@ def test_recalculation_after_upload_retries_the_same_trigger_once(scoring_db):
         assert len(first) == len(retry) == 1
         assert first[0].id == retry[0].id
         assert first[0].status is ScoreRunStatus.COMPLETED
+        session.flush()
+        audit_events = list(
+            session.scalars(select(AuditEvent).where(AuditEvent.target_id == str(first[0].id)))
+        )
+        assert [event.action for event in audit_events] == [
+            "score_run.calculated",
+            "score_run.calculated",
+        ]
+        assert all(event.event_metadata["trigger"] == "system" for event in audit_events)
 
 
 def test_configured_cross_log_hook_uses_reciprocal_logs_and_integer_tolerances(scoring_db):

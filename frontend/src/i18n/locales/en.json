@@ -1046,5 +1046,22 @@
   "s_e6379e41": "Move up",
   "s_2b87faa8": "Move down",
   "s_5ff9d6fe": "Activate {name}?",
-  "s_ddce129a": "Activating this version makes it current for contest start dates going forward. Contests that already have a pinned version keep their existing master data."
+  "s_ddce129a": "Activating this version makes it current for contest start dates going forward. Contests that already have a pinned version keep their existing master data.",
+  "s_cb83f9ca": "Audit log",
+  "s_b2673f61": "Administrative activity and result calculations from the last 90 days.",
+  "s_4480ef83": "Search audit events",
+  "s_163b5790": "Target type",
+  "s_215e86c5": "From (your local time)",
+  "s_05e9d6a8": "To (your local time)",
+  "s_36a1e6ed": "Loading audit events…",
+  "s_e0966b3b": "No audit events match these filters.",
+  "s_e3bbc270": "When (UTC)",
+  "s_b449dc5a": "Actor",
+  "s_8b67f168": "Target",
+  "s_0cc2e245": "System or guest",
+  "s_136a35ae": "View details",
+  "s_10f0f44b": "Request ID",
+  "s_2a0dae62": "Audit log pages",
+  "s_9de7d172": "Page {page} of {pages}",
+  "s_b0e7233f": "The audit log could not be loaded."
 }

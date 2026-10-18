@@ -1046,5 +1046,22 @@
   "s_e6379e41": "Mover arriba",
   "s_2b87faa8": "Mover abajo",
   "s_5ff9d6fe": "¿Activar {name}?",
-  "s_ddce129a": "Al activar esta versión, se aplicará a las fechas de inicio de futuros concursos. Los concursos que ya tengan una versión fijada conservarán sus datos maestros actuales."
+  "s_ddce129a": "Al activar esta versión, se aplicará a las fechas de inicio de futuros concursos. Los concursos que ya tengan una versión fijada conservarán sus datos maestros actuales.",
+  "s_cb83f9ca": "Registro de auditoría",
+  "s_b2673f61": "Actividad administrativa y cálculos de resultados de los últimos 90 días.",
+  "s_4480ef83": "Buscar eventos de auditoría",
+  "s_163b5790": "Tipo de destino",
+  "s_215e86c5": "Desde (hora local)",
+  "s_05e9d6a8": "Hasta (hora local)",
+  "s_36a1e6ed": "Cargando eventos de auditoría…",
+  "s_e0966b3b": "Ningún evento de auditoría coincide con estos filtros.",
+  "s_e3bbc270": "Fecha y hora (UTC)",
+  "s_b449dc5a": "Autor",
+  "s_8b67f168": "Destino",
+  "s_0cc2e245": "Sistema o invitado",
+  "s_136a35ae": "Ver detalles",
+  "s_10f0f44b": "ID de solicitud",
+  "s_2a0dae62": "Páginas del registro de auditoría",
+  "s_9de7d172": "Página {page} de {pages}",
+  "s_b0e7233f": "No se pudo cargar el registro de auditoría."
 }

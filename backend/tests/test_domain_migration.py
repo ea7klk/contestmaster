@@ -2,15 +2,18 @@ import json
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import inspect, text
-from sqlalchemy.orm import Session
+import pytest
+from sqlalchemy import delete, inspect, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.db import build_engine
 from backend.app.migrations import _config
 from backend.app.models import (
+    AuditEvent,
     BandCatalogItem,
     Contest,
     ContestSeries,
@@ -134,7 +137,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     }
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0026_guest_email_locale"
+            "0027_audit_event_retention"
         )
         assert (
             connection.scalar(
@@ -178,6 +181,8 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
                 "SELECT name FROM sqlite_master WHERE type = 'trigger'"
             ).scalars()
         )
+        assert "immutable_audit_events_update" in triggers
+        assert "immutable_audit_events_delete" in triggers
         assert {
             "immutable_ruleset_versions_update",
             "immutable_entry_revisions_update",
@@ -236,6 +241,44 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     engine.dispose()
 
 
+def test_migrated_audit_trigger_allows_only_expired_event_deletion(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'audit-retention.sqlite3'}"
+    _alembic(database_url, "upgrade", "head")
+    engine = build_engine(database_url)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    now = datetime.now(UTC)
+    with factory.begin() as session:
+        recent = AuditEvent(
+            action="recent",
+            target_type="test",
+            target_id="1",
+            event_metadata={},
+            occurred_at=now - timedelta(days=89),
+        )
+        expired = AuditEvent(
+            action="expired",
+            target_type="test",
+            target_id="2",
+            event_metadata={},
+            occurred_at=now - timedelta(days=91),
+        )
+        session.add_all([recent, expired])
+        session.flush()
+        recent_id, expired_id = recent.id, expired.id
+    try:
+        with factory() as session:
+            with pytest.raises(IntegrityError, match="audit_events within retention"):
+                session.execute(delete(AuditEvent).where(AuditEvent.id == recent_id))
+            session.rollback()
+        with factory.begin() as session:
+            session.execute(delete(AuditEvent).where(AuditEvent.id == expired_id))
+        with factory() as session:
+            assert session.get(AuditEvent, recent_id) is not None
+            assert session.get(AuditEvent, expired_id) is None
+    finally:
+        engine.dispose()
+
+
 def test_guest_email_locale_migration_adds_supported_language_column(tmp_path) -> None:
     database_url = f"sqlite:///{tmp_path / 'guest-email-locale.sqlite3'}"
     _alembic(database_url, "upgrade", "0025_initial_password_change")
@@ -290,25 +333,27 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 9
-    assert revisions[0].revision == "0026_guest_email_locale"
-    assert revisions[0].down_revision == "0025_initial_password_change"
-    assert revisions[1].revision == "0025_initial_password_change"
-    assert revisions[1].down_revision == "0024_guest_email_access_and_notices"
-    assert revisions[2].revision == "0024_guest_email_access_and_notices"
-    assert revisions[2].down_revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[3].revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[3].down_revision == "0022_recurring_contest_series"
-    assert revisions[4].revision == "0022_recurring_contest_series"
-    assert revisions[4].down_revision == "0021_authorized_ruleset_deletion"
-    assert revisions[5].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[5].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[6].revision == "0020_authorized_contest_deletion"
-    assert revisions[6].down_revision == "0019_contest_periodicity"
-    assert revisions[7].revision == "0019_contest_periodicity"
-    assert revisions[7].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[8].down_revision is None
-    assert revisions[8].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 10
+    assert revisions[0].revision == "0027_audit_event_retention"
+    assert revisions[0].down_revision == "0026_guest_email_locale"
+    assert revisions[1].revision == "0026_guest_email_locale"
+    assert revisions[1].down_revision == "0025_initial_password_change"
+    assert revisions[2].revision == "0025_initial_password_change"
+    assert revisions[2].down_revision == "0024_guest_email_access_and_notices"
+    assert revisions[3].revision == "0024_guest_email_access_and_notices"
+    assert revisions[3].down_revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[4].revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[4].down_revision == "0022_recurring_contest_series"
+    assert revisions[5].revision == "0022_recurring_contest_series"
+    assert revisions[5].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[6].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[6].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[7].revision == "0020_authorized_contest_deletion"
+    assert revisions[7].down_revision == "0019_contest_periodicity"
+    assert revisions[8].revision == "0019_contest_periodicity"
+    assert revisions[8].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[9].down_revision is None
+    assert revisions[9].revision == "0018_remove_unscored_country_data"
 
 
 def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
@@ -516,7 +561,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0026_guest_email_locale"
+            "0027_audit_event_retention"
         )
     with Session(engine) as session:
         legacy_user = session.query(SystemUser).filter_by(username="legacy-admin").one()
@@ -536,7 +581,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0026_guest_email_locale"
+            "0027_audit_event_retention"
         )
     engine.dispose()
 
@@ -635,7 +680,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0026_guest_email_locale"
+            "0027_audit_event_retention"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

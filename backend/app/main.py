@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.app.adjudication.api import router as adjudication_router
+from backend.app.api.audit import router as audit_router
 from backend.app.api.contests import public_router as public_contest_router
 from backend.app.api.contests import router as contest_router
 from backend.app.api.errors import (
@@ -29,6 +30,7 @@ from backend.app.api.errors import (
 from backend.app.api.identity import router as identity_router
 from backend.app.api.master_data_admin import router as master_data_admin_router
 from backend.app.api.participant_identity import router as participant_identity_router
+from backend.app.audit_retention import audit_retention_timer, prune_expired_audit_events
 from backend.app.body_limit import RequestBodyLimitMiddleware
 from backend.app.config import get_settings
 from backend.app.contest_series_scheduler import (
@@ -69,9 +71,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     email_timer: asyncio.Task[None] | None = None
     initial_sync: asyncio.Task[None] | None = None
     initial_edition_generation: asyncio.Task[None] | None = None
+    audit_timer: asyncio.Task[None] | None = None
     sync_lock = asyncio.Lock()
     contest_generation_lock = asyncio.Lock()
     await asyncio.to_thread(upgrade_database)
+    removed_audit_events = await asyncio.to_thread(prune_expired_audit_events, SessionFactory)
+    logger.info("audit_retention_completed", extra={"deleted_count": removed_audit_events})
+    audit_timer = asyncio.create_task(
+        audit_retention_timer(SessionFactory), name="audit-retention-timer"
+    )
     if settings.master_data_scheduler_enabled:
         if not has_all_required_versions(SessionFactory):
             logger.info("initial_master_data_sync_scheduled")
@@ -118,6 +126,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             email_timer.cancel()
             try:
                 await email_timer
+            except asyncio.CancelledError:
+                pass
+        if audit_timer is not None:
+            audit_timer.cancel()
+            try:
+                await audit_timer
             except asyncio.CancelledError:
                 pass
         try:
@@ -231,6 +245,7 @@ app.add_middleware(
 app.include_router(ruleset_router, prefix=f"{settings.api_prefix}/rulesets")
 app.include_router(operating_catalog_router, prefix=f"{settings.api_prefix}/rulesets")
 app.include_router(identity_router, prefix=f"{settings.api_prefix}/auth")
+app.include_router(audit_router, prefix=settings.api_prefix)
 app.include_router(participant_identity_router, prefix=f"{settings.api_prefix}/participants/auth")
 app.include_router(log_router, prefix=f"{settings.api_prefix}/public")
 app.include_router(master_data_admin_router, prefix=settings.api_prefix)

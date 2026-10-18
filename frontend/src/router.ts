@@ -113,6 +113,11 @@ export const router = createRouter({
       component: () => import('./views/UserAdminView.vue'),
     },
     {
+      path: '/admin/audit-log',
+      name: 'audit-log-admin',
+      component: () => import('./views/AuditLogView.vue'),
+    },
+    {
       path: '/admin/operating-catalog',
       name: 'operating-catalog-admin',
       component: () => import('./views/OperatingCatalogAdminView.vue'),

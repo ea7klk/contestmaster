@@ -177,6 +177,15 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
         assert session.scalar(select(Station)).callsign_submitted == "EA7KLK"
         assert session.scalar(select(Qso)).callsign_submitted == "F4ABC"
         assert session.scalar(select(EntryAccessGrant)).token_hash != result["receipt_token"]
+        upload_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "entry.submitted")
+        )
+        assert upload_event is not None
+        assert upload_event.target_id == str(entry.id)
+        assert upload_event.event_metadata["qso_count"] == 1
+        assert upload_event.event_metadata["input_format"] == "cabrillo"
+        assert "receipt_token" not in upload_event.event_metadata
+        assert "idempotency_key" not in upload_event.event_metadata
 
     entry_id = result["entry_id"]
     headers = {"X-Entry-Receipt": result["receipt_token"]}
@@ -644,6 +653,18 @@ def test_full_log_resubmission_creates_new_revision_and_recovers_receipt_on_retr
     assert replay.json()["replayed"] is True
     with log_database() as session:
         assert session.query(EntryRevision).count() == 2
+        entry_events = list(
+            session.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.target_id == str(created["entry_id"]))
+                .order_by(AuditEvent.id)
+            )
+        )
+        assert [event.action for event in entry_events] == [
+            "entry.submitted",
+            "entry.revised",
+        ]
+        assert entry_events[-1].event_metadata["revision_number"] == 2
 
 
 def test_cabrillo_source_download_requires_entry_access_and_is_versioned(log_database):

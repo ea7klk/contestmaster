@@ -1046,5 +1046,22 @@
   "s_e6379e41": "Sposta su",
   "s_2b87faa8": "Sposta giù",
   "s_5ff9d6fe": "Attivare {name}?",
-  "s_ddce129a": "Attivando questa versione, diventerà valida per le date di inizio dei concorsi futuri. I concorsi che hanno già una versione fissata manterranno i dati master attuali."
+  "s_ddce129a": "Attivando questa versione, diventerà valida per le date di inizio dei concorsi futuri. I concorsi che hanno già una versione fissata manterranno i dati master attuali.",
+  "s_cb83f9ca": "Registro di controllo",
+  "s_b2673f61": "Attività amministrative e calcoli dei risultati degli ultimi 90 giorni.",
+  "s_4480ef83": "Cerca eventi di controllo",
+  "s_163b5790": "Tipo di destinazione",
+  "s_215e86c5": "Da (ora locale)",
+  "s_05e9d6a8": "A (ora locale)",
+  "s_36a1e6ed": "Caricamento degli eventi di controllo…",
+  "s_e0966b3b": "Nessun evento di controllo corrisponde a questi filtri.",
+  "s_e3bbc270": "Data e ora (UTC)",
+  "s_b449dc5a": "Autore",
+  "s_8b67f168": "Destinazione",
+  "s_0cc2e245": "Sistema o ospite",
+  "s_136a35ae": "Visualizza dettagli",
+  "s_10f0f44b": "ID richiesta",
+  "s_2a0dae62": "Pagine del registro di controllo",
+  "s_9de7d172": "Pagina {page} di {pages}",
+  "s_b0e7233f": "Impossibile caricare il registro di controllo."
 }

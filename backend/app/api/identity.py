@@ -336,6 +336,15 @@ def consume_system_password_reset(
         )
     ):
         browser_session.revoked_at = now
+    record_audit_event(
+        session,
+        actor_user_id=user.id,
+        action="system_user.password_reset",
+        target_type="system_user",
+        target_id=user.id,
+        metadata={"credential_changed": True},
+        request_id=getattr(request.state, "request_id", None),
+    )
     session.commit()
     return {"status": "password_updated"}
 
@@ -484,7 +493,11 @@ def update_system_user(
         record_audit_event(
             session,
             actor_user_id=actor.user_id,
-            action="system_user.updated",
+            action=(
+                "system_user.deactivated"
+                if changes.get("is_active") is False
+                else "system_user.updated"
+            ),
             target_type="system_user",
             target_id=user.id,
             reason=payload.audit_reason,
@@ -601,7 +614,11 @@ def update_participant_account(
     record_audit_event(
         session,
         actor_user_id=actor.user_id,
-        action="participant_account.updated",
+        action=(
+            "participant_account.deactivated"
+            if payload.is_active is False
+            else "participant_account.updated"
+        ),
         target_type="participant",
         target_id=participant.id,
         metadata={"fields": sorted(payload.model_fields_set)},

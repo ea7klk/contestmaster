@@ -1046,5 +1046,22 @@
   "s_e6379e41": "Déplacer vers le haut",
   "s_2b87faa8": "Déplacer vers le bas",
   "s_5ff9d6fe": "Activer {name} ?",
-  "s_ddce129a": "L’activation rend cette version applicable aux dates de début des prochains concours. Les concours qui ont déjà une version épinglée conservent leurs données actuelles."
+  "s_ddce129a": "L’activation rend cette version applicable aux dates de début des prochains concours. Les concours qui ont déjà une version épinglée conservent leurs données actuelles.",
+  "s_cb83f9ca": "Journal d’audit",
+  "s_b2673f61": "Activité administrative et calculs des résultats des 90 derniers jours.",
+  "s_4480ef83": "Rechercher des événements d’audit",
+  "s_163b5790": "Type de cible",
+  "s_215e86c5": "Du (heure locale)",
+  "s_05e9d6a8": "Au (heure locale)",
+  "s_36a1e6ed": "Chargement des événements d’audit…",
+  "s_e0966b3b": "Aucun événement d’audit ne correspond à ces filtres.",
+  "s_e3bbc270": "Date et heure (UTC)",
+  "s_b449dc5a": "Auteur",
+  "s_8b67f168": "Cible",
+  "s_0cc2e245": "Système ou invité",
+  "s_136a35ae": "Voir les détails",
+  "s_10f0f44b": "ID de requête",
+  "s_2a0dae62": "Pages du journal d’audit",
+  "s_9de7d172": "Page {page} sur {pages}",
+  "s_b0e7233f": "Impossible de charger le journal d’audit."
 }

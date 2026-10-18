@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.api.auth import normalize_email
+from backend.app.audit import record_audit_event
 from backend.app.logs.cabrillo import ParsedLog
 from backend.app.models import (
     Contest,
@@ -32,7 +33,13 @@ class IdempotencyConflict(ValueError):
 
 
 def recalculate_after_accepted_upload(
-    session: Session, *, contest_id: int, entry_id: int, revision_id: int, replayed: bool
+    session: Session,
+    *,
+    contest_id: int,
+    entry_id: int,
+    revision_id: int,
+    replayed: bool,
+    request_id: str | None = None,
 ) -> list[dict[str, int | str]]:
     """Honor the contest toggle only after a newly accepted revision has committed."""
     if replayed:
@@ -46,6 +53,8 @@ def recalculate_after_accepted_upload(
         session,
         contest_id,
         trigger_key=f"accepted-upload:entry:{entry_id}:revision:{revision_id}",
+        trigger_kind="automatic_upload",
+        request_id=request_id,
     )
     session.commit()
     return [{"id": run.id, "entry_id": run.entry_id, "status": run.status.value} for run in runs]
@@ -77,6 +86,8 @@ def persist_revision(
     received_via: str = "public_submission",
     created_at: datetime | None = None,
     import_format: str = "cabrillo",
+    request_id: str | None = None,
+    qso_count: int | None = None,
 ) -> EntryRevision:
     """Append a complete revision and its normalized station/QSO rows atomically."""
     now = created_at or datetime.now(UTC)
@@ -161,6 +172,25 @@ def persist_revision(
                 source_fields={**qso.fields, "extra_fields": qso.extra_fields},
             )
         )
+    record_audit_event(
+        session,
+        actor_user_id=received_by_user_id,
+        action="entry.submitted" if revision_number == 1 else "entry.revised",
+        target_type="entry",
+        target_id=entry.id,
+        metadata={
+            "contest_id": entry.contest_id,
+            "revision_id": revision.id,
+            "revision_number": revision_number,
+            "input_format": import_format,
+            "qso_count": len(parsed.qsos) if qso_count is None else qso_count,
+            "received_via": received_via,
+            "actor_kind": "participant"
+            if received_via == "participant_session"
+            else "guest_or_receipt",
+        },
+        request_id=request_id,
+    )
     return revision
 
 
@@ -179,6 +209,7 @@ def create_guest_entry(
     is_late: bool = False,
     late_policy: str = "accept_late",
     import_format: str = "cabrillo",
+    request_id: str | None = None,
 ) -> tuple[Entry, str, bool]:
     """Create an entry, receipt grant, first revision, and idempotency row together."""
     previous = session.scalar(
@@ -258,6 +289,7 @@ def create_guest_entry(
         content_type=content_type,
         category_values=category_values,
         import_format=import_format,
+        request_id=request_id,
     )
     session.add(EntryAccessGrant(entry_id=entry.id, token_hash=digest(receipt_token)))
     session.add(

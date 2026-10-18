@@ -440,6 +440,7 @@ async def submit_log(
             is_late=is_late,
             late_policy=late_policy,
             import_format=upload_format,
+            request_id=getattr(request.state, "request_id", None),
         )
         session.commit()
     except IdempotencyConflict as exc:
@@ -477,6 +478,7 @@ async def submit_log(
             entry_id=entry.id,
             revision_id=revision.id if revision else 0,
             replayed=replayed,
+            request_id=getattr(request.state, "request_id", None),
         )
         if revision
         else []
@@ -787,6 +789,7 @@ async def resubmit_log(
         ),
         received_via="participant_session" if participant is not None else "entry_receipt",
         import_format=upload_format,
+        request_id=getattr(request.state, "request_id", None),
     )
     current.is_late = is_late
     if is_late and late_policy == "checklog":
@@ -806,6 +809,7 @@ async def resubmit_log(
         entry_id=current.id,
         revision_id=revision.id,
         replayed=False,
+        request_id=getattr(request.state, "request_id", None),
     )
     return {
         "status": "accepted",
@@ -1038,6 +1042,7 @@ def _append_native_revision(
     entry: Entry,
     contacts: list[dict[str, object]],
     participant: ParticipantPrincipal | None,
+    request_id: str | None = None,
 ) -> None:
     prior = _latest_revision(session, entry.id)
     if prior is None:
@@ -1070,6 +1075,8 @@ def _append_native_revision(
         ),
         received_via="participant_session" if participant is not None else "entry_receipt",
         import_format="native",
+        request_id=request_id,
+        qso_count=len(contacts),
     )
     # Rewrite the normalized snapshot for a contact edit; historical revision rows remain immutable.
     station = session.scalar(select(Station).where(Station.entry_revision_id == revision.id))
@@ -1111,7 +1118,9 @@ def add_contact(
         raise HTTPException(status_code=409, detail="Entry has no submitted revision.")
     contacts = _contacts_for_revision(session, revision.id)
     contacts.append(payload.model_dump(mode="json"))
-    _append_native_revision(session, entry, contacts, participant)
+    _append_native_revision(
+        session, entry, contacts, participant, getattr(request.state, "request_id", None)
+    )
     session.commit()
     return _entry_output(session, entry)
 
@@ -1145,7 +1154,9 @@ def edit_contact(
     if current_index is None:
         raise HTTPException(status_code=404, detail="Contact not found in the current revision.")
     contacts[current_index] = payload.model_dump(mode="json")
-    _append_native_revision(session, entry, contacts, participant)
+    _append_native_revision(
+        session, entry, contacts, participant, getattr(request.state, "request_id", None)
+    )
     session.commit()
     return _entry_output(session, entry)
 
@@ -1177,6 +1188,8 @@ def remove_contact(
     if current_index is None:
         raise HTTPException(status_code=404, detail="Contact not found in the current revision.")
     contacts.pop(current_index)
-    _append_native_revision(session, entry, contacts, participant)
+    _append_native_revision(
+        session, entry, contacts, participant, getattr(request.state, "request_id", None)
+    )
     session.commit()
     return _entry_output(session, entry)
