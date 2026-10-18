@@ -1,140 +1,154 @@
 # Amateur-radio contest rules: body of knowledge
 
-**Research snapshot:** 2026-10-18
+**Research snapshot:** 2026-10-18; **source policy:** sponsor-published contest rules and sponsor rule indexes only.
 
-**Calendar window reviewed:** 2026-10-01 through 2027-09-30
-**Purpose:** A structured reference for comparing real contest rules with Contestmaster's ruleset schema, scoring engine, and visual composer.
+## Scope and evidence standard
 
-## How to use this document
+This body of knowledge is a rules survey for reviewing Contestmaster's ruleset model, scoring engine, and composer. It does **not** claim coverage of any event calendar. The linked evidence is published by contest sponsors or their contest committees. Each description is paraphrased; the sponsor's current rules for the selected edition remain authoritative.
 
-This is a normalized inventory of rule patterns, not a ruleset for any one contest and not a reproduction of calendar records or contest rulebooks. Use the stable pattern IDs (`SCH-*`, `CAT-*`, `XCH-*`, `DUP-*`, `SCORE-*`, `MULT-*`, `OPS-*`, and `PUB-*`) when reviewing a ruleset or filing a capability gap.
+The companion [`sponsor-rule-samples.json`](sponsor-rule-samples.json) contains at least 200 individually identified contest samples. It distinguishes one-off contests from sessions/editions governed by a recurring sponsor ruleset and identifies shared rule pages so repeated sessions are not misrepresented as 200 unrelated rulebooks. Where a sponsor has not yet published the next edition, the newest reviewed sponsor edition is explicitly marked and must be checked again before configuration. A source page's existence does not establish that its rules are unchanged.
 
-For each contest edition under review:
+The inventory is a research aid, not a rules database or endorsement. It excludes secondary calendars and aggregators as evidence. It does not copy contest rules or multiplier tables. The project must not ingest or redistribute the ARRL DXCC list; contest-published scoring definitions may be represented as contest-specific rules where permitted.
 
-1. Use the [WA7BNM 12-month calendar](https://www.contestcalendar.com/contestcal.php) to discover events and their dates. Its reviewed horizon runs from October 2026 through September 2027. Repeated weekly events should be treated as recurring series, not separate rule families.
-2. Open the linked contest detail page to identify the sponsor, advertised exchange, bands, modes, categories, scoring summary, submission deadline, and official rules link.
-3. Use the sponsor's published rules for the selected edition as the authority. Calendar summaries and historical rules can be incomplete, provisional, or stale. If the sponsor has not published rules for the future edition, record the uncertainty and do not infer that last year's rules are unchanged.
-4. For each rule, record the exact source section, Contestmaster configuration path, engine facts needed, and a behavior test. Classify it as `supported`, `partial`, `gap`, or `not applicable`.
-5. Keep contest-specific operations declarative. If a rule cannot be represented and calculated safely, identify the missing capability rather than adding a contest-name branch or hiding behavior in a default.
+## Contest rule sources, grouped by rule family
 
-All contest rule descriptions below are paraphrased. The calendar is a discovery source; it is not the authority on interpretation. This document does not copy or provision third-party multiplier lists. In particular, it does not authorize ingestion or redistribution of the ARRL DXCC list. Use permitted master-data sources and contest-specific rule values.
+These groups are navigation aids, not claims that the groups are exhaustive. Each link goes to a sponsor's rule page or official rule document.
 
-## Review set from the calendar horizon
+### Short sprints and activity sessions
 
-The following linked event pages provide a cross-section of distinct contest families in the reviewed calendar year. This is a rule-pattern sample, not an exhaustive copy of every calendar occurrence.
+- [NAQCC general sprint rules](https://naqcc.info/sprint_rules.html) — monthly CW sprint baseline; QRP limits, exchange variants, repeat rules, and point/multiplier structure.
+- [CWops Tests (CWT)](https://cwops.org/cwops-tests/) and [CW Open rules](https://cwops.org/cwops-tests/cw-open/) — frequent short CW sessions versus a multi-session annual event; session-scoped serials, per-session score, repeated-call multipliers, and optional team aggregation.
+- [RSGB 144 MHz FM Activity Contest](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=2mfmac&year=2026) and [432 MHz FM Activity Contest](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=70cmsfmac&year=2026) — very short FM windows, 6-character locators, serial reset by session, distance points, power sections, and best-session series scoring.
+- [RSGB 144 MHz UK Activity Contest](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=2mukac&year=2026), [50 MHz UKAC](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=6mukac&year=2026), [70 MHz UKAC](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=4mukac&year=2026), [432 MHz UKAC](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=70cmukac&year=2026), [1.3 GHz UKAC](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=uhfukac&year=2026), and [SHF UKAC](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=shfukac&year=2026) — band-specific activity contests with locator exchanges, distance/square scoring, section constraints, session normalization, best-N individual results, and club totals.
+- [RSGB 144 MHz FT8 AC, 2 hours](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=2mmgmac&year=2026), [144 MHz FT8 AC, 4 hours](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=2m4hmgmac&year=2026), [432 MHz FT8 AC, 2 hours](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=70cmsgmac&year=2026), and [432 MHz FT8 AC, 4 hours](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=70cms4mgmac&year=2026) — short ADIF-native FT8 competitions; no serial in the exchange, locator/distance scoring, per-session normalization and best-N aggregation.
+- [RSGB 3.5 MHz Autumn Series](https://www.rsgbcc.org/hf/rules/2026/rautumn.shtml) — short evening sessions across modes with band windows, power/assistance sections, and individual and society series outcomes.
 
-| Family | Event in the calendar window | Observed rule characteristics | Rule authority |
-|---|---|---|---|
-| Worldwide HF DX | [CQ WW SSB detail](https://www.contestcalendar.com/contestdetails.php?ref=172), Oct 2026; [CQ WW RTTY detail](https://www.contestcalendar.com/contestdetails.php?ref=130), Sep 2027 | Zone/entity multipliers, per-band duplicate policy, geographic point tiers, multiple power/operator/transmitter classes, overlays, operating limits, and a final multiplier formula | [CQ WW rules](https://www.cqww.com/rules/); [CQ WW RTTY rules](https://www.cqwwrtty.com/) |
-| Prefix DX | CQ WPX SSB/CW calendar events; 2027 SSB dates are also listed by the [sponsor](https://cqwpx.com/) | Prefix multiplier; serial exchange; band-dependent point tiers; single-op off-time and distinct serial scopes for some multi-op classes | [CQ WPX rules](https://cqwpx.com/rules/) |
-| QSO party | [California QSO Party detail](https://www.contestcalendar.com/contestdetails.php?ref=140), Oct 2026 | Asymmetric eligibility and exchanges for in-state/out-of-state entries; county/state/province values; per-mode/per-band repeat credit; maximum multiplier count; operating-time limit | [CQP rules](https://www.cqp.org/Rules.html) |
-| Structured domestic exchange | [ARRL Sweepstakes CW detail](https://www.contestcalendar.com/contestdetails.php?ref=177), Nov 2026 and Nov 2027 | Long ordered exchange containing serial, precedence, callsign, check, and section; one contact per station; a total operating-time cap with minimum off periods | [ARRL Sweepstakes](https://www.arrl.org/sweepstakes) |
-| Digital short contest | [DARC FT4 detail](https://www.contestcalendar.com/contestdetails.php?ref=745) | FT4-only, two HF bands, report plus four-character grid, per-band repeats, prefix multipliers, short UTC operating window | [DARC FT4 rules](https://www.darc.de/der-club/referate/conteste/ft4-contest/ft4-rules/) |
-| RTTY DX with transfer traffic | [WAE RTTY detail](https://www.contestcalendar.com/contestdetails.php?ref=183), Nov 2026 and Nov 2027 | Serial exchange, per-band repeats, single-op operating/off-time limits, and additional QTC traffic under the sponsor rules | [DARC WAE contest page](https://www.darc.de/der-club/referate/conteste/wae-dx-contest/en/) |
-| Emergency/community field event | ARRL Field Day is listed annually in June | Entry class depends on station/site and transmitter setup; contact value depends on mode; a power multiplier and evidence-backed bonuses affect the score; club aggregation is separate from individual entries | [ARRL Field Day 2026 rules](https://www.arrl.org/field-day-rules/) |
-| VHF / rover | CQ WW VHF and multiple VHF/UHF contests appear in the calendar; see [CQ WW VHF rules](https://www.cqww-vhf.com/rules/) | Grid exchange and per-band grid multipliers; band-specific QSO points; a rover can establish a new operating identity by changing grid | [CQ WW VHF rules](https://www.cqww-vhf.com/rules/); [IARU Region 1 VHF-up rules](https://www.iaru-r1.org/wp-content/uploads/2024/02/Rules-IARU-R1-VHF-up-Contests.pdf) |
+### Weekend and long-duration HF contests
 
-## Rule-pattern inventory and current model comparison
+- [CQ WW DX rules](https://www.cqww.com/rules/) and [CQ WW RTTY rules](https://www.cqwwrtty.com/) — worldwide multi-band formats with zone/entity multipliers, category dimensions, band/mode repeat policy, and an aggregate multiplier formula.
+- [CQ WPX rules](https://cqwpx.com/rules/) — prefix-based multipliers, serial exchange, band-dependent points, single-operator operating limits, and distinct multi-operator provisions.
+- [ARRL November Sweepstakes](https://www.arrl.org/arrl-sweepstakes) — ordered serial/precedence/callsign/check/section exchange, unique-contact treatment, and a maximum operating period with off-time.
+- [ARRL 10-Meter Contest rules](https://contests.arrl.org/ContestRules/10M-Rules.pdf) — mixed/CW/phone categories, per-mode repeats, 36-of-48-hour operating limit, and geographically asymmetric exchange values.
+- [ARRL International DX rules](https://contests.arrl.org/ContestRules/DX-Rules.pdf) — separate CW/phone editions, exchange and point values that depend on station location, and multiplier treatment.
+- [IARU HF World Championship rules](https://www.iaru.org/on-the-air/iaru-contests/rules/) — official global sponsor rules for the worldwide HF event and headquarters-station exchanges.
+- [DARC Worked All Germany rules](https://www.darc.de/der-club/referate/conteste/wag-contest/regeln/) — CW/SSB and mixed categories, DOK/entity multipliers, asymmetric points, transmitter-change constraints, club aggregation, and Cabrillo submission.
+- [DARC Worked All Europe rules](https://www.darc.de/der-club/referate/conteste/wae-dx-contest/en/) — mode-specific editions and QTC transfer traffic in addition to ordinary QSOs; QTC is a separate data object, not an exchange string.
+- [RSGB IOTA Contest rules](https://www.rsgbcc.org/hf/rules/2026/riota.shtml) — island/world station roles, island references, band/mode repeats, assistance categories, and operating-location requirements.
+- [RSGB Commonwealth Contest rules](https://www.rsgbcc.org/hf/rules/2026/rcwc.shtml) — geographically bounded station eligibility and explicit call-area identification.
+- [UBA DX Contest rules](https://www.uba.be/en/hf/contest-rules/uba-dx-contest) — asymmetric participant roles, band/mode multipliers, section exchange, mode editions, operating-time classes, and log penalties.
+- [NCJ North American QSO Party rules](https://ncjweb.com/NAQP-Rules.pdf) — 12-hour format with off-time, name/state or province exchange, mode-specific editions, assistance classes, teams, and multi-two band-change limits.
 
-Status describes today's repository implementation, not a promise that all variants of a pattern are supported. The main schema is `backend/app/rulesets/schema.py`; deterministic rule execution is in `backend/app/rulesets/engine.py`; the UI is `frontend/src/views/RulesetComposerView.vue` plus `RuleSchemaEditor.vue` and `ConditionEditor.vue`.
+### Digital, RTTY, and mode-specific contests
 
-| ID | Rule pattern and examples | Current representation | Status and analysis notes |
-|---|---|---|---|
-| SCH-01 | Fixed UTC start/end and an independent log cutoff; CQ WW, CQP, Sweepstakes | Contest configuration; submission rule handles late policy | **Supported.** Dates/cutoff belong to the contest edition, not the reusable ruleset. |
-| SCH-02 | Recurring calendar patterns such as a full weekend, monthly sprint, or fixed annual weekend | Contest periodicity and saved edition UTC instants | **Partial.** Calendar discovery provides recurrence clues. Confirm each sponsor's date convention; do not derive unscheduled edition times from an approximate calendar summary. |
-| SCH-03 | Multiple operating blocks or an event with scheduled pauses | One contest start/end plus QSO time eligibility; operating constraints handle off-time | **Gap for explicit sessions.** A wall-clock interval that includes an inactive gap is not equivalent to an allowed-window schedule. Test that QSOs in each gap are excluded if a contest uses split periods. |
-| SCH-04 | Calendar advertises local time, not UTC | Convert only after the sponsor defines the relevant timezone and date; persist UTC | **Requires source clarification.** Some calendar entries explicitly say “local.” Do not assume the operator's locale or the server timezone. |
-| ELG-01 | Asymmetric who-may-work-whom rules; CQP awards CA and non-CA stations differently | Eligibility condition predicates and conditions on points/multipliers | **Partial.** Conditions can express simple predicates against current entry/QSO facts. Confirm that participant location/region is available as a trusted fact; free-text exchange alone must not be mistaken for verified station location. |
-| ELG-02 | Special entrant classes or geographic boundaries | Category dimensions, exchange fields, and declarative conditions | **Partial.** Generic categories exist, but the engine has a finite fact set. A condition is useful only when its fact is populated and validated. |
-| CAT-01 | Operator, power, assisted status, band, mode, station type, transmitter count | `CategoryRule.dimensions` and choice values | **Supported for classification.** Rulesets can define dimensions and incompatibilities. Contest-specific limits must be described in the choice/rule text, not inferred from labels. |
-| CAT-02 | Overlay categories such as Rookie/Youth/Classic, with both a base-category result and a separate overlay result | Category choices can record an overlay-like value; workflow hooks can request downstream work | **Partial/gap for parallel rankings.** A category value alone does not produce a second independent scored listing or award. Define whether an overlay changes eligibility, scoring, placement, or creates an additional result before claiming support. |
-| CAT-03 | Class depends on station construction, operator count, transmitters, power source, or setup facts; Field Day | Categories plus entry declarations and evidence-keyed bonuses | **Partial.** Declarations can capture facts, but complex derived classes and evidence review require explicit workflows. Never infer transmitter count or power source from a Cabrillo category label alone. |
-| XCH-01 | Ordered, multi-field exchange; Sweepstakes, CQP, serial contests | `ExchangeRule.fields`, direction, typed validators, enum choices, serial scope | **Supported for defined fields.** Preserve sent/received raw values. Add an edition-specific test for field order, requiredness, parsing, and serial behavior. |
-| XCH-02 | Conditional exchange schema by entrant type/location/mode | Multiple exchange declarations and conditions; import adapters | **Partial.** Verify that every condition is tied to data actually available in the upload or entry declaration. A schema that accepts a field does not by itself implement sponsor-specific parsing. |
-| XCH-03 | QTC traffic: exchange a record of prior contacts, not merely the current QSO; WAE | No QTC message collection, direction, sequence, validation, or score facts in the current common model | **Gap.** Requires a first-class transfer/message record and rules for sent/received QTC limits, ordering, duplicate transfers, cross-checking, and integer score contribution. Do not model a QTC as an ordinary exchange field. |
-| XCH-04 | Serial counter scope varies by entire entry, band, mode, or transmitter | `ExchangeField.serial_scope` | **Supported for declared scopes.** Test counter resets and sequencing separately for the exact entry category. |
-| DUP-01 | Duplicate key varies by contest, band, mode, grid, transmitter; CQ WW, CQP, VHF | `DuplicateRule.scope`; duplicates may optionally count for multipliers without points | **Supported for current scopes.** The scope vocabulary is finite. CQP's “once per mode/band/county” needs a county or equivalent location key before it can be represented exactly. |
-| DUP-02 | A rover's same callsign can become a new contact after moving grid | Grid-aware duplicate scope and QSO grid fact | **Partial.** A grid can participate in a duplicate key, but the model does not yet establish a time-varying station-location/rover itinerary as a first-class, verified fact. Validate location transitions and opponent-side credit rules. |
-| SCORE-01 | Integer contact points depend on entity, continent, zone, mode, band, or exchange | `PointRule.fact` plus lookup values/default and rule conditions | **Supported for enumerated current facts.** Missing values need explicit default/review behavior. Arithmetic, intermediate points, penalties, and final score remain integers. |
-| SCORE-02 | Distance or locator-distance points; many VHF-up contests | No distance fact or grid-to-distance calculation in current `ScoringQso` | **Gap.** Requires a defined locator precision, station coordinates, distance algorithm/rounding, missing-grid behavior, and integer conversion agreed from the sponsor rule. |
-| MULT-01 | Entity/country, continent, CQ/ITU zone, grid, band or mode multipliers | `MultiplierRule.source_fact` and uniqueness scope; CTY-resolved entity/continent/zones are available in scoring | **Supported for current source facts and scopes.** Dataset semantics and contest-specific definitions must be version-pinned and documented. |
-| MULT-02 | Prefix, suffix, exact callsign, or special-call multipliers; CQ WPX and many digital events | `qso.worked_callsign` is available; there is no derived `qso.prefix` or `qso.suffix` fact. Conditions can filter explicit callsign values, but there is no dedicated configured callsign-set or prefix-extraction rule | **Partial/gap.** A callsign used as a multiplier source is not the same as prefix normalization. Prefix construction must follow each contest's portable/special-call rules, with test cases at ambiguity boundaries. Treat explicit callsign filters as candidate only after verifying canonicalization and validation. |
-| MULT-03 | Section, county, DOK, state/province, or another contest-specific multiplier | Can use configured exchange fields as multiplier facts; no universal source table for all such areas | **Partial.** Values may be declared as rule-specific enums when permitted. Keep lists tied to source/provenance and contest edition; do not add restricted master datasets to solve it. |
-| MULT-04 | Cap the total or per-group multiplier credit; CQP has a scored multiplier maximum | No dedicated maximum-multiplier/cap property in `MultiplierRule` | **Gap.** A capped tally is distinct from filtering which multiplier keys are eligible. Define cap ordering and score explanation before adding support. |
-| SCORE-03 | Multiplicative points-times-multipliers formulas; bonuses before/after multiplier; power multiplier | `ScoreFormulaRule`, integer `BonusRule`, `PenaltyRule`, and entry `power_multiplier` | **Supported for declarative formulas.** Test exact order, cap behavior, and ties using integer arithmetic. |
-| SCORE-04 | QSO points plus transfer-traffic points; QTC example | No QTC scoring input | **Gap; depends on XCH-03.** Do not count message points without validated transfer records. |
-| SCORE-05 | Club totals, club membership radii, split allocation of multi-op scores | No club/team result aggregate rule in the per-entry score engine | **Gap.** Treat aggregation, membership eligibility, allocation percentages, minimum-entry thresholds, and output rows as a separate group-result capability. Any fractional split must have an explicitly specified integer rounding rule. |
-| OPS-01 | Maximum operating time, minimum/required off periods, and session gap | `OperatingConstraintRule` | **Supported for represented constraints.** Rules differ on whether listening counts as operating and whether post-limit QSOs stay in the log but are unscored; model the exact consequence and test edge boundaries. |
-| OPS-02 | Maximum band changes per clock hour / minimum dwell; multi-op band hopping | Band-change window, maximum changes, and minimum dwell fields | **Supported for current constraint shape.** Validate whether counting windows are fixed UTC clock hours, rolling windows, or begin with the first QSO on a band; these are not interchangeable. |
-| OPS-03 | Simultaneous transmitters, one signal per band, run/multiplier station and independent clocks | Maximum transmitters and signal-per-band flags, transmitter QSO field, workflow review | **Partial.** Basic limits exist. Rules such as CQ WW multi-single 10-minute run/multiplier roles need role-aware logs and precise clock grouping; review-only checks must be identified as such. |
-| OPS-04 | Location radius, remote receiver, self-spotting, post-contest correction, human initiation | Eligibility/rule conditions and workflow hooks | **Partial / often human review.** A log cannot prove every operational fact. Store declarations and review actions; don't describe a log-only calculation as enforcement of off-air conduct. |
-| PEN-01 | Duplicate treatment, exchange mismatch, NIL/busted-call penalties, reclassification or DQ | Duplicate effects, penalty actions, cross-log/adjudication workflows | **Partial.** Each sponsor's penalty basis and lookup tolerances differ. Missing counterpart logs or unverifiable facts must not silently become a universal penalty. |
-| PUB-01 | Entry deadline, late status, checklog, withdrawal and published-list policy | Contest cutoff, submission rule, entry status, immutable score/publication snapshots | **Supported for core lifecycle.** Sponsor-specific late-log publication and award eligibility may differ; configure the policy for each contest. |
-| PUB-02 | Required headers, QSO columns, accepted file formats and category mapping | `FormatMappingRule` and Cabrillo/ADIF boundary adapters | **Supported for declared formats.** Keep Cabrillo field semantics per WWROF. Verify the selected contest's required fields and category mappings against its sponsor template. |
-| PUB-03 | Awards/rankings by base category, overlay, geography, club, or award eligibility | Published snapshots expose configured categories and scores | **Partial.** Independent overlay awards and aggregate club competitions are not implied by category tags or score snapshots. |
+- [DARC FT4 Contest rules](https://www.darc.de/der-club/referate/conteste/ft4-contest/ft4-rules/) — short digital contest with a compact locator exchange and prefix multipliers.
+- [UBA PSK63 Prefix Contest rules](https://www.uba.be/en/hf/contest-rules/uba-psk63-prefix-contest) — single-mode eligibility, prefix multiplier behavior, and power/operator categories.
+- [RSGB MGM rules](https://www.rsgbcc.org/vhf/rules/2026/mgmrules.shtml) — machine-generated mode definitions, locator exchange, and rules distinct from CW/phone VHF events.
+- [ARRL International Digital Contest rules](https://www.arrl.org/arrl-digital-contest) — digital-only categories, exchange, scoring, and log format requirements.
+- [ARRL RTTY Roundup rules](https://www.arrl.org/rtty-roundup) — RTTY exchange and categories; check the event edition for any current digital-mode expansion.
+- [DARC RTTY short contest rules entry point](https://www.darc.de/der-club/referate/conteste/rtty-kurzcontest/) — compact RTTY session and series scoring; verify the current edition page before modeling.
 
-## Current engine facts: guardrail for reviews
+### VHF, UHF, SHF, EME, and distance contests
 
-The scoring engine currently accepts a finite, typed QSO context. It includes QSO ID/time, worked callsign, band, mode, grid, transmitter, continent, entity, CQ zone, ITU zone, sent/received exchanges; entry ID, categories, declarations, and power multiplier; and station callsign. The `MultiplierRule` schema's string path is validated against this set. A future field name in JSON is not an implemented capability until it is accepted, populated, and tested end to end.
+- [ARRL January VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), [June VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf), and [September VHF rules](https://contests.arrl.org/ContestRules/JanJunSep-VHF-Rules.pdf) — common rules document with separate contest occurrences, grid-based objectives, band eligibility, and club competition.
+- [ARRL International EME rules](https://contests.arrl.org/ContestRules/EME-Rules.pdf) — multiple 48-hour weekends split by frequency range, band-limited periods, grid exchange, fixed QSO points, and per-band grid multipliers.
+- [ARRL 10 GHz & Up rules](https://www.arrl.org/10-ghz-up) — two operating weekends, limited operating hours, location-based microwave contacts, and a later log deadline.
+- [CQ WW VHF rules](https://www.cqww-vhf.com/rules/) — grid exchange, per-band scoring and multipliers, and rover location changes.
+- [RSGB 432 MHz Trophy](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=70cmstrophy&year=2026), [2.3 GHz Trophy](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=13cmstrophy&year=2026), [10 GHz Trophy](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=3cmstrophy&year=2026), and [October 432 MHz–245 GHz Contest](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=octuhf&year=2026) — different band ceilings, operating windows, band-reset serials, split operating periods, and distance scoring.
+- [RSGB general VHF/UHF/SHF rules](https://www.rsgbcc.org/vhf/rules/26rules/General.shtml) — shared common rules for location, UTC logging, allowed formats, deadlines, operating categories, and penalties; specific contest rules override these where stated.
+- [IARU Region 1 VHF-up rules](https://www.iaru-r1.org/wp-content/uploads/2024/02/Rules-IARU-R1-VHF-up-Contests.pdf) — sponsor rule example of locator and distance scoring. This is not a requirement for IARU organizational-region master data in Contestmaster.
 
-The current point-source vocabulary is `fixed`, `band`, `mode`, `continent`, `entity`, `cq_zone`, `itu_zone`, and received `exchange`. The multiplier scopes are `contest`, `band`, `mode`, `band_mode`, `grid`, and `transmitter`. The duplicate scopes are a separately enumerated list. Use these exact vocabularies when doing a schema audit; do not treat them as synonyms.
+### State, province, and regional QSO parties
 
-## Suggested analysis and regression cases
+These sponsor rules are especially useful for asymmetric eligibility, geographic exchange values, county-line/mobile operation, multipliers, duplicate scope, and power/mode sections:
 
-These are review prompts for ruleset construction and future tests, not universal contest rules.
+- [Arizona QSO Party rules](https://www.azqp.org/rules)
+- [Arkansas QSO Party rules](https://arkqp.com/)
+- [California QSO Party rules](https://www.cqp.org/Rules.html)
+- [Colorado QSO Party rules](https://coloradoqsoparty.org/getting-started/rules/)
+- [Florida QSO Party rules](https://floridaqsoparty.org/rules/)
+- [Georgia QSO Party rules](https://gaqsoparty.com/)
+- [Idaho QSO Party rules](https://idahoqsoparty.org/rules.htm)
+- [Kansas QSO Party rules](https://www.ksqsoparty.org/)
+- [Kentucky QSO Party rules](https://kyqsoparty.org/rules/)
+- [Michigan QSO Party rules](https://miqp.org/index.php/rules/)
+- [Missouri QSO Party rules](https://www.w0ma.org/mo_qso_party/results/thisyear/moqp-2026-rules-final.pdf)
+- [North Carolina QSO Party rules](https://ncqsoparty.org/rules/)
+- [Ohio QSO Party rules](https://www.ohqp.org/index.php/rules/)
+- [South Carolina QSO Party rules](https://scqso.com/)
+- [Tennessee QSO Party rules](https://tnqp.org/rules/)
+- [Texas QSO Party rules](https://txqp.net/?page_id=23)
+- [Virginia QSO Party rules](https://www.qsl.net/sterling/VA_QSO_Party/2026_VQP/2026_VAQP_Rules.htm)
 
-| Test ID | Setup | Expected rule question |
+### QRP, club, field, and participation-focused events
+
+- [ARRL Field Day rules](https://www.arrl.org/field-day-rules/) — station/site classes, mode-dependent points, power multiplier, evidence-bearing bonus points, and separate club aggregation.
+- [ARRL Rookie Roundup rules](https://www.arrl.org/rookie-roundup/) — license-age qualification, contacts between different entrant classes, special exchange elements, and team entries.
+- [ARRL School Club Roundup rules](https://www.arrl.org/school-club-roundup) — school-based category and exchange conditions; check current rules for class and scoring details.
+- [ARRL Kids Day rules](https://www.arrl.org/kids-day) — participation-focused special event with simplified exchange and reporting expectations.
+- [NAQCC sprint rules](https://naqcc.info/sprint_rules.html) — QRP threshold and CW-only participation pattern.
+- [RSGB VHF National Field Day rules](https://www.rsgbcc.org/vhf/rules/2026/VHFNFD.shtml) — site/equipment classes, club entry, and field operation requirements.
+- [RSGB 144 MHz Backpackers rules](https://www.rsgbcc.org/cgi-bin/contest_rules.pl?contest=144backpack5&year=2026) — portable station constraints and a dedicated operating class.
+- [RSGB AFS 80m/40m rules](https://www.rsgbcc.org/hf/rules/2026/rafs.shtml) — society team contribution across mode-specific contests and aggregate league scoring.
+
+## Cross-cutting patterns to check against Contestmaster
+
+The observations below are patterns present in sponsor rules, not universal defaults. Configure them per edition; do not infer behavior from a contest name.
+
+| Area | Recurrent variations observed | Model / engine implication |
 |---|---|---|
-| BOK-T01 | Same callsign worked on two bands and two modes | Is the duplicate scope per contest, band, mode, or band+mode? Does a duplicate contribute a multiplier while scoring zero QSO points? |
-| BOK-T02 | Same station appears in a new rover grid | Which entrant's contact is new, what location-change proof is required, and does the multiplier scope reset? |
-| BOK-T03 | Entry location changes whether a contact is valid or which exchange/points apply | Is location a verified entry fact or only an untrusted received exchange? Test both sides of the geography branch. |
-| BOK-T04 | Exchange includes a serial and several text/enumerated fields | Are fields ordered, directional, required, bounded, and serial-scoped correctly? Test first/last serial and malformed values. |
-| BOK-T05 | Entry has base category plus a claimed overlay | Does the overlay alter category eligibility, add a parallel listing, alter score, or require evidence? Test the published result shape. |
-| BOK-T06 | QSO falls exactly on an allowed band segment edge or in a scheduled gap | Are endpoints inclusive/exclusive as sponsor says? Can the current model represent the gap without rejecting valid surrounding QSOs? |
-| BOK-T07 | Single op exceeds operating time and later submits further QSOs | Are late-in-operation QSOs retained for cross-checking but left unscored, removed, or reviewed? Do off-time boundaries match the official counting rule? |
-| BOK-T08 | Multi-op switches bands at 12:59/13:00 UTC | Is the rule a fixed clock-hour count, rolling interval, or first-QSO-anchored period? Test boundary transition. |
-| BOK-T09 | A QSO is valid but yields zero points; the multiplier is already worked | Is it still a new multiplier? Does a duplicate count for multipliers? Check the rule-specific ordering. |
-| BOK-T10 | A received QTC repeats or conflicts with a previously sent/received record | Which transfer identity, direction, sequence, and scoring rule apply? The current model needs an explicit QTC capability first. |
-| BOK-T11 | Grid exchanges imply distance points | Which locator precision and distance algorithm are used? What integer rounding and missing-grid action are required? |
-| BOK-T12 | A claimed club bonus is split among multiple clubs | What eligibility/evidence and allocation apply? How are fractional shares rounded to integer points, and are club totals separate from participant standings? |
-| BOK-T13 | Log is submitted after event end but before configured cutoff | Is it timely by the application cutoff? Is award eligibility a separate rule? Do not equate contest end with deadline. |
-| BOK-T14 | Multiplier list has more values than a ruleset cap | Is the cap applied before or after grouping by band/mode? How are suppressed credits explained? |
+| Schedule | Sprint windows; 4–8 hour sessions; overnight events; 24/48 hour weekends; multiple separated operating blocks; recurring series with best-N sessions | Store each edition's UTC start, end, and independent submission cutoff. Explicit sessions and series aggregation need first-class semantics; do not approximate gaps as one continuous interval. |
+| Eligibility | Any station may participate; only one side of a QSO can score; host-area versus outside-area rules; island, club, school, rookie, QRP, or portable qualification | Entry-side eligibility must be distinct from QSO validity. Identify whether each fact is organizer-verified, declared, inferred from a log, or adjudicated. |
+| Categories | Operator/transmitter count, power, assistance, mode, band, station location/setup, rover, youth/rookie, club and overlays | Category labels do not implement category behavior. Separate eligibility, scoring, parallel standings, and award overlays. |
+| Exchanges | RST/RS(T), serial, name, state/province/county/section, DOK, grid, island reference, age/check, and compound exchanges | Preserve sent/received values and field order. Serial scope may reset by entry, band, mode, date, or session. Some exchanges are conditional on station role. |
+| Duplicates | Per contest, per band, per mode, band+mode, county, grid, rover position, or a limited number of repeats | Keep duplicate key, QSO point effect, and multiplier eligibility independently configurable. A duplicate may be uncredited for points yet remain relevant to another rule only when the sponsor says so. |
+| Scoring | Fixed integer contact points; geography tiers; zone/entity/section/prefix/grid multipliers; distance; bonus points; percentage penalties; normalized series scores | Define calculation order and integer rounding. Distance and normalized series formulas need explicit integer conversion and reproducible tie handling. |
+| Operations | Off-time, max operating hours, band-change limits, transmitter constraints, station-radius rules, self-spotting/assistance limits | Rules can depend on timelines and evidence not always present in Cabrillo/ADIF. Unsupported facts must produce review states rather than guessed results. |
+| Adjudication | NIL/busted calls, exchange errors, penalties, checklogs, disqualification, late logs, or committee discretion | Store per-QSO and per-entry decisions with a reason and rule reference; keep publication policy independent of raw scoring. |
+| Log transport | Cabrillo, ADIF, EDI/REG1TEST, sponsor web forms, online transcriptions, or mode-specific robot uploads | Format and required-field mapping are edition-specific. Parse at the boundary, retain unknown source fields, and reject invalid uploads atomically with line-level feedback. |
+| Series/teams | Best N sessions, normalized scores, club leagues, teams, or cross-event aggregations | A score run for one contest edition is not enough for a season league. Model aggregate result snapshots and membership/eligibility explicitly. |
 
-## Review checklist for each new contest ruleset
+## Current Contestmaster capability comparison
 
-- [ ] Record sponsor, edition/year, authoritative rule URL, source-edition label, and the reviewed publication date.
-- [ ] Configure UTC contest occurrence and independent UTC submission cutoff outside the reusable ruleset.
-- [ ] Mark each contest statement as machine-verifiable, participant-declared, or human-adjudicated.
-- [ ] Define entry dimensions and valid choices, compatibility, overlay semantics, and publication grouping.
-- [ ] Define every sent/received exchange field and parser mapping, including serial scope and allowed values.
-- [ ] Define contact eligibility, repeat-contact key, duplicate point effect, and duplicate multiplier effect separately.
-- [ ] Define the point-value table and each multiplier's source, grouping scope, cap, and interaction with zero-point/duplicate contacts.
-- [ ] Express score operation order with integer arithmetic; state any rounding rule and tie-breaker.
-- [ ] Define operating-time and transmitter/band-change windows with exact interval semantics.
-- [ ] Define log format, mandatory headers/columns, late/checklog handling, publication eligibility, and required evidence.
-- [ ] Identify features that the model or engine does not currently support; do not work around them with contest-name conditionals.
-- [ ] Add worked examples and boundary tests from the sponsor rules before a ruleset is treated as verified.
+The schema is in `backend/app/rulesets/schema.py`; execution is in `backend/app/rulesets/engine.py`; composition is in `frontend/src/views/RulesetComposerView.vue` and the related editors. Status describes the current repository implementation, not the whole range of real rules.
 
-## Source register
+| Pattern | Current fit | Gap / review caution |
+|---|---|---|
+| UTC event dates and independent log deadline | Supported in contest configuration | Recurrence creates editions; confirm exact sponsor timezone before materializing UTC instants. |
+| Category dimensions and choices | Supported for classification | Overlay rankings, team results, and evidence-based class derivation are not implied by a category value. |
+| Typed exchange fields and serial scopes | Supported for declared fields | Conditional asymmetric exchanges and compound/multi-contact exchanges require end-to-end validation. |
+| Cabrillo and ADIF mappings | Supported for declared mappings | EDI/REG1TEST and arbitrary sponsor forms need adapters; WWROF remains authority for Cabrillo QSO columns. |
+| Fixed, band, mode, continent, entity, zone, and received-exchange points | Supported for engine facts | Distance-based scoring and formulas needing undeclared facts are gaps; no hidden fallback. |
+| Multipliers from supported engine facts | Supported for current sources/scopes | Prefix/suffix/specific-call multiplier capability is tracked separately; do not equate prefix with entity. |
+| Duplicate QSO point/multiplier behavior | Separate settings supported | Verify exact scope and ordering against each sponsor rule. |
+| Penalty/adjudication workflows | Partial | Human decisions, evidence, team awards, percentage deductions, and score normalization need explicit capability review. |
+| Time windows, off-time, band changes, transmitter limits | Partial | Longitudinal constraints need complete cross-log/session facts and clear boundary semantics. |
+| Series, teams, club leagues, best-N ranking | Gap/partial | Requires result aggregation across contest editions and immutable reproducible aggregate snapshots. |
+| Distance and locator-square bonuses | Gap | Requires a specified locator precision, geodesic calculation, distance units, integer rounding, and missing-data behavior. |
+| QTC traffic | Gap | Requires first-class directed transfer records, ordering, sequence, duplicate checks, cross-log validation, and scoring. |
 
-### Calendar and event detail pages
+Current score facts are finite and typed. A JSON field name alone does not make a rule executable. Scoring values and all score intermediates remain integers; if a sponsor uses division, the exact integer rounding rule must be specified and tested.
 
-- [WA7BNM Contest Calendar, 12-month view](https://www.contestcalendar.com/contestcal.php) — event discovery and upcoming date horizon. Reviewed 2026-10-18.
-- [CQ WW SSB contest detail](https://www.contestcalendar.com/contestdetails.php?ref=172) — calendar summary for bands, exchange, points/multipliers, categories, deadline, and source rules.
-- [California QSO Party detail](https://www.contestcalendar.com/contestdetails.php?ref=140) — calendar summary for asymmetrical participant roles, county multipliers, and repeat policy.
-- [ARRL Sweepstakes CW detail](https://www.contestcalendar.com/contestdetails.php?ref=177) — calendar summary for long exchange and operating-time restriction.
-- [DARC FT4 Contest detail](https://www.contestcalendar.com/contestdetails.php?ref=745) — calendar summary for FT4, grid exchange, per-band duplicate rule, and prefix multipliers. It reported no future date known at review time; recurring dates must therefore not be assumed as confirmed.
-- [WAE RTTY detail](https://www.contestcalendar.com/contestdetails.php?ref=183) — calendar summary for operating/off-time, serial exchange, and link to sponsor rules.
-- [CQ WW RTTY detail](https://www.contestcalendar.com/contestdetails.php?ref=130) — calendar summary showing the closing month of the reviewed window.
+## Source and edition handling
 
-### Official sponsor rules
+- Keep the sponsor, contest edition, direct rules URL, source edition/revision, and review timestamp with each ruleset review.
+- Re-open the sponsor's rule source before every configured contest edition. Mark unpublished future rules as pending; do not assume a previous edition carries forward unchanged.
+- Apply common/general rules only where the contest's specific rule set adopts them. Record the precedence between sponsor-wide and event-specific rules.
+- Link to rules for examples, but paraphrase them. Do not copy complete sponsor rule text, categories tables, or proprietary multiplier files into the application.
+- No source list in this document is a claim of calendar coverage, complete worldwide event coverage, or continuing sponsor publication.
 
-- [CQ World-Wide DX rules](https://www.cqww.com/rules/) — 2026 objective, exchange, six HF bands, zone/country scoring, power/operator categories, overlays, transmitter rules, deadline, and log checking.
-- [CQ WPX rules](https://cqwpx.com/rules/) — prefix construction, serial scope, band-dependent points, off time, categories, and multi-operator details.
-- [California QSO Party rules](https://www.cqp.org/Rules.html) — 2026 exchange, asymmetric entry objectives, mode/band repeat credit, operating caps, multipliers, and integer score formula.
-- [ARRL November Sweepstakes](https://www.arrl.org/sweepstakes) — serial/precedence/callsign/check/section exchange, contact uniqueness, total operating-time and off-time rules, and deadline.
-- [ARRL Field Day rules](https://www.arrl.org/field-day-rules/) — station classes, exchange, mode-specific QSO points, highest-power-based multiplier, evidence-bearing bonuses, and aggregate club scoring.
-- [CQ WW VHF rules](https://www.cqww-vhf.com/rules/) — grid locators, per-band multipliers and points, rover movement/scoring.
-- [IARU Region 1 VHF-up rules](https://www.iaru-r1.org/wp-content/uploads/2024/02/Rules-IARU-R1-VHF-up-Contests.pdf) — locator fields and distance-based scoring example. This source illustrates a rule pattern only; it does not add IARU regions to Contestmaster's master data or current requirements.
-- [DARC FT4 contest rules](https://www.darc.de/der-club/referate/conteste/ft4-contest/ft4-rules/) — sponsor rules linked from the calendar detail page; recheck the edition before modeling.
-- [DARC WAE DX contest rules](https://www.darc.de/der-club/referate/conteste/wae-dx-contest/en/) — sponsor rule entry point for the WAE formats and QTC provisions; use the relevant mode/year rule sheet when modeling.
+## Review checklist for each contest
+
+- [ ] Confirm the sponsor and the exact edition-specific rules URL.
+- [ ] Separate event start/end, permitted operating intervals, and submission cutoff.
+- [ ] Classify every rule fact as machine-verifiable, declared, externally resolved, or human-adjudicated.
+- [ ] Define categories, category compatibility, overlays, and standings behavior.
+- [ ] Define exchange order, direction, value constraints, serial scope, and required file fields.
+- [ ] Define QSO eligibility and duplicate behavior separately for points and multipliers.
+- [ ] Define point and multiplier facts, scopes, caps, calculation order, rounding, and tie-breaks.
+- [ ] Define operating limits, evidence requirements, penalties, late/checklog policy, and publication eligibility.
+- [ ] Identify engine/schema gaps and do not work around them with contest-name branches.
+- [ ] Add worked examples and boundary tests before calling the configuration verified.
+
+## Machine-readable inventory
+
+See [`sponsor-rule-samples.json`](sponsor-rule-samples.json) for the 200+ sample records, source URLs, event family tags, and scope/edition notes. Records with a shared recurring-series rule source are intentionally linked to the same sponsor page and carry a distinct session or event identifier.
