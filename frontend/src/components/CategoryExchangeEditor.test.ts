@@ -5,7 +5,7 @@ import { setLocale } from '../i18n'
 import CategoryExchangeEditor from './CategoryExchangeEditor.vue'
 
 describe('CategoryExchangeEditor', () => {
-  it('explains category dimensions and applies a preset without changing its stable key on label edits', async () => {
+  it('explains category dimensions and starts preset values unchecked', async () => {
     const wrapper = mount(CategoryExchangeEditor, {
       props: {
         kind: 'categories',
@@ -29,8 +29,20 @@ describe('CategoryExchangeEditor', () => {
       key: 'power',
       label: 'Power',
     })
-    expect(emitted.dimensions[0]?.choices.length).toBe(3)
+    expect(emitted.dimensions[0]?.choices).toEqual([])
     await wrapper.setProps({ modelValue: emitted })
+    const qrp = wrapper
+      .findAll('fieldset.preset-choice-selector label')
+      .find((label) => label.text().trim() === 'QRP')
+    expect(qrp?.get('input').element.checked).toBe(false)
+    await qrp!.get('input').setValue(true)
+    const selected = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+      dimensions: Array<{ choices: Array<{ key: string; label: string }> }>
+    }
+    expect(selected.dimensions[0]?.choices).toEqual([
+      { key: 'qrp', label: 'QRP', requires_declaration: false },
+    ])
+    await wrapper.setProps({ modelValue: selected })
     expect(wrapper.text()).toContain('no universal contest wattage thresholds')
   })
 
@@ -52,11 +64,15 @@ describe('CategoryExchangeEditor', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('measurement point, or qualification details')
+    expect(wrapper.text()).toContain(
+      'measurement point, or qualification details',
+    )
     await wrapper
       .get('textarea[aria-label="Contest-specific dimension explanation"]')
       .setValue('Measured at the antenna connector.')
-    const dimensionDraft = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+    const dimensionDraft = wrapper
+      .emitted('update:modelValue')
+      ?.at(-1)?.[0] as {
       dimensions: Array<Record<string, unknown>>
     }
     expect(dimensionDraft.dimensions[0]?.description).toBe(
@@ -73,6 +89,64 @@ describe('CategoryExchangeEditor', () => {
     expect(choiceDraft.dimensions[0]?.choices[0]?.description).toBe(
       'The contest limit is 5 W output.',
     )
+    await expectAccessible(wrapper.element)
+  })
+
+  it('selects preset values with display labels and keeps keys in the existing choices payload', async () => {
+    const wrapper = mount(CategoryExchangeEditor, {
+      props: {
+        kind: 'categories',
+        modelValue: {
+          kind: 'categories',
+          dimensions: [
+            {
+              key: 'power',
+              label: 'Station power',
+              required: true,
+              choices: [
+                {
+                  key: 'qrp',
+                  label: 'QRP',
+                  description: 'Sponsor limit: 5 W.',
+                  requires_declaration: true,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    const selector = wrapper.get('fieldset.preset-choice-selector')
+    expect(selector.get('legend').text()).toBe(
+      'Accepted values for Station power',
+    )
+    expect(selector.text()).toContain('Low power')
+    expect(selector.text()).not.toContain('(low)')
+    const qrp = selector
+      .findAll('label')
+      .find((label) => label.text().trim() === 'QRP')
+    const low = selector
+      .findAll('label')
+      .find((label) => label.text().trim() === 'Low power')
+    expect(qrp?.get('input').element.checked).toBe(true)
+    expect(low?.get('input').element.checked).toBe(false)
+
+    await low!.get('input').setValue(true)
+    const updated = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+      dimensions: Array<{
+        choices: Array<Record<string, unknown>>
+      }>
+    }
+    expect(updated.dimensions[0]?.choices).toEqual([
+      {
+        key: 'qrp',
+        label: 'QRP',
+        description: 'Sponsor limit: 5 W.',
+        requires_declaration: true,
+      },
+      { key: 'low', label: 'Low power', requires_declaration: false },
+    ])
     await expectAccessible(wrapper.element)
   })
 
@@ -119,9 +193,7 @@ describe('CategoryExchangeEditor', () => {
       },
     })
 
-    expect(wrapper.get('.controlled-row select').text()).toContain(
-      'Leistung (power)',
-    )
+    expect(wrapper.get('.controlled-row select').text()).toContain('Leistung')
     await wrapper.get('.controlled-row select').setValue('operator')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({
       dimensions: [

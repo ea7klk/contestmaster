@@ -142,6 +142,32 @@ const categoryDimensions = computed(() => {
     ]
   })
 })
+const cabrilloExchangeMapPreview = computed(() => {
+  const exchangeRule = rules.value.find(
+    (item) => item.rule.kind === 'exchange',
+  )?.rule
+  const fields = Array.isArray(exchangeRule?.fields)
+    ? (exchangeRule.fields as Array<Record<string, unknown>>)
+    : []
+  return [
+    { column: 'rst_sent', direction: 'sent', fieldKey: 'rst' },
+    { column: 'exchange_sent', direction: 'sent', fieldKey: null },
+    { column: 'rst_received', direction: 'received', fieldKey: 'rst' },
+    { column: 'exchange_received', direction: 'received', fieldKey: null },
+  ].flatMap((mapping) => {
+    const mapped = fields
+      .filter((field) => {
+        if (field.direction !== mapping.direction && field.direction !== 'both')
+          return false
+        return mapping.fieldKey === 'rst'
+          ? field.key === 'rst'
+          : field.key !== 'rst' && field.direction !== 'entry'
+      })
+      .map((field) => String(field.label ?? field.key ?? ''))
+      .filter(Boolean)
+    return mapped.length ? [{ column: mapping.column, fields: mapped }] : []
+  })
+})
 function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
   if (schema.$ref) {
     const name = schema.$ref.split('/').at(-1) ?? ''
@@ -194,6 +220,26 @@ function newRule(kind: string, idNumber: number): ConfiguredRuleDraft | null {
     string,
     unknown
   >
+  if (kind === 'exchange') {
+    rule.fields = [
+      {
+        key: 'rst',
+        label: 'Signal report',
+        value_type: 'text',
+        direction: 'both',
+        required: true,
+        max_length: 256,
+      },
+      {
+        key: 'exchange',
+        label: 'Contest exchange',
+        value_type: 'text',
+        direction: 'both',
+        required: true,
+        max_length: 256,
+      },
+    ]
+  }
   if (kind === 'format_mapping' && rule.format === 'cabrillo') {
     rule.qso_columns = [...CABRILLO_REQUIRED_COLUMNS]
   }
@@ -534,6 +580,17 @@ const helpText: Record<string, string> = {
     'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Map sponsor-specific exchange names to stable field keys. Unrecognized source fields can be preserved for later review.',
   workflow_hook:
     'Workflow hooks describe cross-log comparisons, review, publication, or award behavior that affects more than one contact. Enable a hook only when the sponsor’s rules require that workflow and its configured settings express the rule. Hooks do not execute arbitrary code; unsupported or ambiguous cases must be reviewed rather than guessed.',
+}
+
+const scoringExamples: Record<string, string> = {
+  score_formula:
+    'Example: 120 QSO points × 8 multiplier credits + 10 bonus points − 5 penalty points = 965 final points. Operations run from top to bottom, and each result is an integer.',
+  multiplier:
+    'Example: when entity multipliers reset per band, working entity EA on 20 m five times counts once; working EA again on 40 m counts a second time. The contest earns 2 multiplier credits.',
+  bonus:
+    'Example: a 2-point bonus per eligible QSO, capped at 20 points, gives 14 points for 7 qualifying contacts and no more than 20 for 10 or more. A per-entry bonus is awarded once after its configured minimum-contact threshold.',
+  penalty:
+    'Example: a 5-point deduction with a maximum of 2 occurrences deducts at most 10 points, even if the entry has more violations. Non-point actions such as reclassification or disqualification do not change the points total directly.',
 }
 
 function buildDraft(): RulesetDraft {
@@ -1074,7 +1131,7 @@ function catalogErrorMessage(reason: unknown) {
             <p v-else-if="currentStep === 3" class="step-hint">
               {{
                 $tr(
-                  'Choose only formats supported by this application and specified by the sponsor. Contest dates and the submission cutoff are configured on the contest, not here.',
+                  'Choose only formats supported by this application and specified by the sponsor. Contest dates and the submission cutoff are configured on the contest, not here. New Cabrillo mappings include the required WWROF QSO columns. The generic sent and received exchange columns carry the ordered fields from the exchange schema; they are not one column per exchange field.',
                 )
               }}
             </p>
@@ -1132,6 +1189,44 @@ function catalogErrorMessage(reason: unknown) {
                   class="rule-explanation"
                 >
                   {{ $tr(helpText[String(configured.rule.kind)] ?? '') }}
+                </p>
+                <div
+                  v-if="
+                    configured.rule.kind === 'format_mapping' &&
+                    configured.rule.format === 'cabrillo'
+                  "
+                  class="exchange-map-preview"
+                >
+                  <strong>{{
+                    $tr('Exchange fields mapped automatically')
+                  }}</strong>
+                  <ul>
+                    <li
+                      v-for="mapping in cabrilloExchangeMapPreview"
+                      :key="mapping.column"
+                    >
+                      <code>{{ mapping.column }}</code>
+                      ←
+                      {{ mapping.fields.map((label) => $tr(label)).join(', ') }}
+                    </li>
+                  </ul>
+                  <p>
+                    {{
+                      $tr(
+                        'This preview follows the exchange schema. Exchange fields are read in their configured order from the generic Cabrillo exchange column; no new JSON mapping fields are added.',
+                      )
+                    }}
+                  </p>
+                </div>
+                <p
+                  v-if="scoringExamples[String(configured.rule.kind)]"
+                  class="rule-example"
+                >
+                  <strong>{{ $tr('Worked example') }}:</strong>
+                  {{ $tr(scoringExamples[String(configured.rule.kind)] ?? '') }}
+                  <span>{{
+                    $tr('Illustrative only; follow the official contest rules.')
+                  }}</span>
                 </p>
                 <RuleSchemaEditor
                   v-if="
@@ -1924,6 +2019,38 @@ function catalogErrorMessage(reason: unknown) {
   color: var(--color-muted);
   background: var(--color-surface-muted);
   line-height: 1.55;
+}
+.rule-example {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 80ch;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid var(--color-brand-600);
+  color: var(--color-brand-900);
+  background: var(--color-brand-wash);
+  line-height: 1.55;
+}
+.rule-example > span {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+.exchange-map-preview {
+  max-width: 80ch;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid var(--color-border-strong);
+  background: var(--color-surface-muted);
+  line-height: 1.5;
+}
+.exchange-map-preview ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.exchange-map-preview p {
+  margin: 0;
+  color: var(--color-muted);
 }
 .required-badge {
   padding: 0.3rem 0.55rem;

@@ -275,7 +275,13 @@ def _exchange_values(
         result.update(direct_values)
     raw = stored.get("raw")
     if exchange_rule is not None and isinstance(raw, str):
-        fields = [field for field in exchange_rule.fields if field.direction in {direction, "both"}]
+        # RST occupies a dedicated Cabrillo QSO column, not an exchange token. It
+        # is copied from stored["rst"] below and must not shift the exchange fields.
+        fields = [
+            field
+            for field in exchange_rule.fields
+            if field.direction in {direction, "both"} and field.key != "rst"
+        ]
         tokens = raw.split()
         if len(fields) == 1:
             tokens = [raw]

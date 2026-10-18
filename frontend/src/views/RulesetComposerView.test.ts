@@ -491,6 +491,64 @@ describe('RulesetComposerView', () => {
     )
   })
 
+  it('shows worked integer examples for formula, multiplier, bonus, and penalty rules', async () => {
+    const response = catalogResponse()
+    for (const [key, label] of [
+      ['multiplier', 'Multiplier'],
+      ['bonus', 'Bonus'],
+      ['penalty', 'Penalty'],
+    ]) {
+      response.rule_types.push({
+        key,
+        label,
+        description: `${label} rule`,
+        execution: 'automatic',
+        required: false,
+        schema: {
+          type: 'object',
+          properties: { kind: { const: key, type: 'string' } },
+          required: ['kind'],
+        },
+      })
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(response), { status: 200 })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    await navigateToStep(wrapper, 4)
+    for (const kind of ['multiplier', 'bonus', 'penalty']) {
+      await wrapper.get('#add-rule-type').setValue(kind)
+      await wrapper.get('.add-rule-control button').trigger('click')
+    }
+
+    const examples = wrapper
+      .findAll('.rule-card')
+      .filter((card) => !card.attributes('style')?.includes('display: none'))
+      .filter((card) => card.find('.rule-example').exists())
+      .map((card) => card.get('.rule-example').text())
+    expect(examples).toHaveLength(4)
+    expect(examples.join(' ')).toContain(
+      '120 QSO points × 8 multiplier credits',
+    )
+    expect(examples.join(' ')).toContain('counts once')
+    expect(examples.join(' ')).toContain('capped at 20 points')
+    expect(examples.join(' ')).toContain('at most 10 points')
+  })
+
   it('loads required rule types and sends the configured draft for validation', async () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -515,6 +573,45 @@ describe('RulesetComposerView', () => {
         expect(
           draft.rules.map((item: { rule: { kind: string } }) => item.rule.kind),
         ).toEqual(requiredRules)
+        expect(
+          draft.rules.find(
+            (item: { rule: { kind: string } }) => item.rule.kind === 'exchange',
+          ).rule.fields,
+        ).toEqual([
+          {
+            key: 'rst',
+            label: 'Signal report',
+            value_type: 'text',
+            direction: 'both',
+            required: true,
+            max_length: 256,
+          },
+          {
+            key: 'exchange',
+            label: 'Contest exchange',
+            value_type: 'text',
+            direction: 'both',
+            required: true,
+            max_length: 256,
+          },
+        ])
+        expect(
+          draft.rules.find(
+            (item: { rule: { kind: string } }) =>
+              item.rule.kind === 'format_mapping',
+          ).rule.qso_columns,
+        ).toEqual([
+          'frequency',
+          'mode',
+          'date',
+          'time',
+          'callsign_sent',
+          'rst_sent',
+          'exchange_sent',
+          'callsign_received',
+          'rst_received',
+          'exchange_received',
+        ])
         expect(
           draft.rules.find(
             (item: { rule: { kind: string } }) =>
@@ -551,6 +648,18 @@ describe('RulesetComposerView', () => {
       'Back to rulesets',
     )
     expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
+    const formatMappingCard = wrapper
+      .findAll('.rule-card')
+      .find(
+        (card) =>
+          card.get('.rule-card-title strong').text() === 'format_mapping',
+      )
+    expect(formatMappingCard?.get('.exchange-map-preview').text()).toContain(
+      'rst_sent ← Signal report',
+    )
+    expect(formatMappingCard?.get('.exchange-map-preview').text()).toContain(
+      'exchange_received ← Contest exchange',
+    )
     const eligibilityRule = wrapper
       .findAll('.rule-card')
       .find(

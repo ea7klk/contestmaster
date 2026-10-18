@@ -50,6 +50,27 @@ const categoryValues: Record<string, Array<[string, string]>> = {
     ['two', 'Two transmitters'],
     ['unlimited', 'Unlimited'],
   ],
+  station_class: [
+    ['distributed', 'Distributed'],
+    ['fixed', 'Fixed'],
+    ['mobile', 'Mobile'],
+    ['portable', 'Portable'],
+    ['rover', 'Rover'],
+    ['rover_limited', 'Limited rover'],
+    ['rover_unlimited', 'Unlimited rover'],
+    ['expedition', 'Expedition'],
+    ['hq', 'Headquarters'],
+    ['school', 'School'],
+    ['explorer', 'Explorer'],
+  ],
+  overlay: [
+    ['classic', 'Classic'],
+    ['rookie', 'Rookie'],
+    ['tb_wires', 'Tribander and wires'],
+    ['youth', 'Youth'],
+    ['novice_tech', 'Novice or Technician'],
+    ['yl', 'YL'],
+  ],
 }
 const exchangeFields = [
   ['rst', 'Signal report', 'text', 'both'],
@@ -125,6 +146,30 @@ function choices(row: Row) {
 function updateChoices(rowIndex: number, next: Row[]) {
   update(rowIndex, { choices: next })
 }
+function hasPresetChoices(row: Row): boolean {
+  return (categoryValues[String(row.key)] ?? []).length > 0
+}
+function setPresetChoice(
+  rowIndex: number,
+  key: string,
+  label: string,
+  selected: boolean,
+) {
+  const row = rows.value[rowIndex] ?? {}
+  const current = choices(row)
+  const exists = current.some((item) => item.key === key)
+  if (selected && !exists) {
+    updateChoices(rowIndex, [
+      ...current,
+      { key, label, requires_declaration: false },
+    ])
+  } else if (!selected && exists) {
+    updateChoices(
+      rowIndex,
+      current.filter((item) => item.key !== key),
+    )
+  }
+}
 function setEnumChoices(rowIndex: number, raw: string) {
   update(rowIndex, {
     choices: raw
@@ -169,11 +214,7 @@ function setPreset(index: number, key: string) {
       key,
       label: categoryDimensions.find(([value]) => value === key)?.[1] ?? key,
       description: null,
-      choices: (categoryValues[key] ?? []).map(([choiceKey, label]) => ({
-        key: choiceKey,
-        label,
-        requires_declaration: false,
-      })),
+      choices: [],
     })
   else {
     const preset = exchangeFields.find(([value]) => value === key)
@@ -241,7 +282,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
               :key="key"
               :value="key"
             >
-              {{ $tr(label) }} ({{ key }})
+              {{ $tr(label) }}
             </option>
             <option value="custom">{{ $tr('Custom dimension…') }}</option>
           </select></label
@@ -263,7 +304,8 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             rows="2"
             @input="
               update(index, {
-                description: ($event.target as HTMLTextAreaElement).value || null,
+                description:
+                  ($event.target as HTMLTextAreaElement).value || null,
               })
             "
           />
@@ -313,182 +355,233 @@ function setChoice(index: number, choiceIndex: number, key: string) {
           />
           {{ $tr('Required for entries') }}</label
         >
-        <div class="controlled-choice-list">
-          <strong>{{ $tr('Allowed choices') }}</strong>
-          <div
-            v-for="(choice, choiceIndex) in choices(row)"
-            :key="choiceIndex"
-            class="controlled-choice"
-          >
+        <fieldset v-if="hasPresetChoices(row)" class="preset-choice-selector">
+          <legend>
+            {{
+              $tr('Accepted values for {dimension}', {
+                dimension: $tr(String(row.label ?? row.key)),
+              })
+            }}
+          </legend>
+          <p class="field-help">
+            {{
+              $tr(
+                'Select the values permitted by the sponsor. These checkbox labels use display names; stable choice keys remain in the existing ruleset data.',
+              )
+            }}
+          </p>
+          <div class="preset-choice-grid">
             <label
-              >{{ $tr('Choice key')
-              }}<select
-                :value="
-                  (categoryValues[String(row.key)] ?? []).some(
-                    ([key]) => key === choice.key,
-                  )
-                    ? choice.key
-                    : 'custom'
-                "
-                @change="
-                  setChoice(
-                    index,
-                    choiceIndex,
-                    ($event.target as HTMLSelectElement).value,
-                  )
-                "
-              >
-                <option
-                  v-for="[key, label] in categoryValues[String(row.key)] ?? []"
-                  :key="key"
-                  :value="key"
-                >
-                  {{ $tr(label) }} ({{ key }})
-                </option>
-                <option value="custom">
-                  {{ $tr('Custom choice…') }}
-                </option></select
-              ><input
-                v-if="
-                  !(categoryValues[String(row.key)] ?? []).some(
-                    ([key]) => key === choice.key,
-                  )
-                "
-                :aria-label="$tr('Custom stable choice key')"
-                :value="String(choice.key ?? '')"
-                @input="
-                  updateChoices(
-                    index,
-                    choices(row).map((item, i) =>
-                      i === choiceIndex
-                        ? {
-                            ...item,
-                            key: ($event.target as HTMLInputElement).value,
-                          }
-                        : item,
-                    ),
-                  )
-                "
-            /></label>
-            <label class="choice-description">
-              {{ $tr('Contest-specific choice explanation') }}
-              <textarea
-                :aria-label="$tr('Contest-specific choice explanation')"
-                :value="String(choice.description ?? '')"
-                maxlength="600"
-                rows="2"
-                @input="
-                  updateChoices(
-                    index,
-                    choices(row).map((item, i) =>
-                      i === choiceIndex
-                        ? {
-                            ...item,
-                            description:
-                              ($event.target as HTMLTextAreaElement).value || null,
-                          }
-                        : item,
-                    ),
-                  )
-                "
-              />
-              <span class="field-help">{{
-                $tr(
-                  'Describe this value’s contest-specific qualification or limit. For QRP, Low Power, and High Power, specify the wattage threshold and measurement point.',
-                )
-              }}</span>
-            </label>
-            <label
-              >{{ $tr('Choice label')
-              }}<select
-                v-if="
-                  (categoryValues[String(row.key)] ?? []).some(
-                    ([key]) => key === choice.key,
-                  )
-                "
-                :value="String(choice.label ?? '')"
-                @change="
-                  updateChoices(
-                    index,
-                    choices(row).map((item, i) =>
-                      i === choiceIndex
-                        ? {
-                            ...item,
-                            label: ($event.target as HTMLSelectElement).value,
-                          }
-                        : item,
-                    ),
-                  )
-                "
-              >
-                <option
-                  v-for="[key, label] in categoryValues[String(row.key)] ?? []"
-                  v-show="key === choice.key"
-                  :key="key"
-                  :value="label"
-                >
-                  {{ $tr(label) }}
-                </option></select
-              ><input
-                v-else
-                :value="String(choice.label ?? '')"
-                @input="
-                  updateChoices(
-                    index,
-                    choices(row).map((item, i) =>
-                      i === choiceIndex
-                        ? {
-                            ...item,
-                            label: ($event.target as HTMLInputElement).value,
-                          }
-                        : item,
-                    ),
-                  )
-                "
-            /></label>
-            <label
-              ><input
-                type="checkbox"
-                :checked="choice.requires_declaration === true"
-                @change="
-                  updateChoices(
-                    index,
-                    choices(row).map((item, i) =>
-                      i === choiceIndex
-                        ? {
-                            ...item,
-                            requires_declaration: (
-                              $event.target as HTMLInputElement
-                            ).checked,
-                          }
-                        : item,
-                    ),
-                  )
-                "
-              />
-              {{ $tr('Requires declaration') }}</label
+              v-for="[choiceKey, label] in categoryValues[String(row.key)] ??
+              []"
+              :key="choiceKey"
+              class="preset-choice-option"
             >
+              <input
+                type="checkbox"
+                :checked="
+                  choices(row).some((choice) => choice.key === choiceKey)
+                "
+                @change="
+                  setPresetChoice(
+                    index,
+                    choiceKey,
+                    label,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              <span>{{ $tr(label) }}</span>
+            </label>
+          </div>
+        </fieldset>
+        <details :open="!hasPresetChoices(row)" class="choice-details">
+          <summary v-if="hasPresetChoices(row)">
+            {{ $tr('Edit selected value details or add a custom value') }}
+          </summary>
+          <summary v-else>{{ $tr('Allowed choices') }}</summary>
+          <div class="controlled-choice-list">
+            <strong v-if="!hasPresetChoices(row)">{{
+              $tr('Allowed choices')
+            }}</strong>
+            <div
+              v-for="(choice, choiceIndex) in choices(row)"
+              :key="choiceIndex"
+              class="controlled-choice"
+            >
+              <label
+                >{{ $tr('Choice key')
+                }}<select
+                  :value="
+                    (categoryValues[String(row.key)] ?? []).some(
+                      ([key]) => key === choice.key,
+                    )
+                      ? choice.key
+                      : 'custom'
+                  "
+                  @change="
+                    setChoice(
+                      index,
+                      choiceIndex,
+                      ($event.target as HTMLSelectElement).value,
+                    )
+                  "
+                >
+                  <option
+                    v-for="[key, label] in categoryValues[String(row.key)] ??
+                    []"
+                    :key="key"
+                    :value="key"
+                  >
+                    {{ $tr(label) }}
+                  </option>
+                  <option value="custom">
+                    {{ $tr('Custom choice…') }}
+                  </option></select
+                ><input
+                  v-if="
+                    !(categoryValues[String(row.key)] ?? []).some(
+                      ([key]) => key === choice.key,
+                    )
+                  "
+                  :aria-label="$tr('Custom stable choice key')"
+                  :value="String(choice.key ?? '')"
+                  @input="
+                    updateChoices(
+                      index,
+                      choices(row).map((item, i) =>
+                        i === choiceIndex
+                          ? {
+                              ...item,
+                              key: ($event.target as HTMLInputElement).value,
+                            }
+                          : item,
+                      ),
+                    )
+                  "
+              /></label>
+              <label class="choice-description">
+                {{ $tr('Contest-specific choice explanation') }}
+                <textarea
+                  :aria-label="$tr('Contest-specific choice explanation')"
+                  :value="String(choice.description ?? '')"
+                  maxlength="600"
+                  rows="2"
+                  @input="
+                    updateChoices(
+                      index,
+                      choices(row).map((item, i) =>
+                        i === choiceIndex
+                          ? {
+                              ...item,
+                              description:
+                                ($event.target as HTMLTextAreaElement).value ||
+                                null,
+                            }
+                          : item,
+                      ),
+                    )
+                  "
+                />
+                <span class="field-help">{{
+                  $tr(
+                    'Describe this value’s contest-specific qualification or limit. For QRP, Low Power, and High Power, specify the wattage threshold and measurement point.',
+                  )
+                }}</span>
+              </label>
+              <label
+                >{{ $tr('Choice label')
+                }}<select
+                  v-if="
+                    (categoryValues[String(row.key)] ?? []).some(
+                      ([key]) => key === choice.key,
+                    )
+                  "
+                  :value="String(choice.label ?? '')"
+                  @change="
+                    updateChoices(
+                      index,
+                      choices(row).map((item, i) =>
+                        i === choiceIndex
+                          ? {
+                              ...item,
+                              label: ($event.target as HTMLSelectElement).value,
+                            }
+                          : item,
+                      ),
+                    )
+                  "
+                >
+                  <option
+                    v-for="[key, label] in categoryValues[String(row.key)] ??
+                    []"
+                    v-show="key === choice.key"
+                    :key="key"
+                    :value="label"
+                  >
+                    {{ $tr(label) }}
+                  </option></select
+                ><input
+                  v-else
+                  :value="String(choice.label ?? '')"
+                  @input="
+                    updateChoices(
+                      index,
+                      choices(row).map((item, i) =>
+                        i === choiceIndex
+                          ? {
+                              ...item,
+                              label: ($event.target as HTMLInputElement).value,
+                            }
+                          : item,
+                      ),
+                    )
+                  "
+              /></label>
+              <label
+                ><input
+                  type="checkbox"
+                  :checked="choice.requires_declaration === true"
+                  @change="
+                    updateChoices(
+                      index,
+                      choices(row).map((item, i) =>
+                        i === choiceIndex
+                          ? {
+                              ...item,
+                              requires_declaration: (
+                                $event.target as HTMLInputElement
+                              ).checked,
+                            }
+                          : item,
+                      ),
+                    )
+                  "
+                />
+                {{ $tr('Requires declaration') }}</label
+              >
+              <button
+                type="button"
+                class="quiet-button"
+                @click="
+                  updateChoices(
+                    index,
+                    choices(row).filter((_item, i) => i !== choiceIndex),
+                  )
+                "
+              >
+                {{ $tr('Remove choice') }}
+              </button>
+            </div>
             <button
               type="button"
-              class="quiet-button"
-              @click="
-                updateChoices(
-                  index,
-                  choices(row).filter((_item, i) => i !== choiceIndex),
-                )
-              "
+              class="secondary-button"
+              @click="addChoice(index)"
             >
-              {{ $tr('Remove choice') }}
+              {{ $tr('Add choice') }}
             </button>
           </div>
-          <button
-            type="button"
-            class="secondary-button"
-            @click="addChoice(index)"
-          >
-            {{ $tr('Add choice') }}
-          </button>
-        </div>
+        </details>
         <button type="button" class="quiet-button" @click="remove(index)">
           {{ $tr('Remove dimension') }}
         </button>
@@ -541,7 +634,7 @@ function setChoice(index: number, choiceIndex: number, key: string) {
         <strong>{{ $tr('Exchange schema') }}</strong>
         {{
           $tr(
-            'describes the fields sent and received for each contact, plus values declared once for the whole entry. It is the canonical vocabulary used by validation and scoring; the format mapping section connects these fields to names in uploaded Cabrillo or ADIF logs. Field keys are stable references used by the system; labels are for display. Select a common field to prefill its key, label, type, and direction, or choose “Custom exchange field” for a contest-specific value. Choose “sent”, “received”, or “both” for contact exchanges, and “entry” for a single entry-level declaration. Mark a field required only if the sponsor requires it. Serial scope controls when a sent sequence number increments; enum values restrict accepted text to the listed choices.',
+            'describes the fields sent and received for each contact, plus values declared once for the whole entry. It is the canonical vocabulary used by validation and scoring; the format mapping section connects these fields to names in uploaded Cabrillo or ADIF logs. WWROF’s standard Cabrillo QSO columns include sent and received RST and exchange positions. The sponsor defines the exchange contents; a serial is only one possible exchange. A new draft starts with a generic Contest exchange field that you can replace or expand to match the published rules. Field keys are stable references used by the system; labels are for display. Select a common field to prefill its key, label, type, and direction, or choose “Custom exchange field” for a contest-specific value. Choose “sent”, “received”, or “both” for contact exchanges, and “entry” for a single entry-level declaration. Mark a field required only if the sponsor requires it. Serial scope controls when a sent sequence number increments; enum values restrict accepted text to the listed choices.',
           )
         }}
       </p>
@@ -783,6 +876,44 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   grid-column: 1 / -1;
   min-width: 0;
 }
+.preset-choice-selector,
+.choice-details {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0.45rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+}
+.preset-choice-selector legend {
+  padding: 0 0.35rem;
+  font-weight: 650;
+}
+.preset-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.45rem 0.9rem;
+}
+.preset-choice-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.preset-choice-option input,
+.controlled-choice input[type='checkbox'] {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  flex: 0 0 auto;
+}
+.choice-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.selected-choice-name {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 .controlled-choice-list > strong {
   display: block;
   margin-bottom: 0.35rem;
@@ -807,10 +938,6 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-}
-.controlled-choice input[type='checkbox'] {
-  width: 1.1rem;
-  min-height: 1.1rem;
 }
 .field-help {
   color: var(--color-muted);
