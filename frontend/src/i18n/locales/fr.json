@@ -1028,5 +1028,21 @@
   "s_ffb0ff72": "Formater",
   "s_ffda6982": "Les règles détaillées du concours ne sont pas encore disponibles.",
   "s_ffeb6c21": "divisé par",
-  "s_fff3c460": "Sortie de transmission maximale : jusqu'à la limite légale applicable."
+  "s_fff3c460": "Sortie de transmission maximale : jusqu'à la limite légale applicable.",
+  "s_35afca3b": "Annuler",
+  "s_4397aaa4": "Supprimer {name} ?",
+  "s_acd2d4a5": "Les valeurs référencées doivent être désactivées. Cette action est irréversible.",
+  "s_be8ec97c": "Seules les versions de données de référence non référencées peuvent être supprimées. Cette action est irréversible.",
+  "s_2fa64eeb": "Motif d’audit (facultatif)",
+  "s_a8491bf2": "Seules les versions de règles non référencées par un concours ou un historique de scores peuvent être supprimées. Cette action est irréversible.",
+  "s_f989aca8": "Supprimer les règles",
+  "s_46f4552d": "Le concours, ses logs téléversés, ses scores, ses résultats publiés et son historique seront définitivement supprimés. Cette action est irréversible.",
+  "s_ce0a13e2": "Supprimer le concours",
+  "s_d3a337a9": "Saisissez {value} pour confirmer.",
+  "s_0f902599": "Supprimer le jeu de règles enregistré {name} ?",
+  "s_a7b8ab09": "Supprimer toute la série de concours ?",
+  "s_4827c60c": "Toute la série de concours et toutes ses éditions seront définitivement supprimées. Cette action est irréversible.",
+  "s_788aecc7": "Supprimer la série",
+  "s_e6379e41": "Déplacer vers le haut",
+  "s_2b87faa8": "Déplacer vers le bas"
 }

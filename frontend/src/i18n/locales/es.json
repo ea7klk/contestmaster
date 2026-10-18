@@ -1028,5 +1028,21 @@
   "s_ffb0ff72": "Formato",
   "s_ffda6982": "Las reglas detalladas del concurso aún no están disponibles.",
   "s_ffeb6c21": "dividido por",
-  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable."
+  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable.",
+  "s_35afca3b": "Cancelar",
+  "s_4397aaa4": "¿Eliminar {name}?",
+  "s_acd2d4a5": "Los valores referenciados deben desactivarse. Esta acción no se puede deshacer.",
+  "s_be8ec97c": "Solo se pueden eliminar las versiones de datos maestros sin referencias. Esta acción no se puede deshacer.",
+  "s_2fa64eeb": "Motivo de auditoría (opcional)",
+  "s_a8491bf2": "Solo se pueden eliminar versiones de reglas sin referencias en concursos ni en el historial de puntuaciones. Esta acción no se puede deshacer.",
+  "s_f989aca8": "Eliminar reglas",
+  "s_46f4552d": "El concurso, sus logs enviados, puntuaciones, resultados publicados e historial se eliminarán de forma permanente. Esta acción no se puede deshacer.",
+  "s_ce0a13e2": "Eliminar concurso",
+  "s_d3a337a9": "Escribe {value} para confirmar.",
+  "s_0f902599": "¿Eliminar el conjunto de reglas guardado {name}?",
+  "s_a7b8ab09": "¿Eliminar toda la serie de concursos?",
+  "s_4827c60c": "La serie completa y todas sus ediciones se eliminarán de forma permanente. Esta acción no se puede deshacer.",
+  "s_788aecc7": "Eliminar serie",
+  "s_e6379e41": "Mover arriba",
+  "s_2b87faa8": "Mover abajo"
 }

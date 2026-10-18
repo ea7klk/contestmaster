@@ -1028,5 +1028,21 @@
   "s_ffb0ff72": "Formatieren",
   "s_ffda6982": "Detaillierte Wettbewerbsregeln liegen noch nicht vor.",
   "s_ffeb6c21": "geteilt durch",
-  "s_fff3c460": "Maximale Sendeleistung: bis zur geltenden gesetzlichen Grenze."
+  "s_fff3c460": "Maximale Sendeleistung: bis zur geltenden gesetzlichen Grenze.",
+  "s_35afca3b": "Abbrechen",
+  "s_4397aaa4": "{name} löschen?",
+  "s_acd2d4a5": "Referenzierte Werte müssen stattdessen deaktiviert werden. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "s_be8ec97c": "Nur nicht referenzierte Stammdatenversionen können gelöscht werden. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "s_2fa64eeb": "Begründung für das Audit (optional)",
+  "s_a8491bf2": "Nur Ruleset-Versionen ohne Verweise auf Wettbewerbe oder Wertungshistorie können gelöscht werden. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "s_f989aca8": "Ruleset löschen",
+  "s_46f4552d": "Dadurch werden der Wettbewerb, seine hochgeladenen Logs, Wertungen, veröffentlichten Ergebnisse und der Wettbewerbsverlauf dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "s_ce0a13e2": "Wettbewerb löschen",
+  "s_d3a337a9": "Geben Sie zur Bestätigung {value} ein.",
+  "s_0f902599": "Gespeichertes Ruleset {name} löschen?",
+  "s_a7b8ab09": "Gesamte Wettbewerbsserie löschen?",
+  "s_4827c60c": "Dadurch werden die gesamte Wettbewerbsserie und alle Ausgaben dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+  "s_788aecc7": "Serie löschen",
+  "s_e6379e41": "Nach oben verschieben",
+  "s_2b87faa8": "Nach unten verschieben"
 }

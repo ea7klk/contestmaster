@@ -15,6 +15,7 @@ import {
 } from '../api/contests'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import { formatInteger, formatUtcDateTime } from '../i18n'
+import ConfirmationModal from '../components/ConfirmationModal.vue'
 import {
   getSavedRulesetVersion,
   listAllRulesetVersions,
@@ -39,6 +40,7 @@ const statusSavingId = ref<number | null>(null)
 const importing = ref(false)
 const exportingContestId = ref<number | null>(null)
 const deletingContestId = ref<number | null>(null)
+const pendingDeleteContest = ref<Contest | null>(null)
 const filteredContests = computed(() => contests.value)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -130,16 +132,18 @@ async function setContestStatus(contest: Contest, status: ContestStatus) {
   }
 }
 
-async function removeContest(contest: Contest) {
-  const typedSlug = globalThis.prompt(
-    `Permanently delete “${contest.name}” and all of its uploaded logs, scoring, results, and contest history? This cannot be undone. Type the contest slug (${contest.slug}) to confirm.`,
-  )
-  if (typedSlug === null || typedSlug !== contest.slug) return
+function removeContest(contest: Contest) {
+  pendingDeleteContest.value = contest
+}
+
+async function confirmContestDeletion(value: { confirmationText: string }) {
+  const contest = pendingDeleteContest.value
+  if (!contest || value.confirmationText !== contest.slug) return
   deletingContestId.value = contest.id
   errorMessage.value = ''
   statusMessage.value = ''
   try {
-    await deleteContest(contest.id, typedSlug)
+    await deleteContest(contest.id, value.confirmationText)
     if (contests.value.length === 1 && page.value > 1) page.value -= 1
     await refreshData()
     statusMessage.value = `${contest.name} and its contest data were deleted.`
@@ -150,6 +154,7 @@ async function removeContest(contest: Contest) {
         : 'The contest could not be deleted.'
   } finally {
     deletingContestId.value = null
+    pendingDeleteContest.value = null
   }
 }
 
@@ -594,6 +599,25 @@ onMounted(refreshData)
         </nav>
       </section>
     </template>
+    <ConfirmationModal
+      :open="pendingDeleteContest !== null"
+      :title="$tr('Delete {name}?', { name: pendingDeleteContest?.name ?? '' })"
+      :description="
+        $tr(
+          'This permanently deletes the contest, its uploaded logs, scores, published results, and contest history. This action cannot be undone.',
+        )
+      "
+      :confirm-label="$tr('Delete contest')"
+      :required-text="pendingDeleteContest?.slug ?? ''"
+      :required-text-label="
+        $tr('Type {value} to confirm.', {
+          value: pendingDeleteContest?.slug ?? '',
+        })
+      "
+      :busy="deletingContestId !== null"
+      @confirm="confirmContestDeletion"
+      @cancel="pendingDeleteContest = null"
+    />
   </section>
 </template>
 

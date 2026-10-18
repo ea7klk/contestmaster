@@ -135,9 +135,7 @@ describe('ContestEditorView', () => {
       series_automatic_window_days: 90,
     }
     const routerPush = vi.fn()
-    const prompt = vi.fn((_message: string) => 'Annual Sprint')
     const deleteRequests: Array<Record<string, unknown>> = []
-    vi.stubGlobal('prompt', prompt)
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -166,12 +164,17 @@ describe('ContestEditorView', () => {
     await flushPromises()
 
     await wrapper.get('button.danger-button').trigger('click')
+    const confirmationInput = document.body.querySelector<HTMLInputElement>(
+      '[data-confirmation-input]',
+    )!
+    confirmationInput.value = 'Annual Sprint'
+    confirmationInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
     await flushPromises()
 
-    expect(prompt.mock.calls[0]?.[0]).toContain(
-      'Type Annual Sprint to confirm.',
-    )
-    expect(prompt.mock.calls[0]?.[0]).not.toContain(edition.name)
     expect(deleteRequests).toEqual([{ confirm_name: 'Annual Sprint' }])
     expect(routerPush).toHaveBeenCalledWith('/manage/contests')
   })

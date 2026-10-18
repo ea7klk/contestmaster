@@ -307,7 +307,9 @@ describe('ContestManagerView listing', () => {
     const wrapper = mountManager()
     await flushPromises()
     await selectContestPackage(wrapper.element, JSON.stringify(packageDraft))
-    expect(wrapper.text()).toContain('Imported Contest Without Rules as a draft without a ruleset.')
+    expect(wrapper.text()).toContain(
+      'Imported Contest Without Rules as a draft without a ruleset.',
+    )
   })
 
   it('exports contest-only and contest-with-ruleset JSON packages', async () => {
@@ -331,7 +333,10 @@ describe('ContestManagerView listing', () => {
       if (path.includes('/rulesets/versions')) return ok(rulesets())
       if (path.endsWith('/contests/12')) return ok(contestData)
       if (path.includes('/contests?'))
-        return ok({ items: [contestData], meta: { ...meta, total: 1, pages: 1 } })
+        return ok({
+          items: [contestData],
+          meta: { ...meta, total: 1, pages: 1 },
+        })
       throw new Error(`Unexpected request: ${path}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -347,7 +352,9 @@ describe('ContestManagerView listing', () => {
       }
     }
     vi.stubGlobal('URL', DownloadURL)
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
     const wrapper = mountManager()
     await flushPromises()
 
@@ -388,7 +395,9 @@ describe('ContestManagerView listing', () => {
       contest: { slug: 'field-day-sprint' },
       ruleset: savedRuleset.configuration,
     })
-    expect(wrapper.text()).toContain('Exported Field Day Sprint with its ruleset.')
+    expect(wrapper.text()).toContain(
+      'Exported Field Day Sprint with its ruleset.',
+    )
   })
 
   it('keeps delete confirmation and cascade deletion on the listing page', async () => {
@@ -416,10 +425,23 @@ describe('ContestManagerView listing', () => {
         throw new Error(`Unexpected request: ${path}`)
       }),
     )
-    vi.spyOn(window, 'prompt').mockReturnValue('delete-me')
     const wrapper = mountManager()
     await flushPromises()
     await wrapper.get('.danger-button').trigger('click')
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull()
+    expect(exists).toBe(true)
+    await document.body
+      .querySelector<HTMLInputElement>('[data-confirmation-input]')!
+      .dispatchEvent(new Event('input', { bubbles: true }))
+    const confirmationInput = document.body.querySelector<HTMLInputElement>(
+      '[data-confirmation-input]',
+    )!
+    confirmationInput.value = 'delete-me'
+    confirmationInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
     await flushPromises()
     expect(wrapper.findAll('.contest-card')).toHaveLength(0)
     expect(wrapper.text()).toContain('contest data were deleted')

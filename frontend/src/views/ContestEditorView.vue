@@ -18,6 +18,7 @@ import {
 } from '../api/contests'
 import { getCurrentUser } from '../api/identity'
 import { formatUtcDateTime, formatUtcMonth } from '../i18n'
+import ConfirmationModal from '../components/ConfirmationModal.vue'
 import ResourceAdministrators from '../components/ResourceAdministrators.vue'
 
 const props = defineProps<{ contestId?: string }>()
@@ -90,6 +91,7 @@ const exceptionAction = ref<'skip' | 'move'>('skip')
 const exceptionMovedToDate = ref('')
 const savingException = ref(false)
 const deletingSeries = ref(false)
+const confirmDeleteSeriesOpen = ref(false)
 const activeContestId = ref<number | null>(null)
 const editingId = computed(() => {
   if (props.contestId === undefined) return null
@@ -298,15 +300,17 @@ async function removeException(occurrenceDate: string) {
 
 async function deleteSeries() {
   if (form.series_id === null || deletingSeries.value) return
+  confirmDeleteSeriesOpen.value = true
+}
+
+async function confirmSeriesDeletion(value: { confirmationText: string }) {
+  if (form.series_id === null || deletingSeries.value) return
   const seriesName = form.series_name ?? form.name
-  const confirmation = globalThis.prompt(
-    `Delete the entire series and all its contest editions? Type ${seriesName} to confirm.`,
-  )
-  if (confirmation !== seriesName) return
+  if (value.confirmationText !== seriesName) return
   deletingSeries.value = true
   errorMessage.value = ''
   try {
-    await deleteContestSeries(form.series_id, confirmation)
+    await deleteContestSeries(form.series_id, value.confirmationText)
     await router.push('/manage/contests')
   } catch (error) {
     errorMessage.value =
@@ -315,6 +319,7 @@ async function deleteSeries() {
         : 'The contest series could not be deleted.'
   } finally {
     deletingSeries.value = false
+    confirmDeleteSeriesOpen.value = false
   }
 }
 
@@ -826,6 +831,25 @@ watch(
         :resource-id="activeContestId"
       />
     </template>
+    <ConfirmationModal
+      :open="confirmDeleteSeriesOpen"
+      :title="$tr('Delete entire contest series?')"
+      :description="
+        $tr(
+          'This permanently deletes the entire contest series and all of its editions. This action cannot be undone.',
+        )
+      "
+      :confirm-label="$tr('Delete series')"
+      :required-text="form.series_name ?? form.name"
+      :required-text-label="
+        $tr('Type {value} to confirm.', {
+          value: form.series_name ?? form.name,
+        })
+      "
+      :busy="deletingSeries"
+      @confirm="confirmSeriesDeletion"
+      @cancel="confirmDeleteSeriesOpen = false"
+    />
   </section>
 </template>
 

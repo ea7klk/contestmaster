@@ -1028,5 +1028,21 @@
   "s_ffb0ff72": "Formato",
   "s_ffda6982": "Le regole dettagliate del concorso non sono ancora disponibili.",
   "s_ffeb6c21": "diviso per",
-  "s_fff3c460": "Uscita di trasmissione massima: fino al limite legale applicabile."
+  "s_fff3c460": "Uscita di trasmissione massima: fino al limite legale applicabile.",
+  "s_35afca3b": "Annulla",
+  "s_4397aaa4": "Eliminare {name}?",
+  "s_acd2d4a5": "I valori referenziati devono essere disattivati. Questa azione non può essere annullata.",
+  "s_be8ec97c": "È possibile eliminare solo le versioni dei dati anagrafici non referenziate. Questa azione non può essere annullata.",
+  "s_2fa64eeb": "Motivo di audit (facoltativo)",
+  "s_a8491bf2": "Si possono eliminare solo le versioni delle regole non referenziate da concorsi o risultati. Questa azione non può essere annullata.",
+  "s_f989aca8": "Elimina regolamento",
+  "s_46f4552d": "Il concorso, i log caricati, i punteggi, i risultati pubblicati e la cronologia verranno eliminati definitivamente. Questa azione non può essere annullata.",
+  "s_ce0a13e2": "Elimina concorso",
+  "s_d3a337a9": "Digita {value} per confermare.",
+  "s_0f902599": "Eliminare il set di regole salvato {name}?",
+  "s_a7b8ab09": "Eliminare l’intera serie di concorsi?",
+  "s_4827c60c": "L’intera serie e tutte le sue edizioni verranno eliminate definitivamente. Questa azione non può essere annullata.",
+  "s_788aecc7": "Elimina serie",
+  "s_e6379e41": "Sposta su",
+  "s_2b87faa8": "Sposta giù"
 }

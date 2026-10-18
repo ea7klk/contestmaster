@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ApiError } from '../api/client'
+import ConfirmationModal from '../components/ConfirmationModal.vue'
 import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
 import { formatUtcDateTime } from '../i18n'
@@ -21,6 +22,7 @@ const busyVersionId = ref<number | null>(null)
 const error = ref('')
 const statusMessage = ref('')
 const denied = ref(false)
+const pendingDelete = ref<MasterDataVersion | null>(null)
 
 function displayDate(value: string | null): string {
   return value ? formatUtcDateTime(value) : '—'
@@ -84,19 +86,17 @@ async function activate(version: MasterDataVersion) {
 }
 
 async function remove(version: MasterDataVersion) {
-  if (
-    !globalThis.confirm(
-      `Delete unreferenced ${version.dataset_key} version ${version.id}?`,
-    )
-  )
-    return
-  const reason = globalThis.prompt('Optional audit reason for this deletion:')
-  if (reason === null) return
+  pendingDelete.value = version
+}
+
+async function confirmDelete(value: { auditReason: string }) {
+  const version = pendingDelete.value
+  if (!version) return
   busyVersionId.value = version.id
   error.value = ''
   statusMessage.value = ''
   try {
-    await deleteMasterDataVersion(version.id, reason.trim() || undefined)
+    await deleteMasterDataVersion(version.id, value.auditReason || undefined)
     await refresh()
     statusMessage.value = `Deleted ${version.dataset_key} version ${version.id}.`
   } catch (cause) {
@@ -106,6 +106,7 @@ async function remove(version: MasterDataVersion) {
         : 'The version could not be deleted.'
   } finally {
     busyVersionId.value = null
+    pendingDelete.value = null
   }
 }
 
@@ -280,6 +281,26 @@ onMounted(refresh)
         </table>
       </KeyboardScrollRegion>
     </template>
+    <ConfirmationModal
+      :open="pendingDelete !== null"
+      :title="
+        $tr('Delete {name}?', {
+          name: pendingDelete
+            ? `${pendingDelete.dataset_key} version ${pendingDelete.id}`
+            : '',
+        })
+      "
+      :description="
+        $tr(
+          'Only unreferenced master-data versions can be deleted. This action cannot be undone.',
+        )
+      "
+      :confirm-label="$tr('Delete')"
+      :audit-reason-label="$tr('Audit reason (optional)')"
+      :busy="busyVersionId !== null"
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
   </section>
 </template>
 

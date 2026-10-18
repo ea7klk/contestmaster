@@ -127,11 +127,7 @@ describe('MasterDataAdminView', () => {
     ).toBe(true)
   })
 
-  it('confirms deletion before calling the protected delete API', async () => {
-    const confirm = vi.fn(() => true)
-    const prompt = vi.fn(() => 'obsolete snapshot')
-    vi.stubGlobal('confirm', confirm)
-    vi.stubGlobal('prompt', prompt)
+  it('uses the deletion modal and passes its optional audit reason', async () => {
     const { wrapper, fetchMock } = await mountView('global_administrator')
 
     const deleteButton = wrapper
@@ -139,14 +135,25 @@ describe('MasterDataAdminView', () => {
       .find((button) => button.text() === 'Delete')
     expect(deleteButton).toBeDefined()
     await deleteButton!.trigger('click')
+    const modal = document.body.querySelector('[role="alertdialog"]')
+    expect(modal?.textContent).toContain('Audit reason (optional)')
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE'),
+    ).toBe(false)
+    const reason = document.body.querySelector('textarea')!
+    reason.value = 'obsolete snapshot'
+    reason.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
     await flushPromises()
 
-    expect(confirm).toHaveBeenCalledOnce()
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) =>
           String(url).includes(
-            '/admin/master-data/versions/12?audit_reason=',
+            '/admin/master-data/versions/12?audit_reason=obsolete%20snapshot',
           ) && init?.method === 'DELETE',
       ),
     ).toBe(true)

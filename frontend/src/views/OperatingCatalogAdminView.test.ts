@@ -86,4 +86,75 @@ describe('OperatingCatalogAdminView', () => {
     )
     expect(fetchMock).toHaveBeenCalledOnce()
   })
+
+  it('opens an in-app deletion modal and only deletes after confirmation', async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path.endsWith('/auth/me'))
+          return new Response(
+            JSON.stringify({
+              id: 1,
+              role: 'global_administrator',
+              display_name: 'Admin',
+            }),
+          )
+        if (path.endsWith('/admin/bands'))
+          return new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 1,
+                  kind: 'band',
+                  key: '60m',
+                  label: '60 m',
+                  description: 'Notice',
+                  frequency_range: '5 MHz',
+                  sort_order: 1,
+                  is_active: true,
+                  contest_free: false,
+                },
+              ],
+            }),
+          )
+        if (path.endsWith('/admin/modes'))
+          return new Response(JSON.stringify({ items: [] }))
+        if (path.endsWith('/admin/bands/1') && init?.method === 'DELETE')
+          return new Response(null, { status: 204 })
+        throw new Error(`Unexpected request ${path}`)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(OperatingCatalogAdminView)
+    await flushPromises()
+
+    await wrapper
+      .findAll('.catalog-section button')
+      .find((button) => button.text() === 'Delete')!
+      .trigger('click')
+    expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull()
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE'),
+    ).toBe(false)
+    await document.body
+      .querySelector<HTMLButtonElement>('[data-cancel-button]')!
+      .click()
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE'),
+    ).toBe(false)
+
+    await wrapper
+      .findAll('.catalog-section button')
+      .find((button) => button.text() === 'Delete')!
+      .trigger('click')
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
+    await flushPromises()
+
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE'),
+    ).toBe(true)
+    expect(wrapper.text()).toContain('60 m deleted.')
+  })
 })

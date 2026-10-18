@@ -10,6 +10,7 @@ import {
 } from '../api/rulesets'
 import { getCurrentUser } from '../api/identity'
 import { formatInteger } from '../i18n'
+import ConfirmationModal from '../components/ConfirmationModal.vue'
 
 const pageSize = 20
 const items = ref<SavedRulesetVersion[]>([])
@@ -22,6 +23,7 @@ const forbidden = ref(false)
 const error = ref('')
 const message = ref('')
 const deletingId = ref<number | null>(null)
+const pendingDelete = ref<SavedRulesetVersion | null>(null)
 const exportingId = ref<number | null>(null)
 const filteredItems = computed(() => items.value)
 
@@ -63,18 +65,21 @@ async function changePage(next: number) {
   await refresh()
 }
 
-async function remove(saved: SavedRulesetVersion) {
+function remove(saved: SavedRulesetVersion) {
   if (!saved.can_delete) return
+  pendingDelete.value = saved
+}
+
+async function confirmDelete(value: { confirmationText: string }) {
+  const saved = pendingDelete.value
+  if (!saved) return
   const identity = `${saved.ruleset_key}@${saved.version}`
-  const typedIdentity = globalThis.prompt(
-    `Delete saved ruleset ${identity}? This is allowed only when no contest or score history references it. Type ${identity} to confirm.`,
-  )
-  if (typedIdentity !== identity) return
+  if (value.confirmationText !== identity) return
   deletingId.value = saved.id
   error.value = ''
   message.value = ''
   try {
-    await deleteSavedRulesetVersion(saved.id, typedIdentity)
+    await deleteSavedRulesetVersion(saved.id, value.confirmationText)
     if (items.value.length === 1 && page.value > 1) page.value -= 1
     await refresh()
     message.value = `Deleted unused ruleset ${identity}.`
@@ -85,6 +90,7 @@ async function remove(saved: SavedRulesetVersion) {
         : 'The ruleset version could not be deleted.'
   } finally {
     deletingId.value = null
+    pendingDelete.value = null
   }
 }
 
@@ -267,6 +273,37 @@ onMounted(refresh)
         </span>
       </nav>
     </template>
+    <ConfirmationModal
+      :open="pendingDelete !== null"
+      :title="
+        $tr('Delete saved ruleset {name}?', {
+          name: pendingDelete
+            ? `${pendingDelete.ruleset_key}@${pendingDelete.version}`
+            : '',
+        })
+      "
+      :description="
+        $tr(
+          'Only ruleset versions not referenced by contests or score history can be deleted. This action cannot be undone.',
+        )
+      "
+      :confirm-label="$tr('Delete ruleset')"
+      :required-text="
+        pendingDelete
+          ? `${pendingDelete.ruleset_key}@${pendingDelete.version}`
+          : ''
+      "
+      :required-text-label="
+        $tr('Type {value} to confirm.', {
+          value: pendingDelete
+            ? `${pendingDelete.ruleset_key}@${pendingDelete.version}`
+            : '',
+        })
+      "
+      :busy="deletingId !== null"
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
   </section>
 </template>
 

@@ -117,13 +117,21 @@ describe('RulesetManagerView', () => {
       },
     )
     vi.stubGlobal('fetch', fetchMock)
-    vi.spyOn(window, 'prompt').mockReturnValue('unused-rules@2026')
     const wrapper = mountList()
     await flushPromises()
     expect(wrapper.get('a[href="/manage/rulesets/8/edit"]').text()).toContain(
       'Create version from this ruleset',
     )
     await wrapper.get('.danger-button').trigger('click')
+    const confirmationInput = document.body.querySelector<HTMLInputElement>(
+      '[data-confirmation-input]',
+    )!
+    confirmationInput.value = 'unused-rules@2026'
+    confirmationInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
     await flushPromises()
     expect(wrapper.text()).toContain('Deleted unused ruleset unused-rules@2026')
     expect(wrapper.text()).toContain('No saved ruleset versions')

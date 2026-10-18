@@ -16,6 +16,7 @@ import {
   type ModeCatalogItem,
 } from '../api/operatingCatalog'
 import { getCurrentUser, type PrivilegedUser } from '../api/identity'
+import ConfirmationModal from '../components/ConfirmationModal.vue'
 import KeyboardScrollRegion from '../components/KeyboardScrollRegion.vue'
 
 const bands = ref<BandCatalogItem[]>([])
@@ -28,6 +29,11 @@ const error = ref('')
 const message = ref('')
 const editingBandId = ref<number | null>(null)
 const editingModeId = ref<number | null>(null)
+const pendingDelete = ref<
+  | { kind: 'band'; item: BandCatalogItem }
+  | { kind: 'mode'; item: ModeCatalogItem }
+  | null
+>(null)
 const bandForm = reactive<BandCatalogInput>({
   key: '',
   label: '',
@@ -145,37 +151,30 @@ async function saveMode() {
   }
 }
 
-async function removeBand(item: BandCatalogItem) {
-  if (
-    !globalThis.confirm(
-      `Delete ${item.label}? Referenced values must be deactivated instead.`,
-    )
-  )
-    return
-  try {
-    await deleteBand(item.id)
-    message.value = `${item.label} deleted.`
-    await refresh()
-  } catch (cause) {
-    error.value =
-      cause instanceof Error ? cause.message : 'Band could not be deleted.'
-  }
+function removeBand(item: BandCatalogItem) {
+  pendingDelete.value = { kind: 'band', item }
 }
 
-async function removeMode(item: ModeCatalogItem) {
-  if (
-    !globalThis.confirm(
-      `Delete ${item.label}? Referenced values must be deactivated instead.`,
-    )
-  )
-    return
+function removeMode(item: ModeCatalogItem) {
+  pendingDelete.value = { kind: 'mode', item }
+}
+
+async function confirmDelete() {
+  const deletion = pendingDelete.value
+  if (!deletion) return
   try {
-    await deleteMode(item.id)
-    message.value = `${item.label} deleted.`
+    if (deletion.kind === 'band') await deleteBand(deletion.item.id)
+    else await deleteMode(deletion.item.id)
+    message.value = `${deletion.item.label} deleted.`
+    pendingDelete.value = null
     await refresh()
   } catch (cause) {
     error.value =
-      cause instanceof Error ? cause.message : 'Mode could not be deleted.'
+      cause instanceof Error
+        ? cause.message
+        : `${deletion.kind === 'band' ? 'Band' : 'Mode'} could not be deleted.`
+  } finally {
+    pendingDelete.value = null
   }
 }
 
@@ -304,8 +303,8 @@ onMounted(refresh)
                 <td class="master-data-actions">
                   <button type="button" @click="editBand(item)">
                     {{ $tr('Edit') }}
-</button
-                  ><button
+                  </button>
+                  <button
                     class="master-data-danger"
                     type="button"
                     @click="removeBand(item)"
@@ -405,8 +404,8 @@ onMounted(refresh)
                 <td class="master-data-actions">
                   <button type="button" @click="editMode(item)">
                     {{ $tr('Edit') }}
-</button
-                  ><button
+                  </button>
+                  <button
                     class="master-data-danger"
                     type="button"
                     @click="removeMode(item)"
@@ -423,6 +422,18 @@ onMounted(refresh)
         </KeyboardScrollRegion>
       </section>
     </template>
+    <ConfirmationModal
+      :open="pendingDelete !== null"
+      :title="$tr('Delete {name}?', { name: pendingDelete?.item.label ?? '' })"
+      :description="
+        $tr(
+          'Referenced values must be deactivated instead. This action cannot be undone.',
+        )
+      "
+      :confirm-label="$tr('Delete')"
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
   </section>
 </template>
 

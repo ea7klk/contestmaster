@@ -1028,5 +1028,21 @@
   "s_ffb0ff72": "Format",
   "s_ffda6982": "Detailed contest rules are not available yet.",
   "s_ffeb6c21": "divided by",
-  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit."
+  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit.",
+  "s_35afca3b": "Cancel",
+  "s_4397aaa4": "Delete {name}?",
+  "s_acd2d4a5": "Referenced values must be deactivated instead. This action cannot be undone.",
+  "s_be8ec97c": "Only unreferenced master-data versions can be deleted. This action cannot be undone.",
+  "s_2fa64eeb": "Audit reason (optional)",
+  "s_a8491bf2": "Only ruleset versions not referenced by contests or score history can be deleted. This action cannot be undone.",
+  "s_f989aca8": "Delete ruleset",
+  "s_46f4552d": "This permanently deletes the contest, its uploaded logs, scores, published results, and contest history. This action cannot be undone.",
+  "s_ce0a13e2": "Delete contest",
+  "s_d3a337a9": "Type {value} to confirm.",
+  "s_0f902599": "Delete saved ruleset {name}?",
+  "s_a7b8ab09": "Delete entire contest series?",
+  "s_4827c60c": "This permanently deletes the entire contest series and all of its editions. This action cannot be undone.",
+  "s_788aecc7": "Delete series",
+  "s_e6379e41": "Move up",
+  "s_2b87faa8": "Move down"
 }
