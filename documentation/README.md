@@ -8,6 +8,8 @@ Operational and user guides: [operators](operations/README.md), [participants](p
 
 For supported interface languages and the localization workflow, see [internationalization](internationalization/README.md).
 
+For a source-linked survey of contest rule patterns and their mapping to the current schema, scoring engine, and composer, see the [radio-contest rules body of knowledge](radio-contest-body-of-knowledge/README.md).
+
 ## Initial feature list
 
 ### Core platform
