@@ -4,11 +4,19 @@ The Vue composer exposes the same typed ruleset definition that the API validate
 
 ## Ruleset creation workflow
 
-1. Record the official rules URL and edition so a saved configuration can be traced back to its source.
-2. Configure the required rule types. These describe the contest's categories, exchange, contact eligibility, duplicate handling, point values, score formula, late-log policy, and accepted log formats.
-3. Add optional rule types only when the published rules require them. Multipliers, bonuses, penalties, operating constraints, and workflow hooks represent different behaviors; do not select a rule just because it is available.
-4. Validate the draft. Read each field-level error, correct the configuration, and validate again. Review the generated explanation and worked integer-score example against the official scoring formula.
-5. Save the validated configuration as a new immutable version. Assign it to a contest from **Contest manager** when ready. Editing a saved version creates a new version and does not change existing contest assignments.
+The composer uses five task-based steps. The step navigation preserves one draft while moving between sections, and the review step links back to the section that needs attention.
+
+1. **Basics and source** — name the reusable ruleset, choose its version, and record the sponsor URL and edition. This records which published rules were translated into the draft.
+2. **Categories and exchange** — define entrant classification dimensions, their allowed choices, and the values participants exchange. Required and optional dimensions, declaration requirements, and unusual sponsor-specific terms remain configurable.
+3. **Logs and contact eligibility** — set accepted file formats and mappings, late-log policy, eligible bands and modes, duplicate handling, and any conditions that govern whether contacts count.
+4. **Scoring** — define integer QSO points, multipliers, bonuses, penalties, and the score formula. Include only the behavior required by the sponsor's rules.
+5. **Limits and review** — configure operating constraints and review workflows when needed, inspect summaries of the preceding steps, validate against the API, and save only after validation succeeds.
+
+Each rule appears as a short expandable card. Open a card to edit it. Stable rule identifiers, nested conditions, detailed mappings, and other less common settings are kept inside labeled **Technical details** or **Advanced conditions** disclosures. Collapsing a card or changing steps does not discard its values. JSON draft import/export remains available from the review step, and imported settings are retained even when they are not visible in the current step.
+
+The review page summarizes each step and provides an **Edit** link back to it. Server validation errors include a link to the relevant section and open the associated rule card when possible. The API remains authoritative. A generated rules explanation and worked integer-score example are available for comparison with the sponsor's rules. Saving is offered only after successful server validation, and creates a new immutable version. Editing a saved version starts a new version without changing contests already assigned to the earlier version.
+
+Contest dates, recurrence, and the UTC submission cutoff are intentionally not ruleset fields; configure them on the contest. The ruleset's submission setting describes how logs after that contest cutoff are classified.
 
 The ruleset can be reused for contest editions with different event dates. Start/end times, recurrence, and the UTC submission cutoff belong to each contest. The ruleset's submission setting only describes how the application classifies logs received after that cutoff. Stable keys identify rules, categories, choices, and exchange fields in data and references; labels are intended for display and may be revised when making a new version.
 

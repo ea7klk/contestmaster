@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import ConditionEditor from '../components/ConditionEditor.vue'
 import RuleSchemaEditor from '../components/RuleSchemaEditor.vue'
 import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
 import EligibilityCatalogEditor from '../components/EligibilityCatalogEditor.vue'
 import ResourceAdministrators from '../components/ResourceAdministrators.vue'
+import { translateText } from '../i18n'
 import {
   getBands,
   getModes,
@@ -48,6 +49,61 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const editingSource = ref('')
 const activeRulesetId = ref<number | null>(null)
 const props = defineProps<{ editVersionId?: string }>()
+
+const currentStep = ref(1)
+const stepAnnouncement = ref('')
+const STEPS = [
+  {
+    number: 1,
+    title: 'Ruleset identity',
+    description: 'Identify the official rules and version.',
+  },
+  {
+    number: 2,
+    title: 'Categories and exchange',
+    description: 'Define entrant classes and contact exchanges.',
+  },
+  {
+    number: 3,
+    title: 'Logs and contacts',
+    description: 'Choose log formats and decide which contacts count.',
+  },
+  {
+    number: 4,
+    title: 'Scoring',
+    description:
+      'Set integer points, multipliers, bonuses, penalties, and formula.',
+  },
+  {
+    number: 5,
+    title: 'Limits and review',
+    description:
+      'Configure optional limits, review, and validate the complete draft.',
+  },
+] as const
+const RULE_STEP: Record<string, number> = {
+  categories: 2,
+  exchange: 2,
+  submission: 3,
+  format_mapping: 3,
+  eligibility: 3,
+  duplicates: 3,
+  points: 4,
+  multiplier: 4,
+  bonus: 4,
+  penalty: 4,
+  score_formula: 4,
+  operating_constraints: 5,
+  workflow_hook: 5,
+}
+const activeStep = computed(
+  () => STEPS.find((step) => step.number === currentStep.value) ?? STEPS[0],
+)
+const stepOptionalTypes = computed(() =>
+  optionalTypes.value.filter(
+    (type) => RULE_STEP[type.key] === currentStep.value,
+  ),
+)
 
 const optionalTypes = computed(() =>
   catalog.value.filter((type) => !type.required),
@@ -300,6 +356,106 @@ function supportsConditions(rule: ConfiguredRuleDraft) {
     'format_mapping',
     'score_formula',
   ].includes(String(rule.rule.kind))
+}
+
+function ruleStep(kind: unknown): number {
+  return RULE_STEP[String(kind)] ?? 3
+}
+
+function rulesOnStep(stepNumber: number): ConfiguredRuleDraft[] {
+  return rules.value.filter((item) => ruleStep(item.rule.kind) === stepNumber)
+}
+
+function stepSummary(stepNumber: number): string {
+  if (stepNumber === 1) {
+    const provenance = [sourceUrl.value, sourceEdition.value].filter(
+      Boolean,
+    ).length
+    return translateText('{key} · version {version} · {count} source details', {
+      key: rulesetKey.value || translateText('Ruleset'),
+      version: version.value || translateText('No version'),
+      count: provenance,
+    })
+  }
+  if (stepNumber === 2) {
+    const categoryRule = rulesOnStep(2).find(
+      (item) => item.rule.kind === 'categories',
+    )
+    const exchangeRule = rulesOnStep(2).find(
+      (item) => item.rule.kind === 'exchange',
+    )
+    const dimensionCount = Array.isArray(categoryRule?.rule.dimensions)
+      ? categoryRule.rule.dimensions.length
+      : 0
+    const fieldCount = Array.isArray(exchangeRule?.rule.fields)
+      ? exchangeRule.rule.fields.length
+      : 0
+    return translateText('{dimensions} dimensions · {fields} exchange fields', {
+      dimensions: dimensionCount,
+      fields: fieldCount,
+    })
+  }
+  if (stepNumber === 3) {
+    const formats = rulesOnStep(3)
+      .filter((item) => item.rule.kind === 'format_mapping')
+      .map((item) => String(item.rule.format ?? '').toUpperCase())
+      .filter(Boolean)
+    const latePolicy = rulesOnStep(3).find(
+      (item) => item.rule.kind === 'submission',
+    )?.rule.late_policy
+    return translateText('{formats} · late policy: {policy}', {
+      formats: formats.length
+        ? formats.join(', ')
+        : translateText('No format selected'),
+      policy: String(latePolicy ?? translateText('Not set')),
+    })
+  }
+  if (stepNumber === 4) {
+    const scoringRules = rulesOnStep(4)
+    const multiplierCount = scoringRules.filter(
+      (item) => item.rule.kind === 'multiplier',
+    ).length
+    return translateText('{rules} scoring rules · {multipliers} multipliers', {
+      rules: scoringRules.length,
+      multipliers: multiplierCount,
+    })
+  }
+  const operationalRules = rulesOnStep(5)
+  return translateText('{count} optional limits or review workflows', {
+    count: operationalRules.length,
+  })
+}
+
+function goToStep(stepNumber: number) {
+  currentStep.value = Math.min(STEPS.length, Math.max(1, stepNumber))
+  stepAnnouncement.value = translateText('Step {step} of 5: {title}', {
+    step: currentStep.value,
+    title: translateText(activeStep.value.title),
+  })
+  void nextTick(() => {
+    document.getElementById('active-step-title')?.focus()
+  })
+}
+
+async function openValidationIssue(issue: RulesetIssue) {
+  const match = issue.location.join('.').match(/rules\[(\d+)\]/)
+  const index = match ? Number(match[1]) : -1
+  const stepNumber = index >= 0 ? ruleStep(rules.value[index]?.rule.kind) : 1
+  currentStep.value = stepNumber
+  stepAnnouncement.value = translateText('Step {step} of 5: {title}', {
+    step: stepNumber,
+    title: translateText(activeStep.value.title),
+  })
+  await nextTick()
+  if (index >= 0) {
+    const card = document.getElementById(`rule-card-${index}`)
+    if (card?.tagName === 'DETAILS') {
+      card.setAttribute('open', '')
+      card.querySelector('summary')?.focus()
+    }
+  } else {
+    document.getElementById('active-step-title')?.focus()
+  }
 }
 
 function setCondition(
@@ -669,56 +825,9 @@ function catalogErrorMessage(reason: unknown) {
         )
       }}
     </p>
-    <a class="secondary-button" href="/manage/rulesets">{{
+    <a class="secondary-button back-link" href="/manage/rulesets">{{
       $tr('← Back to rulesets')
     }}</a>
-
-    <section class="workflow-guide" aria-labelledby="workflow-title">
-      <h2 id="workflow-title">{{ $tr('How to create a ruleset') }}</h2>
-      <ol>
-        <li>
-          <strong>{{ $tr('Start from the published rules.') }}</strong>
-          {{
-            $tr(
-              'Use the rules URL and edition below so the configuration can be traced to its source.',
-            )
-          }}
-        </li>
-        <li>
-          <strong>{{ $tr('Configure the required rule types.') }}</strong>
-          {{
-            $tr(
-              'These provide the basic entry categories, exchange, contact eligibility, duplicate handling, point calculation, and accepted log format.',
-            )
-          }}
-        </li>
-        <li>
-          <strong>{{
-            $tr('Add optional rule types only when needed.')
-          }}</strong>
-          {{
-            $tr(
-              'Add multipliers, bonuses, penalties, operating constraints, or workflow steps only when the sponsor’s rules define them. Use each section’s help to translate that rule into settings.',
-            )
-          }}
-        </li>
-        <li>
-          <strong>{{ $tr('Validate, then save and assign.') }}</strong>
-          {{
-            $tr(
-              'Fix any field errors, review the generated summary and example, and save a new immutable version. Assign that version to a contest from the contest manager.',
-            )
-          }}
-        </li>
-      </ol>
-      <p>
-        {{
-          $tr(
-            'Event dates, recurrence, and the UTC log-submission cutoff belong to the contest configuration. A ruleset can be reused by contests with different dates; its submission rule only defines late-log handling. If a sponsor requirement cannot be expressed by the available settings, do not approximate it with a different rule; record the gap for review.',
-          )
-        }}
-      </p>
-    </section>
 
     <p v-if="generalError" role="alert" class="error-panel">
       {{ $tr(generalError) }}
@@ -730,456 +839,693 @@ function catalogErrorMessage(reason: unknown) {
       {{ $tr('Loading the built-in rule catalog…') }}
     </p>
     <template v-else-if="catalog.length">
-      <fieldset class="panel metadata-panel">
-        <legend>{{ $tr('Ruleset identity') }}</legend>
-        <p class="section-help">
-          {{
-            $tr(
-              'These values identify the reusable configuration and its source. A saved version is immutable; changing its settings requires a new version identifier.',
-            )
-          }}
-        </p>
-        <div class="metadata-grid">
-          <label>
-            <span class="metadata-field-label">{{ $tr('Ruleset key') }}</span>
-            <input
-              v-model="rulesetKey"
-              maxlength="120"
-              autocomplete="off"
-              @input="clearValidation"
-            />
-            <span class="field-help">
-              {{
-                $tr(
-                  'Stable, lowercase identifier for this family of rules, such as',
-                )
-              }}
-              <code>spring-sprint</code
-              >{{
-                $tr(
-                  '. Keep it the same when saving a later version of the same contest rules.',
-                )
-              }}
-            </span>
-          </label>
-          <label>
-            <span class="metadata-field-label">{{ $tr('Version') }}</span>
-            <input
-              v-model="version"
-              maxlength="80"
-              autocomplete="off"
-              required
-              @input="clearValidation"
-            />
-            <span v-if="editingSource" class="field-help">
-              {{ $tr('Editing') }} {{ editingSource
-              }}{{
-                $tr(
-                  '. Enter a new version identifier; saved versions cannot be changed.',
-                )
-              }}
-            </span>
-            <span v-else class="field-help">
-              {{
-                $tr(
-                  'Use a year, edition, or other unique label. Validation requires a version, and each saved version is a permanent snapshot.',
-                )
-              }}
-            </span>
-          </label>
-          <label>
-            <span class="metadata-field-label">
-              {{ $tr('Published rules URL') }}
-              <span class="optional-label">{{ $tr('Optional') }}</span>
-            </span>
-            <input
-              v-model="sourceUrl"
-              type="url"
-              maxlength="2048"
-              autocomplete="url"
-              @input="clearValidation"
-            />
-            <span class="field-help">
-              {{
-                $tr(
-                  'Link the official rules page or document used to configure this version. The contest sponsor’s rules remain authoritative.',
-                )
-              }}
-            </span>
-          </label>
-          <label>
-            <span class="metadata-field-label">
-              {{ $tr('Source edition or year') }}
-              <span class="optional-label">{{ $tr('Optional') }}</span>
-            </span>
-            <input
-              v-model="sourceEdition"
-              maxlength="120"
-              @input="clearValidation"
-            />
-            <span class="field-help">
-              {{
-                $tr(
-                  'Record the published year or edition so managers can tell which revision of the sponsor’s rules this version follows.',
-                )
-              }}
-            </span>
-          </label>
-        </div>
-      </fieldset>
+      <nav class="step-navigation" :aria-label="$tr('Ruleset creation steps')">
+        <ol>
+          <li v-for="step in STEPS" :key="step.number">
+            <button
+              type="button"
+              :class="{ 'is-current': currentStep === step.number }"
+              :aria-current="currentStep === step.number ? 'step' : undefined"
+              @click="goToStep(step.number)"
+            >
+              <span class="step-number">{{ step.number }}</span>
+              <span>{{ $tr(step.title) }}</span>
+            </button>
+          </li>
+        </ol>
+      </nav>
+      <p class="step-status" role="status" aria-live="polite">
+        {{
+          stepAnnouncement ||
+          $tr('Step {step} of 5: {title}', {
+            step: currentStep,
+            title: $tr(activeStep.title),
+          })
+        }}
+      </p>
 
-      <section aria-labelledby="configured-rules-title" class="rules-section">
-        <div class="section-heading">
-          <div>
-            <h2 id="configured-rules-title">
-              {{ $tr('Configured rule types') }}
+      <div class="builder-layout">
+        <div class="builder-main">
+          <header class="step-content">
+            <h2 id="active-step-title" tabindex="-1">
+              {{
+                $tr(
+                  currentStep === 5 ? 'Review your ruleset' : activeStep.title,
+                )
+              }}
             </h2>
+            <p class="step-description">{{ $tr(activeStep.description) }}</p>
+            <p v-if="currentStep === 1" class="review-reminder">
+              {{
+                $tr(
+                  'Check every prefilled setting against the sponsor’s official rules. Defaults are starting values, not confirmation of a contest requirement.',
+                )
+              }}
+            </p>
+          </header>
+          <fieldset v-show="currentStep === 1" class="panel metadata-panel">
+            <legend>{{ $tr('Ruleset identity') }}</legend>
+            <p class="section-help">
+              {{
+                $tr(
+                  'These values identify the reusable configuration and its source. A saved version is immutable; changing its settings requires a new version identifier.',
+                )
+              }}
+            </p>
+            <div class="metadata-grid">
+              <label>
+                <span class="metadata-field-label">{{
+                  $tr('Ruleset key')
+                }}</span>
+                <input
+                  v-model="rulesetKey"
+                  maxlength="120"
+                  autocomplete="off"
+                  @input="clearValidation"
+                />
+                <span class="field-help">
+                  {{
+                    $tr(
+                      'Stable, lowercase identifier for this family of rules, such as',
+                    )
+                  }}
+                  <code>spring-sprint</code
+                  >{{
+                    $tr(
+                      '. Keep it the same when saving a later version of the same contest rules.',
+                    )
+                  }}
+                </span>
+              </label>
+              <label>
+                <span class="metadata-field-label">{{ $tr('Version') }}</span>
+                <input
+                  v-model="version"
+                  maxlength="80"
+                  autocomplete="off"
+                  required
+                  @input="clearValidation"
+                />
+                <span v-if="editingSource" class="field-help">
+                  {{ $tr('Editing') }} {{ editingSource
+                  }}{{
+                    $tr(
+                      '. Enter a new version identifier; saved versions cannot be changed.',
+                    )
+                  }}
+                </span>
+                <span v-else class="field-help">
+                  {{
+                    $tr(
+                      'Use a year, edition, or other unique label. Validation requires a version, and each saved version is a permanent snapshot.',
+                    )
+                  }}
+                </span>
+              </label>
+              <label>
+                <span class="metadata-field-label">
+                  {{ $tr('Published rules URL') }}
+                  <span class="optional-label">{{ $tr('Optional') }}</span>
+                </span>
+                <input
+                  v-model="sourceUrl"
+                  type="url"
+                  maxlength="2048"
+                  autocomplete="url"
+                  @input="clearValidation"
+                />
+                <span class="field-help">
+                  {{
+                    $tr(
+                      'Link the official rules page or document used to configure this version. The contest sponsor’s rules remain authoritative.',
+                    )
+                  }}
+                </span>
+              </label>
+              <label>
+                <span class="metadata-field-label">
+                  {{ $tr('Source edition or year') }}
+                  <span class="optional-label">{{ $tr('Optional') }}</span>
+                </span>
+                <input
+                  v-model="sourceEdition"
+                  maxlength="120"
+                  @input="clearValidation"
+                />
+                <span class="field-help">
+                  {{
+                    $tr(
+                      'Record the published year or edition so managers can tell which revision of the sponsor’s rules this version follows.',
+                    )
+                  }}
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          <section
+            v-if="currentStep === 5"
+            class="review-groups"
+            aria-labelledby="review-groups-title"
+          >
+            <p id="review-groups-title" class="step-description">
+              {{
+                $tr(
+                  'Check the summary against the sponsor rules. Use Edit to revisit any section; no setting is omitted from the saved draft.',
+                )
+              }}
+            </p>
+            <article
+              v-for="step in STEPS.slice(0, 4)"
+              :key="step.number"
+              class="review-group"
+            >
+              <div>
+                <h3>{{ $tr(step.title) }}</h3>
+                <p>{{ stepSummary(step.number) }}</p>
+              </div>
+              <button
+                type="button"
+                class="secondary-button"
+                @click="goToStep(step.number)"
+              >
+                {{ $tr('Edit section') }}
+              </button>
+            </article>
+            <p class="review-reminder">
+              {{
+                $tr(
+                  'The sponsor’s published rules remain authoritative. If a requirement cannot be expressed by these settings, record the gap rather than approximating it.',
+                )
+              }}
+            </p>
+          </section>
+
+          <section
+            v-show="currentStep >= 2"
+            aria-labelledby="configured-rules-title"
+            class="rules-section"
+          >
+            <div class="section-heading">
+              <div>
+                <h2 id="configured-rules-title" tabindex="-1">
+                  {{ $tr(activeStep.title) }}
+                </h2>
+                <p>{{ $tr(activeStep.description) }}</p>
+              </div>
+              <div v-if="stepOptionalTypes.length" class="add-rule-control">
+                <label for="add-rule-type">
+                  {{
+                    $tr(
+                      currentStep === 4
+                        ? 'Add a scoring rule'
+                        : 'Add a limit or review rule',
+                    )
+                  }}
+                  <select id="add-rule-type" v-model="selectedType">
+                    <option value="">{{ $tr('Choose a rule type') }}</option>
+                    <option
+                      v-for="type in stepOptionalTypes"
+                      :key="type.key"
+                      :value="type.key"
+                    >
+                      {{ $tr(type.label) }}
+                    </option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  :disabled="!selectedType"
+                  @click="addSelectedRule"
+                >
+                  {{ $tr('Add rule') }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="currentStep === 2" class="step-hint">
+              {{
+                $tr(
+                  'Required: define categories and the exchange. Custom dimensions and exchange fields remain available when the sponsor uses non-standard terms.',
+                )
+              }}
+            </p>
+            <p v-else-if="currentStep === 3" class="step-hint">
+              {{
+                $tr(
+                  'Choose only formats supported by this application and specified by the sponsor. Contest dates and the submission cutoff are configured on the contest, not here.',
+                )
+              }}
+            </p>
+            <p v-else-if="currentStep === 4" class="step-hint">
+              {{
+                $tr(
+                  'Every score value stays an integer. Add optional scoring rules only when the published rules require them.',
+                )
+              }}
+            </p>
+            <p v-else-if="currentStep === 5" class="step-hint">
+              {{
+                $tr(
+                  'Operating limits and cross-log or review workflows are optional. Add only behavior required by the official rules.',
+                )
+              }}
+            </p>
+
+            <details
+              v-for="(configured, index) in rules"
+              v-show="ruleStep(configured.rule.kind) === currentStep"
+              :id="`rule-card-${index}`"
+              :key="configured.id"
+              class="rule-card"
+            >
+              <summary class="rule-card-heading">
+                <span class="rule-card-title">
+                  <strong>{{
+                    $tr(
+                      String(
+                        descriptorFor(String(configured.rule.kind))?.label ??
+                          configured.rule.kind,
+                      ),
+                    )
+                  }}</strong>
+                  <small>{{
+                    $tr(
+                      String(
+                        descriptorFor(String(configured.rule.kind))
+                          ?.description ?? '',
+                      ),
+                    )
+                  }}</small>
+                </span>
+                <span
+                  v-if="descriptorFor(String(configured.rule.kind))?.required"
+                  class="required-badge"
+                  >{{ $tr('Required') }}</span
+                >
+                <span v-else class="optional-badge">{{ $tr('Optional') }}</span>
+              </summary>
+              <div class="rule-card-body">
+                <p
+                  v-if="helpText[String(configured.rule.kind)]"
+                  class="rule-explanation"
+                >
+                  {{ $tr(helpText[String(configured.rule.kind)] ?? '') }}
+                </p>
+                <RuleSchemaEditor
+                  v-if="
+                    !['categories', 'exchange'].includes(
+                      String(configured.rule.kind),
+                    )
+                  "
+                  :schema="
+                    descriptorFor(String(configured.rule.kind))?.schema ?? {}
+                  "
+                  :root-schema="
+                    descriptorFor(String(configured.rule.kind))?.schema ?? {}
+                  "
+                  :model-value="configured.rule"
+                  :hidden-properties="
+                    configured.rule.kind === 'eligibility'
+                      ? ['allowed_bands', 'allowed_modes']
+                      : []
+                  "
+                  :category-dimensions="categoryDimensions"
+                  :label="`${configured.rule.kind} rule settings`"
+                  :path="`rules-${index}`"
+                  @update:model-value="updateRule(configured, $event)"
+                />
+                <CategoryExchangeEditor
+                  v-if="
+                    configured.rule.kind === 'categories' ||
+                    configured.rule.kind === 'exchange'
+                  "
+                  :kind="configured.rule.kind"
+                  :model-value="configured.rule"
+                  @update:model-value="updateRule(configured, $event)"
+                />
+                <template v-if="configured.rule.kind === 'eligibility'">
+                  <div class="catalog-rule-group">
+                    <label class="catalog-toggle">
+                      <input
+                        type="checkbox"
+                        :checked="Array.isArray(configured.rule.allowed_bands)"
+                        @change="
+                          setSelectedValues(
+                            configured,
+                            'allowed_bands',
+                            ($event.target as HTMLInputElement).checked
+                              ? []
+                              : undefined,
+                          )
+                        "
+                      />
+                      {{ $tr('Configure allowed bands') }}
+                    </label>
+                    <EligibilityCatalogEditor
+                      v-if="Array.isArray(configured.rule.allowed_bands)"
+                      kind="band"
+                      :items="
+                        operatingCatalog.filter((item) => item.kind === 'band')
+                      "
+                      :selected="selectedValues(configured, 'allowed_bands')"
+                      @update:selected="
+                        setSelectedValues(configured, 'allowed_bands', $event)
+                      "
+                    />
+                  </div>
+                  <div class="catalog-rule-group">
+                    <label class="catalog-toggle">
+                      <input
+                        type="checkbox"
+                        :checked="Array.isArray(configured.rule.allowed_modes)"
+                        @change="
+                          setSelectedValues(
+                            configured,
+                            'allowed_modes',
+                            ($event.target as HTMLInputElement).checked
+                              ? []
+                              : undefined,
+                          )
+                        "
+                      />
+                      {{ $tr('Configure allowed modes') }}
+                    </label>
+                    <EligibilityCatalogEditor
+                      v-if="Array.isArray(configured.rule.allowed_modes)"
+                      kind="mode"
+                      :items="
+                        operatingCatalog.filter((item) => item.kind === 'mode')
+                      "
+                      :selected="selectedValues(configured, 'allowed_modes')"
+                      @update:selected="
+                        setSelectedValues(configured, 'allowed_modes', $event)
+                      "
+                    />
+                  </div>
+                </template>
+                <details
+                  v-if="
+                    configured.rule.kind === 'eligibility' ||
+                    supportsConditions(configured)
+                  "
+                  class="advanced-settings"
+                >
+                  <summary>{{ $tr('Advanced conditions') }}</summary>
+                  <div
+                    v-if="configured.rule.kind === 'eligibility'"
+                    class="condition-toggle"
+                  >
+                    <label>
+                      <input
+                        type="checkbox"
+                        :checked="Boolean(configured.rule.eligible_if)"
+                        @change="
+                          setEligibilityCondition(
+                            configured,
+                            ($event.target as HTMLInputElement).checked
+                              ? {
+                                  kind: 'compare',
+                                  fact: 'qso.entity',
+                                  operator: 'eq',
+                                  value: 'K',
+                                }
+                              : undefined,
+                          )
+                        "
+                      />
+                      {{
+                        $tr(
+                          'Require contacts to match an eligibility condition',
+                        )
+                      }}
+                    </label>
+                    <p class="field-help">
+                      {{
+                        $tr(
+                          'This controls whether a contact is eligible at all. Use it only for a contact-level restriction in the sponsor’s rules, such as requiring a particular entity. The API reports unsupported facts when you validate.',
+                        )
+                      }}
+                    </p>
+                    <ConditionEditor
+                      v-if="configured.rule.eligible_if"
+                      :model-value="
+                        configured.rule.eligible_if as Record<string, unknown>
+                      "
+                      @update:model-value="
+                        setEligibilityCondition(configured, $event)
+                      "
+                    />
+                  </div>
+                  <div
+                    v-if="supportsConditions(configured)"
+                    class="condition-toggle"
+                  >
+                    <label>
+                      <input
+                        type="checkbox"
+                        :checked="Boolean(configured.when)"
+                        @change="
+                          setCondition(
+                            configured,
+                            ($event.target as HTMLInputElement).checked
+                              ? {
+                                  kind: 'compare',
+                                  fact: 'qso.band',
+                                  operator: 'eq',
+                                  value: '20m',
+                                }
+                              : undefined,
+                          )
+                        "
+                      />
+                      {{ $tr('Apply this rule only when a condition matches') }}
+                    </label>
+                    <p class="field-help">
+                      {{
+                        $tr(
+                          'This makes the whole rule conditional instead of applying it to every entry or contact. For example, a points or multiplier rule may apply only on a particular band. This is separate from QSO eligibility, which decides whether the contact can count at all.',
+                        )
+                      }}
+                    </p>
+                    <ConditionEditor
+                      v-if="configured.when"
+                      :model-value="configured.when"
+                      @update:model-value="setCondition(configured, $event)"
+                    />
+                  </div>
+                </details>
+                <details class="advanced-settings">
+                  <summary>{{ $tr('Technical details') }}</summary>
+                  <label class="rule-id-control">
+                    {{ $tr('Rule identifier') }}
+                    <input
+                      v-model="configured.id"
+                      maxlength="80"
+                      @input="clearValidation"
+                    />
+                    <span class="field-help">{{
+                      $tr(
+                        'A unique lowercase key for this rule inside the ruleset. It helps identify the rule in validation messages and score explanations.',
+                      )
+                    }}</span>
+                  </label>
+                </details>
+                <button
+                  v-if="!descriptorFor(String(configured.rule.kind))?.required"
+                  type="button"
+                  class="quiet-button remove-rule"
+                  @click="removeRule(index)"
+                >
+                  {{ $tr('Remove rule') }}
+                </button>
+              </div>
+            </details>
+          </section>
+
+          <details v-if="currentStep === 5" class="draft-tools">
+            <summary>{{ $tr('JSON draft tools') }}</summary>
+            <div class="composer-actions">
+              <button
+                type="button"
+                class="secondary-button"
+                @click="exportDraft"
+              >
+                {{ $tr('Download JSON draft') }}
+              </button>
+              <label id="import-ruleset" class="file-button">
+                {{ $tr('Import JSON draft') }}
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept="application/json,.json"
+                  @change="importDraft"
+                />
+              </label>
+            </div>
+          </details>
+
+          <section
+            v-if="currentStep === 5"
+            class="review-validation"
+            aria-labelledby="validation-result-title"
+          >
+            <h2 id="validation-result-title">{{ $tr('Validate and save') }}</h2>
             <p>
               {{
                 $tr(
-                  'Required sections form the built-in baseline and cannot be removed. Configure their values to match the sponsor’s rules; optional sections add other supported behavior.',
+                  'The server checks required rules, supported combinations, log mappings, and integer scoring before a version can be saved.',
                 )
               }}
             </p>
-          </div>
-          <div class="add-rule-control">
-            <label for="add-rule-type"
-              >{{ $tr('Add an optional rule type') }}
-              <select id="add-rule-type" v-model="selectedType">
-                <option value="">{{ $tr('Choose a rule type') }}</option>
-                <option
-                  v-for="type in optionalTypes"
-                  :key="type.key"
-                  :value="type.key"
-                  :disabled="
-                    [
-                      'submission',
-                      'categories',
-                      'format_mapping',
-                      'score_formula',
-                    ].includes(type.key) && usedSingletonKinds.has(type.key)
-                  "
-                >
-                  {{ type.label }}
-                </option>
-              </select>
-            </label>
-            <button
-              type="button"
-              class="secondary-button"
-              :disabled="!selectedType"
-              @click="addSelectedRule"
-            >
-              {{ $tr('Add rule') }}
-            </button>
-            <p class="field-help">
+            <p v-if="issues.length" role="status" class="validation-guidance">
               {{
                 $tr(
-                  'Choose a supported optional rule type, then add it. You can add repeatable types more than once and remove an optional rule that does not apply.',
+                  'Validation found a contradiction, incompatibility, or another ruleset error. Fix the listed fields, then validate again before saving.',
                 )
               }}
             </p>
-          </div>
-        </div>
-
-        <article
-          v-for="(configured, index) in rules"
-          :key="configured.id"
-          class="rule-card"
-        >
-          <div class="rule-card-heading">
-            <div>
-              <h3>
+            <ul
+              v-if="issues.length"
+              class="error-list"
+              :aria-label="$tr('Ruleset validation errors')"
+            >
+              <li
+                v-for="(issue, index) in issues"
+                :key="`${index}-${issue.message}`"
+              >
+                <span>{{ $tr(displayIssue(issue)) }}</span>
+                <button
+                  type="button"
+                  class="text-button"
+                  @click="openValidationIssue(issue)"
+                >
+                  {{ $tr('Open this section') }}
+                </button>
+              </li>
+            </ul>
+            <section
+              v-if="validation"
+              aria-labelledby="validated-title"
+              class="validation-panel"
+              role="status"
+            >
+              <h3 id="validated-title">{{ $tr('Ruleset is valid') }}</h3>
+              <pre class="rules-summary">{{ validation.summary }}</pre>
+              <div
+                v-if="validation.worked_score_example.final_score !== undefined"
+                class="example-card"
+              >
+                <h4>{{ $tr('Worked integer score example') }}</h4>
+                <p>
+                  {{ $tr('Example inputs:') }}
+                  {{
+                    JSON.stringify(validation.worked_score_example.variables)
+                  }}
+                </p>
+                <ol>
+                  <li
+                    v-for="(step, index) in validation.worked_score_example
+                      .steps"
+                    :key="index"
+                  >
+                    {{ step.operation }} → {{ step.result }}
+                  </li>
+                </ol>
+              </div>
+              <p
+                v-else-if="validation.worked_score_example.error"
+                class="notice"
+              >
+                {{ $tr('Formula preview:') }}
+                {{ validation.worked_score_example.error }}
+              </p>
+              <p class="draft-note">
                 {{
                   $tr(
-                    String(
-                      descriptorFor(String(configured.rule.kind))?.label ??
-                        configured.rule.kind,
-                    ),
-                  )
-                }}
-              </h3>
-              <p>
-                {{
-                  $tr(
-                    descriptorFor(String(configured.rule.kind))?.description ??
-                      '',
+                    'Saving creates an immutable version. Existing versions and contest assignments remain unchanged; assign a new version from the contest manager when you are ready.',
                   )
                 }}
               </p>
-            </div>
-            <button
-              v-if="!descriptorFor(String(configured.rule.kind))?.required"
-              type="button"
-              class="quiet-button"
-              @click="removeRule(index)"
-            >
-              {{ $tr('Remove rule') }}
-            </button>
-            <span v-else class="required-badge">{{ $tr('Required') }}</span>
-          </div>
-          <label class="rule-id-control">
-            {{ $tr('Rule identifier') }}
-            <input
-              v-model="configured.id"
-              maxlength="80"
-              @input="clearValidation"
-            />
-            <span class="field-help">
-              {{
-                $tr(
-                  'A unique lowercase key for this rule inside the ruleset. It helps identify the rule in validation messages and score explanations.',
-                )
-              }}
-            </span>
-          </label>
-          <RuleSchemaEditor
-            v-if="
-              !['categories', 'exchange'].includes(String(configured.rule.kind))
-            "
-            :schema="descriptorFor(String(configured.rule.kind))?.schema ?? {}"
-            :root-schema="
-              descriptorFor(String(configured.rule.kind))?.schema ?? {}
-            "
-            :model-value="configured.rule"
-            :hidden-properties="
-              configured.rule.kind === 'eligibility'
-                ? ['allowed_bands', 'allowed_modes']
-                : []
-            "
-            :category-dimensions="categoryDimensions"
-            :label="`${configured.rule.kind} rule settings`"
-            :path="`rules-${index}`"
-            @update:model-value="updateRule(configured, $event)"
-          />
-          <CategoryExchangeEditor
-            v-if="
-              configured.rule.kind === 'categories' ||
-              configured.rule.kind === 'exchange'
-            "
-            :kind="configured.rule.kind"
-            :model-value="configured.rule"
-            @update:model-value="updateRule(configured, $event)"
-          />
-          <p
-            v-if="helpText[String(configured.rule.kind)]"
-            class="rule-explanation"
-          >
-            {{ $tr(helpText[String(configured.rule.kind)] ?? '') }}
-          </p>
-          <template v-if="configured.rule.kind === 'eligibility'">
-            <label
-              ><input
-                type="checkbox"
-                :checked="Array.isArray(configured.rule.allowed_bands)"
-                @change="
-                  setSelectedValues(
-                    configured,
-                    'allowed_bands',
-                    ($event.target as HTMLInputElement).checked
-                      ? []
-                      : undefined,
-                  )
-                "
-              />
-              {{ $tr('Configure allowed bands') }}</label
-            >
-            <EligibilityCatalogEditor
-              v-if="Array.isArray(configured.rule.allowed_bands)"
-              kind="band"
-              :items="operatingCatalog.filter((item) => item.kind === 'band')"
-              :selected="selectedValues(configured, 'allowed_bands')"
-              @update:selected="
-                setSelectedValues(configured, 'allowed_bands', $event)
-              "
-            />
-            <label
-              ><input
-                type="checkbox"
-                :checked="Array.isArray(configured.rule.allowed_modes)"
-                @change="
-                  setSelectedValues(
-                    configured,
-                    'allowed_modes',
-                    ($event.target as HTMLInputElement).checked
-                      ? []
-                      : undefined,
-                  )
-                "
-              />
-              {{ $tr('Configure allowed modes') }}</label
-            >
-            <EligibilityCatalogEditor
-              v-if="Array.isArray(configured.rule.allowed_modes)"
-              kind="mode"
-              :items="operatingCatalog.filter((item) => item.kind === 'mode')"
-              :selected="selectedValues(configured, 'allowed_modes')"
-              @update:selected="
-                setSelectedValues(configured, 'allowed_modes', $event)
-              "
-            />
-          </template>
-          <div
-            v-if="configured.rule.kind === 'eligibility'"
-            class="condition-toggle"
-          >
-            <label>
-              <input
-                type="checkbox"
-                :checked="Boolean(configured.rule.eligible_if)"
-                @change="
-                  setEligibilityCondition(
-                    configured,
-                    ($event.target as HTMLInputElement).checked
-                      ? {
-                          kind: 'compare',
-                          fact: 'qso.entity',
-                          operator: 'eq',
-                          value: 'K',
-                        }
-                      : undefined,
-                  )
-                "
-              />
-              {{ $tr('Require contacts to match an eligibility condition') }}
-            </label>
-            <p class="field-help">
-              {{
-                $tr(
-                  'This controls whether a contact is eligible at all. Use it only for a contact-level restriction in the sponsor’s rules, such as requiring a particular entity. The API reports unsupported facts when you validate.',
-                )
-              }}
-            </p>
-            <ConditionEditor
-              v-if="configured.rule.eligible_if"
-              :model-value="
-                configured.rule.eligible_if as Record<string, unknown>
-              "
-              @update:model-value="setEligibilityCondition(configured, $event)"
-            />
-          </div>
-          <div v-if="supportsConditions(configured)" class="condition-toggle">
-            <label>
-              <input
-                type="checkbox"
-                :checked="Boolean(configured.when)"
-                @change="
-                  setCondition(
-                    configured,
-                    ($event.target as HTMLInputElement).checked
-                      ? {
-                          kind: 'compare',
-                          fact: 'qso.band',
-                          operator: 'eq',
-                          value: '20m',
-                        }
-                      : undefined,
-                  )
-                "
-              />
-              {{ $tr('Apply this rule only when a condition matches') }}
-            </label>
-            <p class="field-help">
-              {{
-                $tr(
-                  'This makes the whole rule conditional instead of applying it to every entry or contact. For example, a points or multiplier rule may apply only on a particular band. This is separate from QSO eligibility, which decides whether the contact can count at all.',
-                )
-              }}
-            </p>
-            <ConditionEditor
-              v-if="configured.when"
-              :model-value="configured.when"
-              @update:model-value="setCondition(configured, $event)"
-            />
-          </div>
-        </article>
-      </section>
+              <button
+                type="button"
+                class="primary-button"
+                :disabled="savingVersion"
+                @click="persistDraft"
+              >
+                {{
+                  savingVersion
+                    ? $tr('Saving…')
+                    : $tr('Save validated ruleset version')
+                }}
+              </button>
+            </section>
+          </section>
+        </div>
 
-      <div class="composer-actions">
+        <aside
+          class="draft-overview"
+          :aria-label="$tr('Ruleset progress summary')"
+        >
+          <h2>{{ $tr('Your ruleset so far') }}</h2>
+          <p class="draft-overview-note">
+            {{
+              $tr(
+                'Defaults are not sponsor confirmation. Review each section before validation.',
+              )
+            }}
+          </p>
+          <ol>
+            <li
+              v-for="step in STEPS"
+              :key="step.number"
+              :class="{ 'is-current': currentStep === step.number }"
+            >
+              <button type="button" @click="goToStep(step.number)">
+                <span>{{ $tr(step.title) }}</span>
+                <small>{{ stepSummary(step.number) }}</small>
+              </button>
+            </li>
+          </ol>
+          <p class="required-rules-note">
+            {{
+              $tr(
+                'Eight required rule types are included. Add optional rules only when the official rules call for them.',
+              )
+            }}
+          </p>
+        </aside>
+      </div>
+
+      <nav class="step-controls" :aria-label="$tr('Ruleset step navigation')">
         <button
+          v-if="currentStep > 1"
+          type="button"
+          class="secondary-button"
+          @click="goToStep(currentStep - 1)"
+        >
+          {{ $tr('Back') }}
+        </button>
+        <span>{{ $tr('Step {step} of 5', { step: currentStep }) }}</span>
+        <button
+          v-if="currentStep < 5"
+          type="button"
+          class="primary-button"
+          @click="goToStep(currentStep + 1)"
+        >
+          {{ $tr('Continue') }}
+        </button>
+        <button
+          v-else
           type="button"
           class="primary-button"
           :disabled="validating"
           @click="validateDraft"
         >
-          {{ validating ? 'Validating…' : 'Validate ruleset' }}
+          {{ validating ? $tr('Validating…') : $tr('Validate ruleset') }}
         </button>
-        <button type="button" class="secondary-button" @click="exportDraft">
-          {{ $tr('Download JSON draft') }}
-        </button>
-        <label id="import-ruleset" class="file-button">
-          {{ $tr('Import JSON draft') }}
-          <input
-            ref="fileInput"
-            type="file"
-            accept="application/json,.json"
-            @change="importDraft"
-          />
-        </label>
-      </div>
-
-      <p v-if="issues.length" role="status" class="validation-guidance">
-        {{
-          $tr(
-            'Validation found a contradiction, incompatibility, or another ruleset error. Fix the listed fields, then validate again before saving.',
-          )
-        }}
-      </p>
-      <ul
-        v-if="issues.length"
-        class="error-list"
-        :aria-label="$tr('Ruleset validation errors')"
-      >
-        <li v-for="(issue, index) in issues" :key="`${index}-${issue.message}`">
-          {{ $tr(displayIssue(issue)) }}
-        </li>
-      </ul>
-      <section
-        v-if="validation"
-        aria-labelledby="validation-result-title"
-        class="validation-panel"
-        role="status"
-      >
-        <h2 id="validation-result-title">{{ $tr('Ruleset is valid') }}</h2>
-        <pre class="rules-summary">{{ validation.summary }}</pre>
-        <div
-          v-if="validation.worked_score_example.final_score !== undefined"
-          class="example-card"
-        >
-          <h3>{{ $tr('Worked integer score example') }}</h3>
-          <p>
-            {{ $tr('Example inputs:') }}
-            {{ JSON.stringify(validation.worked_score_example.variables) }}
-          </p>
-          <ol>
-            <li
-              v-for="(step, index) in validation.worked_score_example.steps"
-              :key="index"
-            >
-              {{ step.operation }} → {{ step.result }}
-            </li>
-          </ol>
-        </div>
-        <p v-else-if="validation.worked_score_example.error" class="notice">
-          {{ $tr('Formula preview:') }}
-          {{ validation.worked_score_example.error }}
-        </p>
-        <p class="draft-note">
-          {{
-            $tr(
-              'Saving creates an immutable version. Existing versions and contest assignments remain unchanged; assign a new version from the contest manager when you are ready.',
-            )
-          }}
-        </p>
-        <button
-          type="button"
-          class="primary-button"
-          :disabled="savingVersion"
-          @click="persistDraft"
-        >
-          {{ savingVersion ? 'Saving…' : 'Save validated ruleset version' }}
-        </button>
-      </section>
+      </nav>
     </template>
     <ResourceAdministrators
       resource-kind="ruleset"
@@ -1198,34 +1544,181 @@ function catalogErrorMessage(reason: unknown) {
   max-width: 75ch;
   line-height: 1.55;
 }
-.workflow-guide {
-  padding: 1rem 1.25rem;
-  border-left: 0.35rem solid var(--color-brand-600);
-  border-radius: 0.65rem;
-  background: var(--color-surface-muted);
+.back-link {
+  justify-self: start;
 }
-.workflow-guide h2 {
-  margin: 0 0 0.6rem;
+.step-navigation {
+  overflow-x: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-surface);
 }
-.workflow-guide ol {
-  display: grid;
-  gap: 0.55rem;
+.step-navigation ol {
+  display: flex;
+  min-width: max-content;
+  align-items: stretch;
+  gap: 0.4rem;
   margin: 0;
-  padding-left: 1.4rem;
+  padding: 0;
+  list-style: none;
 }
-.workflow-guide li {
-  padding-left: 0.2rem;
-  line-height: 1.5;
+.step-navigation button {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
-.workflow-guide p {
-  max-width: 78ch;
-  margin: 0.9rem 0 0;
+.step-navigation button.is-current {
+  border-color: var(--color-brand-line);
+  color: var(--color-brand-900);
+  background: var(--color-brand-wash);
+}
+.step-number {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 1.8rem;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-brand-900);
+  background: var(--color-surface-muted);
+  font-size: 0.9rem;
+}
+.is-current .step-number {
+  color: var(--color-surface);
+  background: var(--color-brand-700);
+}
+.step-status {
+  margin: -0.65rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+.builder-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  align-items: start;
+  gap: 1rem;
+}
+.builder-main {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+.step-content h2,
+.review-groups h2,
+.review-validation h2 {
+  margin: 0;
+}
+.step-description {
+  margin: 0.35rem 0 0;
   color: var(--color-muted);
   line-height: 1.5;
 }
+.review-reminder,
+.step-hint {
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid var(--color-brand-600);
+  border-radius: 0.35rem;
+  color: var(--color-muted);
+  background: var(--color-brand-wash);
+  line-height: 1.45;
+}
+.review-reminder {
+  margin: 0.8rem 0 0;
+}
+.step-hint {
+  margin: 0;
+}
+.draft-overview {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-surface);
+  box-shadow: 0 10px 28px var(--color-card-shadow);
+}
+.draft-overview h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.draft-overview-note,
+.required-rules-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.draft-overview ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.draft-overview li {
+  border-left: 3px solid transparent;
+  border-radius: 0.35rem;
+}
+.draft-overview li.is-current {
+  border-left-color: var(--color-brand-600);
+  background: var(--color-brand-wash);
+}
+.draft-overview li button {
+  display: grid;
+  width: 100%;
+  gap: 0.2rem;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  color: var(--color-ink);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.draft-overview li small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.review-groups {
+  display: grid;
+  gap: 0.7rem;
+}
+.review-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+}
+.review-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.review-group p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
 .panel,
 .rule-card,
-.validation-panel {
+.validation-panel,
+.review-validation,
+.draft-tools {
   padding: clamp(1rem, 3vw, 1.5rem);
   border: 1px solid var(--color-border);
   border-radius: 0.8rem;
@@ -1336,14 +1829,92 @@ function catalogErrorMessage(reason: unknown) {
   grid-column: 1 / -1;
 }
 .rule-card {
+  padding: 0;
+  overflow: clip;
+}
+.rule-card[open] {
   display: grid;
-  gap: 1rem;
+  gap: 0;
 }
 .rule-card-heading {
+  display: flex;
+  min-height: 4rem;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  color: var(--color-ink);
+  cursor: pointer;
+  list-style-position: inside;
+}
+.rule-card-heading::marker {
+  color: var(--color-brand-700);
+}
+.rule-card-title {
+  display: grid;
+  flex: 1;
+  gap: 0.25rem;
+}
+.rule-card-title small {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.rule-card-body {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
 }
 .rule-id-control {
   width: min(100%, 36rem);
+}
+.advanced-settings,
+.draft-tools {
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+}
+.advanced-settings {
+  padding: 0.75rem 0.9rem;
+}
+.advanced-settings > summary,
+.draft-tools > summary {
+  color: var(--color-brand-900);
+  font-weight: 650;
+  cursor: pointer;
+}
+.advanced-settings[open] > summary {
+  margin-bottom: 0.8rem;
+}
+.draft-tools {
+  padding: 0.9rem 1rem;
+}
+.draft-tools[open] > summary {
+  margin-bottom: 0.8rem;
+}
+.catalog-rule-group {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  background: var(--color-surface-muted);
+}
+.catalog-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--color-brand-900);
+  font-weight: 650;
+}
+.catalog-toggle input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-brand-700);
+}
+.remove-rule {
+  justify-self: start;
 }
 .rule-explanation {
   max-width: 80ch;
@@ -1375,6 +1946,53 @@ function catalogErrorMessage(reason: unknown) {
   width: 1.1rem;
   height: 1.1rem;
   accent-color: var(--color-brand-700);
+}
+.review-validation {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.8rem;
+  background: var(--color-surface);
+}
+.review-validation > p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+.error-list li {
+  display: grid;
+  gap: 0.5rem;
+}
+.text-button {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  color: var(--color-brand-700);
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.step-controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  box-shadow: 0 -6px 20px var(--color-card-shadow);
+}
+.step-controls > span {
+  margin-inline: auto;
+  color: var(--color-muted);
+  font-size: 0.9rem;
 }
 .composer-actions {
   display: flex;
@@ -1416,7 +2034,7 @@ function catalogErrorMessage(reason: unknown) {
   white-space: nowrap;
   clip-path: inset(50%);
 }
-.validation-panel h2 {
+.validation-panel h3 {
   margin-top: 0;
   color: var(--color-success-ink);
 }
@@ -1435,7 +2053,7 @@ function catalogErrorMessage(reason: unknown) {
   border-left: 4px solid var(--color-brand-600);
   background: var(--color-surface-muted);
 }
-.example-card h3 {
+.example-card h4 {
   margin-top: 0;
 }
 .example-card li {
@@ -1462,10 +2080,28 @@ function catalogErrorMessage(reason: unknown) {
   margin-top: 0.35rem;
 }
 @media (max-width: 760px) {
+  .builder-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .draft-overview {
+    position: static;
+    grid-row: 1;
+  }
+  .draft-overview ol {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+  .review-group {
+    align-items: flex-start;
+    flex-direction: column;
+  }
   .section-heading,
   .rule-card-heading {
     flex-direction: column;
     align-items: stretch;
+  }
+  .rule-card-heading {
+    flex-direction: row;
+    align-items: center;
   }
   .add-rule-control {
     grid-template-columns: minmax(0, 1fr);
@@ -1473,6 +2109,9 @@ function catalogErrorMessage(reason: unknown) {
   }
   .add-rule-control .field-help {
     grid-column: auto;
+  }
+  .step-controls {
+    margin-inline: -0.25rem;
   }
 }
 </style>

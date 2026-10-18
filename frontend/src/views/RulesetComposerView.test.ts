@@ -69,6 +69,17 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+async function navigateToStep(wrapper: ReturnType<typeof mount>, step: number) {
+  await wrapper.findAll('.step-navigation button')[step - 1]?.trigger('click')
+  await flushPromises()
+}
+
+async function validateOnReview(wrapper: ReturnType<typeof mount>) {
+  await navigateToStep(wrapper, 5)
+  await wrapper.get('.step-controls .primary-button').trigger('click')
+  await flushPromises()
+}
+
 describe('RulesetComposerView', () => {
   it('seeds a new Cabrillo mapping with the complete WWROF QSO default order', async () => {
     vi.stubGlobal(
@@ -260,6 +271,7 @@ describe('RulesetComposerView', () => {
 
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
+    await navigateToStep(wrapper, 5)
     const legacyDraft = {
       schema_version: 1,
       ruleset_key: 'legacy-bonus',
@@ -361,10 +373,10 @@ describe('RulesetComposerView', () => {
     await flushPromises()
     await expectAccessible(wrapper.element)
     const text = wrapper.text()
-    expect(text).toContain('How to create a ruleset')
-    expect(wrapper.findAll('.workflow-guide li')).toHaveLength(4)
-    expect(text).toContain('save a new immutable')
-    expect(text).toContain('Assign that version to a contest')
+    expect(wrapper.findAll('.step-navigation button')).toHaveLength(5)
+    expect(text).toContain('Your ruleset so far')
+    expect(text).toContain('Defaults are not sponsor confirmation')
+    expect(wrapper.find('.workflow-guide').exists()).toBe(false)
     expect(text).toContain('Stable, lowercase identifier')
     expect(text).toContain('new version identifier')
     expect(text).not.toContain('All contest times use UTC')
@@ -379,6 +391,54 @@ describe('RulesetComposerView', () => {
     expect(text).toContain(
       'after contacts, multipliers, bonuses, and penalties',
     )
+    expect(text).toContain('Advanced conditions')
+    expect(text).toContain('Technical details')
+  })
+
+  it('groups required rules into task steps without losing them when navigating', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+
+    const visibleKinds = () =>
+      wrapper
+        .findAll('.rule-card')
+        .filter((card) => !card.attributes('style')?.includes('display: none'))
+        .map((card) => card.get('.rule-card-title strong').text())
+
+    expect(visibleKinds()).toEqual([])
+    await navigateToStep(wrapper, 2)
+    expect(visibleKinds()).toEqual(['categories', 'exchange'])
+    await navigateToStep(wrapper, 3)
+    expect(visibleKinds()).toEqual([
+      'submission',
+      'eligibility',
+      'duplicates',
+      'format_mapping',
+    ])
+    await navigateToStep(wrapper, 4)
+    expect(visibleKinds()).toEqual(['points', 'score_formula'])
+    await navigateToStep(wrapper, 5)
+    expect(visibleKinds()).toEqual([])
+    expect(wrapper.findAll('.review-group')).toHaveLength(4)
+    expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
   })
 
   it('shows useful help for optional multiplier rules when they are added', async () => {
@@ -413,12 +473,15 @@ describe('RulesetComposerView', () => {
     )
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
+    await navigateToStep(wrapper, 4)
     await wrapper.get('#add-rule-type').setValue('multiplier')
     await wrapper.get('.add-rule-control button').trigger('click')
 
     const multiplierCard = wrapper
       .findAll('.rule-card')
-      .find((card) => card.get('h3').text() === 'Multiplier')
+      .find(
+        (card) => card.get('.rule-card-title strong').text() === 'Multiplier',
+      )
     expect(multiplierCard).toBeDefined()
     expect(multiplierCard!.get('.rule-explanation').text()).toContain(
       'where uniqueness resets',
@@ -490,14 +553,17 @@ describe('RulesetComposerView', () => {
     expect(wrapper.findAll('.rule-card')).toHaveLength(requiredRules.length)
     const eligibilityRule = wrapper
       .findAll('.rule-card')
-      .find((card) => card.get('h3').text() === 'eligibility')
+      .find(
+        (card) => card.get('.rule-card-title strong').text() === 'eligibility',
+      )
     await eligibilityRule!.get('.condition-toggle input').setValue(true)
 
-    await wrapper.get('button.primary-button').trigger('click')
-    await flushPromises()
+    await validateOnReview(wrapper)
 
     expect(fetchMock).toHaveBeenCalledTimes(4)
-    expect(wrapper.get('[role="status"]').text()).toContain('Ruleset is valid')
+    expect(wrapper.get('.validation-panel').text()).toContain(
+      'Ruleset is valid',
+    )
     expect(wrapper.text()).toContain('Worked integer score example')
   })
 
@@ -533,10 +599,9 @@ describe('RulesetComposerView', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const wrapper = mount(RulesetComposerView)
+    const wrapper = mount(RulesetComposerView, { attachTo: document.body })
     await flushPromises()
-    await wrapper.get('button.primary-button').trigger('click')
-    await flushPromises()
+    await validateOnReview(wrapper)
 
     expect(wrapper.get('[role="alert"]').text()).toContain(
       'configuration is invalid',
@@ -549,6 +614,11 @@ describe('RulesetComposerView', () => {
     expect(wrapper.get('.error-list').text()).toContain('rules[7]')
     expect(wrapper.find('.validation-panel').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Save validated ruleset version')
+    await wrapper.get('.error-list .text-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.step-status').text()).toContain('Step 3 of 5')
+    expect(wrapper.get('#rule-card-7').attributes()).toHaveProperty('open')
+    wrapper.unmount()
   })
 
   it('persists a validated immutable ruleset version', async () => {
@@ -601,9 +671,10 @@ describe('RulesetComposerView', () => {
 
     const wrapper = mount(RulesetComposerView)
     await flushPromises()
-    await wrapper.get('button.primary-button').trigger('click')
-    await flushPromises()
-    await wrapper.findAll('button.primary-button')[1]?.trigger('click')
+    await validateOnReview(wrapper)
+    await wrapper
+      .get('.validation-panel button.primary-button')
+      .trigger('click')
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledTimes(5)
@@ -706,9 +777,10 @@ describe('RulesetComposerView', () => {
       'Enter a new version identifier; saved versions cannot be changed',
     )
     await wrapper.findAll('.metadata-panel input')[1]?.setValue('2026-revised')
-    await wrapper.findAll('button.primary-button')[0]?.trigger('click')
-    await flushPromises()
-    await wrapper.findAll('button.primary-button')[1]?.trigger('click')
+    await validateOnReview(wrapper)
+    await wrapper
+      .get('.validation-panel button.primary-button')
+      .trigger('click')
     await flushPromises()
 
     expect(savedDrafts).toHaveLength(1)

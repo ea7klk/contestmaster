@@ -31,6 +31,11 @@ const requiredKinds = [
 
 afterEach(() => vi.unstubAllGlobals())
 
+async function navigateToReview(wrapper: ReturnType<typeof mount>) {
+  await wrapper.findAll('.step-navigation button')[4]?.trigger('click')
+  await flushPromises()
+}
+
 function catalogResponse() {
   return {
     rule_types: requiredKinds.map((key) => ({
@@ -86,6 +91,7 @@ describe('documented contest starter drafts', () => {
 
       const wrapper = mount(RulesetComposerView)
       await flushPromises()
+      await navigateToReview(wrapper)
       const input = wrapper.get('input[type="file"]')
       const file = new File([JSON.stringify(draft)], 'starter.json', {
         type: 'application/json',
@@ -104,7 +110,7 @@ describe('documented contest starter drafts', () => {
           .value,
       ).toBe(draft.ruleset_key)
 
-      await wrapper.get('button.primary-button').trigger('click')
+      await wrapper.get('.step-controls .primary-button').trigger('click')
       await flushPromises()
 
       expect(sentDrafts).toHaveLength(1)
