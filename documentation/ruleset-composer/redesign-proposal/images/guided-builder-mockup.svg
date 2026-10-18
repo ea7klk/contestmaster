@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title desc">
+  <title id="title">Proposed guided ruleset builder</title>
+  <desc id="desc">A red-brown Contestmaster page showing a five-step builder, one focused log and contact task, a concise help panel, and a persistent progress summary.</desc>
+  <defs>
+    <style>
+      .ink{fill:#282421;font-family:Inter,Arial,sans-serif}.muted{fill:#655b55;font-family:Inter,Arial,sans-serif}.tiny{font-size:14px}.small{font-size:16px}.body{font-size:18px}.h2{font-size:24px;font-weight:700}.h1{font-size:34px;font-weight:750}.bold{font-weight:700}.white{fill:#fffdfa;font-family:Inter,Arial,sans-serif}.brand{fill:#511e20}.brand2{fill:#7d292b}.card{fill:#fffdfa;stroke:#ded2c9;stroke-width:2}.soft{fill:#f0e6df}.selected{fill:#f8ece7;stroke:#a33c3d;stroke-width:2}.line{stroke:#ded2c9;stroke-width:2}.green{fill:#e8f5ed}.greenInk{fill:#23573d;font-family:Inter,Arial,sans-serif}
+    </style>
+  </defs>
+  <rect width="1440" height="960" fill="#f7f0ec"/>
+  <rect width="1440" height="78" class="brand"/>
+  <text x="38" y="49" class="white" font-size="24" font-weight="750">☰　CONTESTMASTER</text>
+  <text x="1120" y="48" class="white small">Contest manager　⌄</text>
+  <text x="42" y="126" class="brand2 tiny bold" letter-spacing="2">RULESET BUILDER</text>
+  <text x="42" y="172" class="ink h1">Create a ruleset</text>
+  <text x="42" y="205" class="muted body">Set the contest requirements in plain language. We’ll organize them into a versioned ruleset.</text>
+
+  <rect x="42" y="234" width="1356" height="82" rx="14" class="card"/>
+  <g class="small">
+    <circle cx="88" cy="275" r="20" class="green"/><text x="82" y="281" class="greenInk bold">✓</text><text x="120" y="281" class="greenInk bold">1. Identify</text>
+    <path d="M245 275h58" class="line"/><circle cx="335" cy="275" r="20" class="green"/><text x="329" y="281" class="greenInk bold">✓</text><text x="367" y="281" class="greenInk bold">2. Entries</text>
+    <path d="M490 275h58" class="line"/><circle cx="580" cy="275" r="20" class="brand2"/><text x="575" y="281" class="white bold">3</text><text x="612" y="281" class="brand2 bold">3. Logs &amp; contacts</text>
+    <path d="M810 275h58" class="line"/><circle cx="900" cy="275" r="20" fill="#f0e6df"/><text x="895" y="281" class="muted bold">4</text><text x="932" y="281" class="muted">4. Scoring</text>
+    <path d="M1080 275h58" class="line"/><circle cx="1170" cy="275" r="20" fill="#f0e6df"/><text x="1165" y="281" class="muted bold">5</text><text x="1202" y="281" class="muted">5. Review</text>
+  </g>
+
+  <rect x="42" y="340" width="920" height="510" rx="16" class="card"/>
+  <text x="76" y="388" class="ink h2">Logs and contacts</text>
+  <text x="76" y="420" class="muted small">Tell us which log files are accepted and which contacts count.</text>
+  <text x="76" y="471" class="ink body bold">Which log formats may entrants upload?</text>
+  <rect x="76" y="492" width="394" height="88" rx="12" class="selected"/>
+  <rect x="98" y="520" width="24" height="24" rx="4" fill="#7d292b"/><text x="102" y="538" class="white small bold">✓</text>
+  <text x="138" y="527" class="ink body bold">Cabrillo</text><text x="138" y="552" class="muted tiny">Common contest log format</text>
+  <rect x="490" y="492" width="394" height="88" rx="12" class="card"/>
+  <rect x="512" y="520" width="24" height="24" rx="4" fill="#fffdfa" stroke="#8d7770" stroke-width="2"/>
+  <text x="552" y="527" class="ink body bold">ADIF</text><text x="552" y="552" class="muted tiny">Common amateur-radio log format</text>
+  <text x="76" y="628" class="ink body bold">When should late logs be handled?</text>
+  <text x="76" y="655" class="muted tiny">The contest page sets the submission deadline. Choose what happens after it.</text>
+  <rect x="76" y="672" width="808" height="54" rx="9" class="soft"/>
+  <text x="96" y="706" class="ink small">Reject late logs　⌄</text>
+  <rect x="76" y="749" width="20" height="20" rx="4" fill="#fffdfa" stroke="#8d7770" stroke-width="2"/>
+  <text x="110" y="765" class="ink small">Allow a manager-approved extension</text>
+  <text x="76" y="813" class="muted tiny">Advanced format mapping and field-level options are available after selecting a format.</text>
+
+  <rect x="988" y="340" width="410" height="350" rx="16" class="card"/>
+  <text x="1020" y="383" class="ink" font-size="21" font-weight="700">Your ruleset so far</text>
+  <text x="1020" y="418" class="muted tiny">Spring Sprint · version 2026</text>
+  <path d="M1020 438h346" class="line"/>
+  <text x="1020" y="474" class="greenInk small">✓　Source and version</text>
+  <text x="1020" y="511" class="greenInk small">✓　Entrant categories and exchange</text>
+  <text x="1020" y="548" class="brand2 small bold">●　Log formats and contact rules</text>
+  <text x="1020" y="585" class="muted small">○　Scoring and multipliers</text>
+  <text x="1020" y="622" class="muted small">○　Limits and review workflows</text>
+  <text x="1020" y="660" class="muted tiny">Nothing is removed from the supported rule catalog.</text>
+
+  <rect x="988" y="708" width="410" height="142" rx="16" fill="#f8ece7" stroke="#c69d91" stroke-width="2"/>
+  <text x="1020" y="749" class="ink small bold">We’ll check for conflicts</text>
+  <text x="1020" y="779" class="muted tiny">Required fields, scoring rules, formats, and</text>
+  <text x="1020" y="801" class="muted tiny">conditions remain validated by the API.</text>
+  <text x="1020" y="829" class="brand2 tiny bold">You can review every setting before saving.</text>
+
+  <rect x="42" y="878" width="1356" height="58" rx="12" class="card"/>
+  <text x="76" y="914" class="muted small">Step 3 of 5</text>
+  <rect x="1000" y="890" width="130" height="36" rx="8" class="soft"/><text x="1032" y="914" class="ink small bold">Back</text>
+  <rect x="1146" y="890" width="218" height="36" rx="8" class="brand2"/><text x="1182" y="914" class="white small bold">Continue to scoring　→</text>
+</svg>
