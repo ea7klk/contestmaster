@@ -1044,5 +1044,7 @@
   "s_4827c60c": "L’intera serie e tutte le sue edizioni verranno eliminate definitivamente. Questa azione non può essere annullata.",
   "s_788aecc7": "Elimina serie",
   "s_e6379e41": "Sposta su",
-  "s_2b87faa8": "Sposta giù"
+  "s_2b87faa8": "Sposta giù",
+  "s_5ff9d6fe": "Attivare {name}?",
+  "s_ddce129a": "Attivando questa versione, diventerà valida per le date di inizio dei concorsi futuri. I concorsi che hanno già una versione fissata manterranno i dati master attuali."
 }

@@ -1044,5 +1044,7 @@
   "s_4827c60c": "Toute la série de concours et toutes ses éditions seront définitivement supprimées. Cette action est irréversible.",
   "s_788aecc7": "Supprimer la série",
   "s_e6379e41": "Déplacer vers le haut",
-  "s_2b87faa8": "Déplacer vers le bas"
+  "s_2b87faa8": "Déplacer vers le bas",
+  "s_5ff9d6fe": "Activer {name} ?",
+  "s_ddce129a": "L’activation rend cette version applicable aux dates de début des prochains concours. Les concours qui ont déjà une version épinglée conservent leurs données actuelles."
 }

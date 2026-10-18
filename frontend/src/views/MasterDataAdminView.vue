@@ -23,6 +23,7 @@ const error = ref('')
 const statusMessage = ref('')
 const denied = ref(false)
 const pendingDelete = ref<MasterDataVersion | null>(null)
+const pendingActivation = ref<MasterDataVersion | null>(null)
 
 function displayDate(value: string | null): string {
   return value ? formatUtcDateTime(value) : '—'
@@ -59,20 +60,18 @@ async function refresh() {
   }
 }
 
-async function activate(version: MasterDataVersion) {
-  if (
-    !globalThis.confirm(
-      `Activate ${version.dataset_key} version ${version.id}?`,
-    )
-  )
-    return
-  const reason = globalThis.prompt('Optional audit reason for this activation:')
-  if (reason === null) return
+function activate(version: MasterDataVersion) {
+  pendingActivation.value = version
+}
+
+async function confirmActivation(value: { auditReason: string }) {
+  const version = pendingActivation.value
+  if (!version) return
   busyVersionId.value = version.id
   error.value = ''
   statusMessage.value = ''
   try {
-    await activateMasterDataVersion(version.id, reason.trim() || undefined)
+    await activateMasterDataVersion(version.id, value.auditReason || undefined)
     await refresh()
     statusMessage.value = `Activated ${version.dataset_key} version ${version.id}.`
   } catch (cause) {
@@ -82,6 +81,7 @@ async function activate(version: MasterDataVersion) {
         : 'The version could not be activated.'
   } finally {
     busyVersionId.value = null
+    pendingActivation.value = null
   }
 }
 
@@ -281,6 +281,27 @@ onMounted(refresh)
         </table>
       </KeyboardScrollRegion>
     </template>
+    <ConfirmationModal
+      :open="pendingActivation !== null"
+      :title="
+        $tr('Activate {name}?', {
+          name: pendingActivation
+            ? `${pendingActivation.dataset_key} version ${pendingActivation.id}`
+            : '',
+        })
+      "
+      :description="
+        $tr(
+          'Activating this version makes it current for contest start dates going forward. Contests that already have a pinned version keep their existing master data.',
+        )
+      "
+      :confirm-label="$tr('Activate')"
+      :audit-reason-label="$tr('Audit reason (optional)')"
+      confirm-variant="primary"
+      :busy="busyVersionId !== null"
+      @confirm="confirmActivation"
+      @cancel="pendingActivation = null"
+    />
     <ConfirmationModal
       :open="pendingDelete !== null"
       :title="

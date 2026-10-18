@@ -102,11 +102,7 @@ describe('MasterDataAdminView', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('requires confirmation and sends activation through the shared API client', async () => {
-    const confirm = vi.fn(() => true)
-    const prompt = vi.fn(() => 'validated feed')
-    vi.stubGlobal('confirm', confirm)
-    vi.stubGlobal('prompt', prompt)
+  it('uses an activation modal and sends the optional audit reason', async () => {
     const { wrapper, fetchMock } = await mountView('global_administrator')
 
     const activateButton = wrapper
@@ -114,17 +110,46 @@ describe('MasterDataAdminView', () => {
       .find((button) => button.text() === 'Activate')
     expect(activateButton).toBeDefined()
     await activateButton!.trigger('click')
+    expect(
+      document.body.querySelector('[role="alertdialog"]')?.textContent,
+    ).toContain(
+      'Activating this version makes it current for contest start dates going forward',
+    )
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          String(url).includes('/activate') && init?.method === 'POST',
+      ),
+    ).toBe(false)
+    await document.body
+      .querySelector<HTMLButtonElement>('[data-cancel-button]')!
+      .click()
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          String(url).includes('/activate') && init?.method === 'POST',
+      ),
+    ).toBe(false)
+
+    await activateButton!.trigger('click')
+    const reason = document.body.querySelector('textarea')!
+    reason.value = 'validated feed'
+    reason.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    await document.body
+      .querySelector<HTMLButtonElement>('button[type="submit"]')!
+      .click()
     await flushPromises()
 
-    expect(confirm).toHaveBeenCalledOnce()
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) =>
           String(url).includes(
-            '/admin/master-data/versions/12/activate?audit_reason=',
+            '/admin/master-data/versions/12/activate?audit_reason=validated%20feed',
           ) && init?.method === 'POST',
       ),
     ).toBe(true)
+    expect(document.body.querySelector('[role="alertdialog"]')).toBeNull()
   })
 
   it('uses the deletion modal and passes its optional audit reason', async () => {

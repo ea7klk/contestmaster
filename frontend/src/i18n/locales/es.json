@@ -1044,5 +1044,7 @@
   "s_4827c60c": "La serie completa y todas sus ediciones se eliminarán de forma permanente. Esta acción no se puede deshacer.",
   "s_788aecc7": "Eliminar serie",
   "s_e6379e41": "Mover arriba",
-  "s_2b87faa8": "Mover abajo"
+  "s_2b87faa8": "Mover abajo",
+  "s_5ff9d6fe": "¿Activar {name}?",
+  "s_ddce129a": "Al activar esta versión, se aplicará a las fechas de inicio de futuros concursos. Los concursos que ya tengan una versión fijada conservarán sus datos maestros actuales."
 }

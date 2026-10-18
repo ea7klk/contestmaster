@@ -12,12 +12,14 @@ const props = withDefaults(
     requiredTextLabel?: string
     auditReasonLabel?: string
     busy?: boolean
+    confirmVariant?: 'danger' | 'primary'
   }>(),
   {
     requiredText: '',
     requiredTextLabel: '',
     auditReasonLabel: '',
     busy: false,
+    confirmVariant: 'danger',
   },
 )
 
@@ -148,7 +150,15 @@ function confirm() {
             >
               {{ $tr('Cancel') }}
             </button>
-            <button type="submit" class="danger-button" :disabled="!canConfirm">
+            <button
+              type="submit"
+              :class="
+                confirmVariant === 'primary'
+                  ? 'primary-button'
+                  : 'danger-button'
+              "
+              :disabled="!canConfirm"
+            >
               {{ confirmLabel }}
             </button>
           </div>

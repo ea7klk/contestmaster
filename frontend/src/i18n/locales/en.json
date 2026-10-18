@@ -1044,5 +1044,7 @@
   "s_4827c60c": "This permanently deletes the entire contest series and all of its editions. This action cannot be undone.",
   "s_788aecc7": "Delete series",
   "s_e6379e41": "Move up",
-  "s_2b87faa8": "Move down"
+  "s_2b87faa8": "Move down",
+  "s_5ff9d6fe": "Activate {name}?",
+  "s_ddce129a": "Activating this version makes it current for contest start dates going forward. Contests that already have a pinned version keep their existing master data."
 }

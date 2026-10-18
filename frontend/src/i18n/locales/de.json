@@ -1044,5 +1044,7 @@
   "s_4827c60c": "Dadurch werden die gesamte Wettbewerbsserie und alle Ausgaben dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
   "s_788aecc7": "Serie löschen",
   "s_e6379e41": "Nach oben verschieben",
-  "s_2b87faa8": "Nach unten verschieben"
+  "s_2b87faa8": "Nach unten verschieben",
+  "s_5ff9d6fe": "Version {name} aktivieren?",
+  "s_ddce129a": "Mit der Aktivierung wird diese Version für zukünftige Wettbewerbsstarts gültig. Wettbewerbe mit bereits festgelegter Version behalten ihre bisherigen Stammdaten."
 }
