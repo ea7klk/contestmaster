@@ -152,3 +152,5 @@ Current score facts are finite and typed. A JSON field name alone does not make 
 ## Machine-readable inventory
 
 See [`sponsor-rule-samples.json`](sponsor-rule-samples.json) for the 200+ sample records, source URLs, event family tags, and scope/edition notes. Records with a shared recurring-series rule source are intentionally linked to the same sponsor page and carry a distinct session or event identifier.
+
+For a frequency-ranked summary of observed exchanges, categories, duplicate policies, scoring, and other rule facts, see the [rule-facts summary](rule-facts-summary.md).
