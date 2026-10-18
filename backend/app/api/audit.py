@@ -22,8 +22,8 @@ def search_audit_events(
     _actor: GlobalAdministrator,
     session: Annotated[Session, Depends(get_session)],
     q: str | None = Query(default=None, max_length=200),
-    action: str | None = Query(default=None, max_length=100),
-    target_type: str | None = Query(default=None, max_length=100),
+    action: Annotated[list[str] | None, Query(max_length=50)] = None,
+    target_type: Annotated[list[str] | None, Query(max_length=50)] = None,
     actor_user_id: int | None = Query(default=None, ge=1),
     from_at: datetime | None = None,
     to_at: datetime | None = None,
@@ -33,6 +33,8 @@ def search_audit_events(
     """Search recent events; retention is enforced in the query as a defense in depth."""
     now = datetime.now(UTC)
     cutoff = now - RETENTION
+    actions = _normalize_filter_values(action or [], "action")
+    target_types = _normalize_filter_values(target_type or [], "target_type")
     if from_at is not None:
         if from_at.tzinfo is None or from_at.utcoffset() is None:
             raise HTTPException(status_code=422, detail="from_at must include a timezone.")
@@ -59,10 +61,10 @@ def search_audit_events(
         conditions.append(AuditEvent.occurred_at >= from_at)
     if to_at is not None:
         conditions.append(AuditEvent.occurred_at <= to_at)
-    if action and action.strip():
-        conditions.append(AuditEvent.action == action.strip())
-    if target_type and target_type.strip():
-        conditions.append(AuditEvent.target_type == target_type.strip())
+    if actions:
+        conditions.append(AuditEvent.action.in_(actions))
+    if target_types:
+        conditions.append(AuditEvent.target_type.in_(target_types))
     if actor_user_id is not None:
         conditions.append(AuditEvent.actor_user_id == actor_user_id)
     if q and q.strip():
@@ -87,6 +89,7 @@ def search_audit_events(
     )
     items = []
     for event, username, display_name in rows:
+        target_name = _target_name(event.event_metadata, event.target_id)
         items.append(
             {
                 "id": event.id,
@@ -96,15 +99,59 @@ def search_audit_events(
                 "action": event.action,
                 "target_type": event.target_type,
                 "target_id": event.target_id,
+                "target_name": target_name,
                 "reason": event.reason,
                 "metadata": event.event_metadata,
                 "request_id": event.request_id,
             }
         )
+    action_options = session.scalars(
+        select(AuditEvent.action)
+        .where(AuditEvent.occurred_at >= cutoff)
+        .distinct()
+        .order_by(AuditEvent.action)
+    ).all()
+    target_type_options = session.scalars(
+        select(AuditEvent.target_type)
+        .where(AuditEvent.occurred_at >= cutoff)
+        .distinct()
+        .order_by(AuditEvent.target_type)
+    ).all()
     return {
         "items": items,
         "total": session.scalar(count_statement) or 0,
         "page": page,
         "page_size": page_size,
         "retention_days": 90,
+        "action_options": action_options,
+        "target_type_options": target_type_options,
     }
+
+
+def _normalize_filter_values(values: list[str], field: str) -> list[str]:
+    normalized = list(dict.fromkeys(value.strip() for value in values if value.strip()))
+    if any(len(value) > 100 for value in normalized):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} values must be 100 characters or fewer.",
+        )
+    return normalized
+
+
+def _target_name(metadata: dict[str, Any], target_id: str) -> str:
+    """Prefer a safe, human-readable target label recorded with the event."""
+    name_keys = (
+        "name",
+        "callsign",
+        "entry_key",
+        "slug",
+        "ruleset_key",
+        "username",
+        "key",
+        "dataset_key",
+    )
+    for key in name_keys:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return f"#{target_id}"

@@ -8,6 +8,7 @@ export interface AuditEventRecord {
   action: string
   target_type: string
   target_id: string
+  target_name: string
   reason: string | null
   metadata: Record<string, unknown>
   request_id: string | null
@@ -15,8 +16,8 @@ export interface AuditEventRecord {
 
 export interface AuditEventFilters {
   q?: string
-  action?: string
-  target_type?: string
+  action?: string[]
+  target_type?: string[]
   from_at?: string
   to_at?: string
   page?: number
@@ -26,7 +27,12 @@ export interface AuditEventFilters {
 export async function searchAuditEvents(filters: AuditEventFilters = {}) {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== '') params.set(key, String(value))
+    if (value === undefined || value === '') continue
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, item)
+    } else {
+      params.set(key, String(value))
+    }
   }
   const query = params.size ? `?${params.toString()}` : ''
   return apiRequest<{
@@ -35,5 +41,7 @@ export async function searchAuditEvents(filters: AuditEventFilters = {}) {
     page: number
     page_size: number
     retention_days: number
+    action_options: string[]
+    target_type_options: string[]
   }>(`/admin/audit-events${query}`)
 }

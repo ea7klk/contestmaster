@@ -55,7 +55,7 @@ def _admin_fixture(monkeypatch):
             action="contest.updated",
             target_type="contest",
             target_id=41,
-            metadata={"fields": ["name"]},
+            metadata={"name": "Summer Field Day", "fields": ["name"]},
             request_id="audit-test-request",
         )
         record_audit_event(
@@ -101,9 +101,26 @@ def test_audit_log_is_global_admin_only_and_searchable(monkeypatch):
         body = response.json()
         assert body["total"] == 1
         assert body["items"][0]["actor"] == "Audit Admin"
-        assert body["items"][0]["metadata"] == {"fields": ["name"]}
+        assert body["items"][0]["metadata"] == {
+            "name": "Summer Field Day",
+            "fields": ["name"],
+        }
+        assert body["items"][0]["target_name"] == "Summer Field Day"
         assert body["items"][0]["request_id"] == "audit-test-request"
         assert admin.get("/api/v1/admin/audit-events?action=entry.submitted").json()["total"] == 1
+        assert body["action_options"] == ["contest.updated", "entry.submitted"]
+        assert body["target_type_options"] == ["contest", "entry"]
+        multi_filter = admin.get(
+            "/api/v1/admin/audit-events",
+            params=[
+                ("action", "contest.updated"),
+                ("action", "entry.submitted"),
+                ("target_type", "entry"),
+            ],
+        )
+        assert multi_filter.status_code == 200
+        assert multi_filter.json()["total"] == 1
+        assert multi_filter.json()["items"][0]["action"] == "entry.submitted"
     finally:
         app.dependency_overrides.clear()
         Base.metadata.drop_all(engine)

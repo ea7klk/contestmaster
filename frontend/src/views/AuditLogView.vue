@@ -6,8 +6,10 @@ import { formatUtcDateTime } from '../i18n'
 
 const items = ref<AuditEventRecord[]>([])
 const query = ref('')
-const action = ref('')
-const targetType = ref('')
+const action = ref<string[]>([])
+const targetType = ref<string[]>([])
+const actionOptions = ref<string[]>([])
+const targetTypeOptions = ref<string[]>([])
 const fromLocal = ref('')
 const toLocal = ref('')
 const page = ref(1)
@@ -24,8 +26,8 @@ async function load() {
   try {
     const response = await searchAuditEvents({
       q: query.value.trim() || undefined,
-      action: action.value.trim() || undefined,
-      target_type: targetType.value.trim() || undefined,
+      action: action.value.length ? action.value : undefined,
+      target_type: targetType.value.length ? targetType.value : undefined,
       from_at: fromLocal.value
         ? new Date(fromLocal.value).toISOString()
         : undefined,
@@ -35,6 +37,8 @@ async function load() {
     })
     items.value = response.items
     total.value = response.total
+    actionOptions.value = response.action_options
+    targetTypeOptions.value = response.target_type_options
   } catch (cause) {
     denied.value =
       cause instanceof ApiError && [401, 403].includes(cause.statusCode ?? 0)
@@ -93,21 +97,23 @@ onMounted(load)
       </label>
       <label for="audit-action"
         >{{ $tr('Action') }}
-        <input
-          id="audit-action"
-          v-model="action"
-          maxlength="100"
-          placeholder="entry.submitted"
-        />
+        <select id="audit-action" v-model="action" multiple size="4">
+          <option v-for="option in actionOptions" :key="option" :value="option">
+            {{ option }}
+          </option>
+        </select>
       </label>
       <label for="audit-target"
         >{{ $tr('Target type') }}
-        <input
-          id="audit-target"
-          v-model="targetType"
-          maxlength="100"
-          placeholder="contest"
-        />
+        <select id="audit-target" v-model="targetType" multiple size="4">
+          <option
+            v-for="option in targetTypeOptions"
+            :key="option"
+            :value="option"
+          >
+            {{ option }}
+          </option>
+        </select>
       </label>
       <label for="audit-from"
         >{{ $tr('From (your local time)') }}
@@ -157,7 +163,10 @@ onMounted(load)
             <td>
               <code>{{ event.action }}</code>
             </td>
-            <td>{{ event.target_type }} #{{ event.target_id }}</td>
+            <td>
+              <div>{{ event.target_type }}</div>
+              <small>{{ event.target_name }}</small>
+            </td>
             <td>{{ event.reason || '—' }}</td>
             <td>
               <details>
@@ -229,7 +238,8 @@ onMounted(load)
   font-weight: 650;
   min-width: 0;
 }
-.audit-filters input {
+.audit-filters input,
+.audit-filters select {
   width: 100%;
   min-width: 0;
 }
