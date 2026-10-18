@@ -120,6 +120,49 @@ describe('RulesetComposerView', () => {
     ])
   })
 
+  it('shows ADIF importer fields and configured dimensions instead of Cabrillo columns', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalogResponse()), {
+            status: 200,
+          })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    await navigateToStep(wrapper, 3)
+
+    const formatSelect = wrapper
+      .findAll('label.schema-control')
+      .find((label) => label.text().toLowerCase().includes('format'))
+      ?.get('select')
+    expect(formatSelect).toBeDefined()
+    await formatSelect!.setValue('adif')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="adif-field-preview"]').text()).toContain(
+      'CALL',
+    )
+    expect(wrapper.get('[data-testid="adif-field-preview"]').text()).toContain(
+      'QSO_DATE',
+    )
+    expect(wrapper.get('[data-testid="adif-field-preview"]').text()).toContain(
+      'MODE',
+    )
+    expect(wrapper.findAll('.schema-array-item select')).toHaveLength(0)
+  })
+
   it('keeps the Published rules URL optional marker within its aligned label row', async () => {
     vi.stubGlobal(
       'fetch',

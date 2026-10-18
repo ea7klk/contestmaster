@@ -168,6 +168,27 @@ const cabrilloExchangeMapPreview = computed(() => {
     return mapped.length ? [{ column: mapping.column, fields: mapped }] : []
   })
 })
+const adifExchangeFieldPreview = computed(() => {
+  const exchangeRule = rules.value.find(
+    (item) => item.rule.kind === 'exchange',
+  )?.rule
+  const fields = Array.isArray(exchangeRule?.fields)
+    ? (exchangeRule.fields as Array<Record<string, unknown>>)
+    : []
+  const adifFields: Record<string, string[]> = {
+    serial: ['STX', 'SRX'],
+    report: ['RST_SENT', 'RST_RCVD'],
+    grid: ['MY_GRIDSQUARE', 'GRIDSQUARE'],
+    state: ['MY_STATE', 'STATE'],
+    cq_zone: ['MY_CQ_ZONE', 'CQZ'],
+    itu_zone: ['MY_ITU_ZONE', 'ITUZ'],
+  }
+  return fields.map((field) => ({
+    label: typeof field.label === 'string' ? field.label : String(field.key),
+    key: String(field.key ?? ''),
+    tags: adifFields[String(field.key)] ?? ['STX_STRING', 'SRX_STRING'],
+  }))
+})
 function resolveSchema(schema: JsonSchema, rootSchema = schema): JsonSchema {
   if (schema.$ref) {
     const name = schema.$ref.split('/').at(-1) ?? ''
@@ -1218,6 +1239,65 @@ function catalogErrorMessage(reason: unknown) {
                     }}
                   </p>
                 </div>
+                <section
+                  v-if="
+                    configured.rule.kind === 'format_mapping' &&
+                    configured.rule.format === 'adif'
+                  "
+                  class="exchange-map-preview adif-field-preview"
+                  aria-label="ADIF field mapping preview"
+                  data-testid="adif-field-preview"
+                >
+                  <strong>{{ $tr('ADIF fields used by the importer') }}</strong>
+                  <p>
+                    {{
+                      $tr(
+                        'Every QSO needs CALL, QSO_DATE, TIME_ON, and MODE (or SUBMODE), plus BAND or FREQ. These are importer requirements; the ADIF standard itself does not mandate a universal QSO field set.',
+                      )
+                    }}
+                  </p>
+                  <ul>
+                    <li>
+                      <strong>{{ $tr('Required for every QSO') }}:</strong>
+                      <code>CALL</code>, <code>QSO_DATE</code>,
+                      <code>TIME_ON</code>, <code>MODE</code> or
+                      <code>SUBMODE</code>, and <code>BAND</code> or
+                      <code>FREQ</code>
+                    </li>
+                    <li
+                      v-for="mapping in adifExchangeFieldPreview"
+                      :key="mapping.key"
+                    >
+                      <strong>{{ $tr(mapping.label) }}:</strong>
+                      <code v-for="tag in mapping.tags" :key="tag">{{
+                        tag
+                      }}</code>
+                    </li>
+                  </ul>
+                  <div v-if="categoryDimensions.length" class="adif-dimensions">
+                    <strong>{{ $tr('Configured entrant dimensions') }}</strong>
+                    <ul>
+                      <li
+                        v-for="dimension in categoryDimensions"
+                        :key="dimension.key"
+                      >
+                        {{ $tr(dimension.label) }}:
+                        {{
+                          dimension.choices
+                            .map((choice) => $tr(choice.label))
+                            .join(', ')
+                        }}
+                      </li>
+                    </ul>
+                    <p>
+                      {{
+                        $tr(
+                          'ADIF has no universal entrant-category field. The configured dimension choices are shown here; use the contest’s supported category fields when the logger provides them.',
+                        )
+                      }}
+                    </p>
+                  </div>
+                </section>
                 <p
                   v-if="scoringExamples[String(configured.rule.kind)]"
                   class="rule-example"
@@ -1244,7 +1324,10 @@ function catalogErrorMessage(reason: unknown) {
                   :hidden-properties="
                     configured.rule.kind === 'eligibility'
                       ? ['allowed_bands', 'allowed_modes']
-                      : []
+                      : configured.rule.kind === 'format_mapping' &&
+                          configured.rule.format === 'adif'
+                        ? ['header_fields', 'qso_columns', 'category_mappings']
+                        : []
                   "
                   :category-dimensions="categoryDimensions"
                   :label="`${configured.rule.kind} rule settings`"
@@ -2051,6 +2134,14 @@ function catalogErrorMessage(reason: unknown) {
 .exchange-map-preview p {
   margin: 0;
   color: var(--color-muted);
+}
+.adif-dimensions {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.adif-dimensions ul {
+  margin: 0.5rem 0;
 }
 .required-badge {
   padding: 0.3rem 0.55rem;
