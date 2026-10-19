@@ -1929,6 +1929,13 @@ def test_cq_ww_draft_entity_multipliers_exclude_maritime_mobile():
         assert entity_multiplier.rule.source_fact == "qso.entity"
         assert entity_multiplier.rule.scope == "band"
         assert entity_multiplier.when is not None
+        formula = next(item.rule for item in definition.rules if item.rule.kind == "score_formula")
+        assert formula.start.variable == "multiplier.multiplier-1"
+        assert [step.operand.variable for step in formula.steps] == [
+            "multiplier.multiplier-2",
+            "points_total",
+        ]
+        assert [step.operator for step in formula.steps] == ["add", "multiply"]
 
 
 def test_bonus_evidence_key_replaces_legacy_required_boolean_in_json():
@@ -2212,9 +2219,7 @@ def test_qsos_before_contest_start_do_not_seed_in_contest_duplicate_state():
 
 
 def test_session_reset_targets_are_independent_and_sent_serial_sequence_is_reviewed():
-    payload = _with_session_resets(
-        valid_payload(), reset_duplicates=False, reset_multipliers=False
-    )
+    payload = _with_session_resets(valid_payload(), reset_duplicates=False, reset_multipliers=False)
     exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
     exchange["rule"]["fields"][0]["serial_scope"] = "band"
     entry = _session_test_entry(serials=("001", "007", "008", "001", "001"))

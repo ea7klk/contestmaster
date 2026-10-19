@@ -125,13 +125,19 @@
       "rule": {
         "kind": "score_formula",
         "start": {
-          "variable": "points_total"
+          "variable": "multiplier.multiplier-1"
         },
         "steps": [
           {
+            "operator": "add",
+            "operand": {
+              "variable": "multiplier.multiplier-2"
+            }
+          },
+          {
             "operator": "multiply",
             "operand": {
-              "variable": "multiplier_count"
+              "variable": "points_total"
             }
           }
         ]
@@ -155,11 +161,41 @@
           "exchange_received"
         ],
         "category_mappings": [
-          {"external_field": "CATEGORY-OPERATOR", "external_value": "SINGLE-OP", "category_values": {"operator": "single_operator"}},
-          {"external_field": "CATEGORY-OPERATOR", "external_value": "MULTI-OP", "category_values": {"operator": "multi_operator"}},
-          {"external_field": "CATEGORY-POWER", "external_value": "QRP", "category_values": {"power": "qrp"}},
-          {"external_field": "CATEGORY-POWER", "external_value": "LOW", "category_values": {"power": "low"}},
-          {"external_field": "CATEGORY-POWER", "external_value": "HIGH", "category_values": {"power": "high"}}
+          {
+            "external_field": "CATEGORY-OPERATOR",
+            "external_value": "SINGLE-OP",
+            "category_values": {
+              "operator": "single_operator"
+            }
+          },
+          {
+            "external_field": "CATEGORY-OPERATOR",
+            "external_value": "MULTI-OP",
+            "category_values": {
+              "operator": "multi_operator"
+            }
+          },
+          {
+            "external_field": "CATEGORY-POWER",
+            "external_value": "QRP",
+            "category_values": {
+              "power": "qrp"
+            }
+          },
+          {
+            "external_field": "CATEGORY-POWER",
+            "external_value": "LOW",
+            "category_values": {
+              "power": "low"
+            }
+          },
+          {
+            "external_field": "CATEGORY-POWER",
+            "external_value": "HIGH",
+            "category_values": {
+              "power": "high"
+            }
+          }
         ],
         "preserve_unknown_fields": true
       }

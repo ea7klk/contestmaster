@@ -187,7 +187,7 @@ class ExchangeField(StrictModel):
             "itu_zone": ("zone", {"received", "both"}),
             "section": ("text", {"received", "both", "entry"}),
             "grid": ("grid", {"received", "both"}),
-            "state": ("text", {"received", "both", "entry"}),
+            "state": ("text", {"sent", "received", "both", "entry"}),
             "province": ("text", {"received", "both", "entry"}),
             "check": ("integer", {"received", "both", "entry"}),
             "precedence": ("enum", {"received", "both", "entry"}),

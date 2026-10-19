@@ -1,0 +1,102 @@
+{
+  "sponsor": "Arizona QSO Party",
+  "edition": "2026",
+  "rules_url": "https://www.azqp.org/rules",
+  "accepted_format": "cabrillo",
+  "ruleset_key": "azqp-2026-conformance",
+  "ruleset_version": "2026-fixture-1",
+  "ruleset": {
+    "schema_version": 2,
+    "ruleset_key": "azqp-2026-conformance",
+    "version": "2026-fixture-1",
+    "source_url": "https://www.azqp.org/rules",
+    "source_edition": "2026 rules; simplified outside-entrant conformance fixture",
+    "rules": [
+      {"id": "submission", "rule": {"kind": "submission", "late_policy": "checklog"}},
+      {
+        "id": "categories",
+        "rule": {
+          "kind": "categories",
+          "dimensions": [
+            {"key": "operator", "label": "Operator", "choices": [{"key": "single", "label": "Single operator"}]}
+          ]
+        }
+      },
+      {
+        "id": "exchange",
+        "rule": {
+          "kind": "exchange",
+          "fields": [
+            {"key": "state", "label": "State", "value_type": "text", "direction": "sent", "required": true, "max_length": 2},
+            {"key": "county", "label": "Arizona county", "value_type": "text", "direction": "received", "required": true, "max_length": 3}
+          ]
+        }
+      },
+      {"id": "eligibility", "rule": {"kind": "eligibility", "allowed_bands": ["40m"], "allowed_modes": ["CW", "PH"]}},
+      {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band", "mode"], "effect": "not_credited"}},
+      {
+        "id": "cw-points",
+        "rule": {"kind": "points", "fact": "fixed", "fixed_points": 2},
+        "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "CW"}
+      },
+      {
+        "id": "phone-points",
+        "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1},
+        "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "PH"}
+      },
+      {
+        "id": "score-formula",
+        "rule": {
+          "kind": "score_formula",
+          "start": {"variable": "points_total"},
+          "steps": [
+            {"operator": "multiply", "operand": {"variable": "multiplier_count"}},
+            {"operator": "add", "operand": {"variable": "bonus_points"}}
+          ]
+        }
+      },
+      {
+        "id": "format-mapping",
+        "rule": {
+          "kind": "format_mapping",
+          "format": "cabrillo",
+          "qso_columns": ["frequency", "mode", "date", "time", "callsign_sent", "rst_sent", "exchange_sent", "callsign_received", "rst_received", "exchange_received"],
+          "category_mappings": [{"external_field": "CATEGORY-OPERATOR", "external_value": "SINGLE-OP", "category_values": {"operator": "single"}}]
+        }
+      },
+      {"id": "county-by-band-mode", "rule": {"kind": "multiplier", "source_fact": "exchange.received.county", "scope": "band_mode", "label": "Arizona county"}},
+      {
+        "id": "k7a-one-time",
+        "rule": {"kind": "bonus", "basis": "per_distinct_value", "points": 100, "cap": 100, "source_fact": "qso.worked_callsign", "scope": "contest"},
+        "when": {"kind": "compare", "fact": "qso.worked_callsign", "operator": "eq", "value": "K7A"}
+      }
+    ]
+  },
+  "entrant": {
+    "callsign": "K1OUT",
+    "state": "NY",
+    "category_operator": "SINGLE-OP"
+  },
+  "contacts": [
+    {"mode": "CW", "worked_callsign": "K7A", "county": "APH", "qso_points": 2},
+    {"mode": "CW", "worked_callsign": "K7B", "county": "CHS", "qso_points": 2},
+    {"mode": "CW", "worked_callsign": "K7C", "county": "GLA", "qso_points": 2},
+    {"mode": "PH", "worked_callsign": "K7A", "county": "APH", "qso_points": 1},
+    {"mode": "PH", "worked_callsign": "K7D", "county": "APH", "qso_points": 1}
+  ],
+  "expected": {
+    "credited_qsos": 5,
+    "qso_points": 8,
+    "multiplier_counts": {"county-by-band-mode": 4},
+    "bonus_counts": {"k7a-one-time": 1},
+    "bonus_points": 100,
+    "penalty_points": 0,
+    "formula": "(8 QSO points x 4 county multipliers) + 100 K7A bonus",
+    "final_score": 132
+  },
+  "notes": [
+    "The fixture is an outside Arizona entrant and tests the sponsor's county-per-band-and-mode multiplier rule.",
+    "The repeated K7A contact on a different mode remains a valid QSO and must not repeat the one-time bonus.",
+    "The event timestamp is generated during the test; the fixture validates 2026 rules, not the official event date."
+  ]
+}

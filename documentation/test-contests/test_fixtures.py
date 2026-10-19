@@ -173,19 +173,49 @@ def test_contest_packages_are_valid_and_only_enable_their_declared_format():
                 "penalty",
                 "points",
                 "score_formula",
+                "session_resets",
                 "workflow_hook",
             } <= kinds
         formula = next(rule.rule for rule in ruleset.rules if rule.rule.kind == "score_formula")
-        assert any(
-            step.operator == "multiply" and step.operand.variable == "multiplier_count"
-            for step in formula.steps
-        )
+        if folder == "advanced-cabrillo":
+            configured_multiplier_ids = {
+                item.id for item in ruleset.rules if item.rule.kind == "multiplier"
+            }
+            formula_multiplier_ids = {
+                formula.start.variable.removeprefix("multiplier."),
+                *(
+                    step.operand.variable.removeprefix("multiplier.")
+                    for step in formula.steps
+                    if step.operand.variable and step.operand.variable.startswith("multiplier.")
+                ),
+            }
+            assert formula_multiplier_ids == configured_multiplier_ids
+            assert all(step.operand.variable != "multiplier_count" for step in formula.steps)
+        else:
+            assert any(
+                step.operator == "multiply" and step.operand.variable == "multiplier_count"
+                for step in formula.steps
+            )
 
 
 def test_all_documented_ruleset_drafts_validate():
     for path in sorted((ROOT.parent / "ruleset-drafts").glob("*.json")):
         definition = RulesetDefinition.model_validate(json.loads(path.read_text(encoding="utf-8")))
         validate_ruleset(definition)
+        if path.name in {"cq-ww-cw.json", "cq-ww-rtty.json", "cq-ww-ssb.json"}:
+            formula = next(
+                item.rule for item in definition.rules if item.rule.kind == "score_formula"
+            )
+            multiplier_ids = {
+                item.id for item in definition.rules if item.rule.kind == "multiplier"
+            }
+            assert formula.start.variable == "multiplier.multiplier-1"
+            assert formula.steps[0].operand.variable == "multiplier.multiplier-2"
+            assert formula.steps[1].operand.variable == "points_total"
+            assert {"multiplier-1", "multiplier-2"} <= multiplier_ids
+        if path.name == "rsgb-vhf-general-distance-sessions.json":
+            assert any(item.rule.kind == "distance_points" for item in definition.rules)
+            assert any(item.rule.kind == "session_resets" for item in definition.rules)
         category_choices = {
             dimension.key: {choice.key for choice in dimension.choices}
             for configured in definition.rules
@@ -469,3 +499,8 @@ def test_advanced_cabrillo_fixture_scores_with_advanced_rules_without_review():
     )
     assert all(score.final_score > 0 for score in scores.values())
     assert all(score.outcome == "scored" and not score.review_reasons for score in scores.values())
+    assert all(
+        qso.session_number is not None
+        for _callsign, score in scores.items()
+        for qso in score.qso_scores
+    )

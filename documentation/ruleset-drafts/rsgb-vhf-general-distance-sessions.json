@@ -1,0 +1,151 @@
+{
+  "schema_version": 2,
+  "ruleset_key": "rsgb-vhf-2026-distance-sessions-conformance",
+  "version": "2026-general-fixture-1",
+  "source_url": "https://www.rsgbcc.org/vhf/rules/26rules/General.shtml",
+  "source_edition": "2026 general rules; simplified Cabrillo conformance fixture",
+  "rules": [
+    {
+      "id": "submission",
+      "rule": {
+        "kind": "submission",
+        "late_policy": "checklog"
+      }
+    },
+    {
+      "id": "categories",
+      "rule": {
+        "kind": "categories",
+        "dimensions": [
+          {
+            "key": "operator",
+            "label": "Operator",
+            "choices": [
+              {
+                "key": "single",
+                "label": "Single operator"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "exchange",
+      "rule": {
+        "kind": "exchange",
+        "fields": [
+          {
+            "key": "serial",
+            "label": "Serial number",
+            "value_type": "serial",
+            "direction": "sent",
+            "required": true,
+            "serial_scope": "band"
+          },
+          {
+            "key": "grid",
+            "label": "Maidenhead locator",
+            "value_type": "grid",
+            "direction": "received",
+            "required": true,
+            "max_length": 6
+          }
+        ]
+      }
+    },
+    {
+      "id": "eligibility",
+      "rule": {
+        "kind": "eligibility",
+        "allowed_bands": [
+          "2m"
+        ],
+        "allowed_modes": [
+          "CW"
+        ]
+      }
+    },
+    {
+      "id": "duplicates",
+      "rule": {
+        "kind": "duplicates",
+        "scope": [
+          "worked_callsign",
+          "band"
+        ],
+        "effect": "not_credited"
+      }
+    },
+    {
+      "id": "distance-points",
+      "rule": {
+        "kind": "distance_points",
+        "precision": 6,
+        "points_per_kilometer": 1,
+        "same_grid_points": 1,
+        "missing_grid_action": "needs_review"
+      }
+    },
+    {
+      "id": "base-points",
+      "rule": {
+        "kind": "points",
+        "fact": "fixed",
+        "fixed_points": 0
+      }
+    },
+    {
+      "id": "session-resets",
+      "rule": {
+        "kind": "session_resets",
+        "period_minutes": 60,
+        "serial_start_value": 1,
+        "reset_duplicates": true,
+        "reset_multipliers": false,
+        "reset_serials": true
+      }
+    },
+    {
+      "id": "score-formula",
+      "rule": {
+        "kind": "score_formula",
+        "start": {
+          "variable": "points_total"
+        }
+      }
+    },
+    {
+      "id": "format-mapping",
+      "rule": {
+        "kind": "format_mapping",
+        "format": "cabrillo",
+        "qso_columns": [
+          "frequency",
+          "mode",
+          "date",
+          "time",
+          "callsign_sent",
+          "rst_sent",
+          "exchange_sent",
+          "callsign_received",
+          "rst_received",
+          "exchange_received"
+        ],
+        "header_fields": {
+          "contest": "CONTEST",
+          "callsign": "CALLSIGN"
+        },
+        "category_mappings": [
+          {
+            "external_field": "CATEGORY-OPERATOR",
+            "external_value": "SINGLE-OP",
+            "category_values": {
+              "operator": "single"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

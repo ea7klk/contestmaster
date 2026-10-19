@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-This plan turns the user-provided gap analysis into staged work for Contestmaster. That report statically examined the built-in contest handlers in N1MM Logger+ update 1.0.11466 (2026-10-13) and compared them with Contestmaster ruleset schema v2 at commit `8661bbd`. The supplied report is outside this repository; its findings needed for implementation are summarized below.
+This plan turns the user-provided analysis file `/root/n1mm/n1mm-diff.md` into staged work for Contestmaster. That report statically examined the built-in contest handlers in N1MM Logger+ update 1.0.11466 (2026-10-13) and compared them with Contestmaster ruleset schema v2 at commit `8661bbd`. The input report is outside the repository and will not be present in every checkout; its implementation-relevant findings are summarized here and traced in the behavior matrix.
 
 The first sponsor-verified benchmark is in [`behavior-matrix.md`](behavior-matrix.md). The current sample ruleset and synthetic contest refresh is tracked separately in child [#395](https://github.com/ea7klk/contestmaster/issues/395), so engine-schema changes can be exercised by importable examples and generated logs rather than existing only as unit-level behavior.
 
@@ -51,7 +51,7 @@ For each implemented primitive, include behavior-focused unit tests and API/impo
 
 ## Issue breakdown and dependencies
 
-The implementation is tracked by parent issue [#385](https://github.com/ea7klk/contestmaster/issues/385) and child issues #386–#394. They are linked using GitHub's parent/sub-issue relationship. Each child has its own acceptance criteria and verification expectations.
+The implementation is tracked by parent issue [#385](https://github.com/ea7klk/contestmaster/issues/385) and child issues [#386](https://github.com/ea7klk/contestmaster/issues/386)–[#395](https://github.com/ea7klk/contestmaster/issues/395). The child issues are linked using GitHub's parent/sub-issue relationship. Each child has its own acceptance criteria and verification expectations; #395 tracks importable sample rulesets and synthetic test contests so rule-engine changes remain demonstrable.
 
 | Child | Outcome | Dependencies |
 |---|---|---|

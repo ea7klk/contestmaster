@@ -1,7 +1,9 @@
+import json
 import os
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,21 +17,39 @@ from backend.app.db import Base, get_session
 from backend.app.main import app
 from backend.app.models import (
     AuditEvent,
+    BandCatalogItem,
+    CallsignPrefix,
     Contest,
+    ContestEntity,
+    ContestMasterDataVersion,
     ContestStatus,
+    CQZone,
     EmailOutbox,
+    EntityType,
     Entry,
     EntryRevision,
     EntryStatus,
     GuestEntryEmail,
+    MasterDataSource,
+    MasterDataSyncRun,
+    MasterDataVersion,
+    ModeCatalogItem,
     Participant,
+    PrefixCQZoneAssignment,
+    PrefixEntityAssignment,
     Qso,
+    QsoScore,
     ResultPublication,
     ResultPublicationEntry,
     ScoreRun,
     Station,
     SystemRole,
     SystemUser,
+)
+from backend.app.models.enums import (
+    MasterDataAuthorityRole,
+    MasterDataRunStatus,
+    MasterDataVersionStatus,
 )
 from backend.app.results.service import publication_policy
 from backend.app.rulesets.persistence import save_ruleset_version
@@ -607,6 +627,734 @@ def test_staging_guest_upload_scoring_publication_and_privacy_workflow(result_db
     assert "operator@example.test" not in standings.text
     assert "exchange_received" not in standings.text
     assert public.get(f"/api/v1/public/entries/{entry_id}").status_code == 404
+
+
+def test_azqp_2026_sponsor_fixture_scores_and_publishes_safe_explanation(result_db):
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/arizona-qso-party-2026-cabrillo.json"
+    )
+    fixture = json.loads(fixture_path.read_text())
+    expected = fixture["expected"]
+    ruleset_payload = fixture["ruleset"]
+    assert fixture["accepted_format"] == "cabrillo"
+    assert ruleset_payload["source_url"] == fixture["rules_url"]
+    assert ruleset_payload["version"] == fixture["ruleset_version"]
+
+    factory, _existing_contest_id, manager_id, _outsider_id = result_db
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    contest_slug = "azqp-2026-parity"
+    with factory.begin() as session:
+        manager = session.get(SystemUser, manager_id)
+        assert manager is not None
+        # PH is the WWROF Cabrillo token for Phone, distinct from the SSB catalog
+        # key. The baseline modes are globally editable; this test models the
+        # active catalog supplied by migration 0029.
+        catalog_items = (
+            (
+                BandCatalogItem,
+                "40m",
+                {
+                    "label": "40 m",
+                    "description": "40 m HF band",
+                    "frequency_range": "7 MHz",
+                    "sort_order": 1,
+                    "contest_free": False,
+                },
+            ),
+            (ModeCatalogItem, "CW", {"label": "CW", "description": "Morse code"}),
+            (
+                ModeCatalogItem,
+                "PH",
+                {
+                    "label": "Phone (Cabrillo PH)",
+                    "description": "Cabrillo log mode token for phone contacts",
+                },
+            ),
+        )
+        for model, key, values in catalog_items:
+            item = session.scalar(select(model).where(model.key == key))
+            if item is None:
+                session.add(model(key=key, is_active=True, **values))
+            else:
+                item.is_active = True
+        session.flush()
+    manager = manager_client(factory, manager_id)
+    headers = {"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")}
+    validation_client = TestClient(app)
+    validation = validation_client.post("/api/v1/rulesets/validate", json=ruleset_payload)
+    assert validation.status_code == 200, validation.text
+
+    with factory.begin() as session:
+        ruleset = save_ruleset_version(
+            session,
+            validate_ruleset(ruleset_payload),
+            created_by_user_id=manager_id,
+        ).version
+        session.add(
+            Contest(
+                owner_user_id=manager_id,
+                ruleset_version_id=ruleset.id,
+                name="Arizona QSO Party 2026 fixture",
+                slug=contest_slug,
+                starts_at=now - timedelta(minutes=5),
+                ends_at=now + timedelta(minutes=30),
+                log_submission_cutoff_at=now + timedelta(days=10),
+                status=ContestStatus.OPEN,
+            )
+        )
+        session.flush()
+        contest_id = session.scalar(select(Contest.id).where(Contest.slug == contest_slug))
+        assert contest_id is not None
+
+    with TestClient(app) as client:
+        uploaded_at = datetime.now(UTC).replace(second=0, microsecond=0)
+        lines = [
+            "START-OF-LOG: 3.0",
+            f"CONTEST: {contest_slug}",
+            f"CALLSIGN: {fixture['entrant']['callsign']}",
+            "EMAIL: k1out@nomail.invalid",
+            "NAME: Private Synthetic Operator",
+            f"CATEGORY-OPERATOR: {fixture['entrant']['category_operator']}",
+        ]
+        for index, contact in enumerate(fixture["contacts"], start=1):
+            timestamp = uploaded_at + timedelta(minutes=index)
+            lines.append(
+                f"QSO: 7048 {contact['mode']} {timestamp:%Y-%m-%d} {timestamp:%H%M} "
+                f"{fixture['entrant']['callsign']} 599 {fixture['entrant']['state']} "
+                f"{contact['worked_callsign']} 599 {contact['county']}"
+            )
+        lines.append("END-OF-LOG:")
+        log_content = "\n".join(lines) + "\n"
+        uploaded = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "azqp-fixture-upload-2026"},
+            files={"file": ("azqp-2026.log", log_content.encode(), "text/plain")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.json()["summary"]["accepted_qsos"] == expected["credited_qsos"]
+
+        closed = manager.put(
+            f"/api/v1/contests/{contest_id}/status",
+            headers=headers,
+            json={"status": "closed"},
+        )
+        assert closed.status_code == 200, closed.text
+        generated = manager.post(
+            f"/api/v1/contests/{contest_id}/results/generate",
+            headers={**headers, "Idempotency-Key": "azqp-fixture-generate-2026"},
+            json={"reason": "Sponsor-linked 2026 AZQP conformance fixture"},
+        )
+        assert generated.status_code == 202, generated.text
+        review = manager.get(f"/api/v1/contests/{contest_id}/results/review")
+        assert review.status_code == 200, review.text
+        candidate = next(
+            item
+            for item in review.json()["items"]
+            if item["callsign"] == fixture["entrant"]["callsign"]
+        )
+        assert candidate["included_by_default"] is True
+        assert candidate["score"] == expected["final_score"], candidate
+        score_explanation = candidate["explanation"]
+        assert score_explanation["multiplier_counts"] == expected["multiplier_counts"]
+        assert score_explanation["bonus_counts"] == expected["bonus_counts"]
+
+        with factory() as session:
+            run = session.get(ScoreRun, candidate["score_run_id"])
+            assert run is not None
+            assert run.points == expected["qso_points"]
+            assert run.multiplier_count == sum(expected["multiplier_counts"].values())
+            assert run.bonus_points == expected["bonus_points"]
+            assert run.penalty_points == expected["penalty_points"]
+            assert run.final_score == expected["final_score"]
+            qso_scores = list(
+                session.scalars(
+                    select(QsoScore)
+                    .where(QsoScore.score_run_id == run.id)
+                    .order_by(QsoScore.qso_id)
+                )
+            )
+            assert len(qso_scores) == expected["credited_qsos"]
+            assert sum(row.points for row in qso_scores) == expected["qso_points"]
+            assert sum(row.bonus_points for row in qso_scores) == expected["bonus_points"]
+
+        published = manager.post(
+            f"/api/v1/contests/{contest_id}/results/publish",
+            headers=headers,
+            json={
+                "score_run_ids": [candidate["score_run_id"]],
+                "reason": "Sponsor-linked 2026 AZQP conformance fixture",
+            },
+        )
+        assert published.status_code == 201, published.text
+
+        public = TestClient(app)
+        standings = public.get(f"/api/v1/public/contests/{contest_slug}/results")
+        assert standings.status_code == 200, standings.text
+        assert len(standings.json()["items"]) == 1
+        public_entry = standings.json()["items"][0]
+        assert public_entry["callsign"] == fixture["entrant"]["callsign"]
+        explanation = public_entry["explanation"]
+        assert explanation["points"] == expected["qso_points"]
+        assert explanation["multiplier_counts"] == expected["multiplier_counts"]
+        assert explanation["bonus_counts"] == expected["bonus_counts"]
+        assert explanation["bonus_points"] == expected["bonus_points"]
+        assert explanation["penalty_points"] == expected["penalty_points"]
+        assert explanation["score"] == expected["final_score"]
+        for private_value in (
+            "K7A",
+            "K7B",
+            "K7C",
+            "K7D",
+            "APH",
+            "NY",
+            "k1out@nomail.invalid",
+            "Private Synthetic Operator",
+            "exchange_received",
+        ):
+            assert private_value not in standings.text
+
+
+def test_cqww_2026_sponsor_fixture_uses_contest_pinned_geography_and_separate_counts(result_db):
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/cq-ww-dx-2026-cw-cabrillo.json"
+    )
+    fixture = json.loads(fixture_path.read_text())
+    expected = fixture["expected"]
+    ruleset_payload = fixture["ruleset"]
+    factory, _existing_contest_id, manager_id, _outsider_id = result_db
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    contest_slug = "cqww-2026-parity"
+
+    with factory.begin() as session:
+        for model, key, values in (
+            (
+                BandCatalogItem,
+                "20m",
+                {
+                    "label": "20 m",
+                    "description": "20 m HF band",
+                    "frequency_range": "14 MHz",
+                    "sort_order": 2,
+                    "contest_free": False,
+                },
+            ),
+            (ModeCatalogItem, "CW", {"label": "CW", "description": "Morse code"}),
+        ):
+            item = session.scalar(select(model).where(model.key == key))
+            if item is None:
+                session.add(model(key=key, is_active=True, **values))
+            else:
+                item.is_active = True
+        session.flush()
+
+    manager = manager_client(factory, manager_id)
+    headers = {"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")}
+    validation = TestClient(app).post("/api/v1/rulesets/validate", json=ruleset_payload)
+    assert validation.status_code == 200, validation.text
+
+    with factory.begin() as session:
+        source = MasterDataSource(
+            source_key="fixture-cty",
+            name="Synthetic CTY fixture",
+            canonical_url="https://www.country-files.com/",
+            authority_role=MasterDataAuthorityRole.PRIMARY_OPERATIONAL,
+        )
+        session.add(source)
+        session.flush()
+        sync = MasterDataSyncRun(
+            source_id=source.id,
+            dataset_key="cty",
+            status=MasterDataRunStatus.SUCCEEDED,
+            finished_at=now,
+            retrieved_at=now,
+            source_url=fixture["rules_url"],
+        )
+        session.add(sync)
+        session.flush()
+        version = MasterDataVersion(
+            sync_run_id=sync.id,
+            dataset_key="cty",
+            retrieved_at=now,
+            checksum="a" * 64,
+            valid_from=now - timedelta(days=1),
+            status=MasterDataVersionStatus.RETIRED,
+        )
+        session.add(version)
+        session.flush()
+        entity_rows = {}
+        for code, continent in (("K", "NA"), ("EA", "EU"), ("VE", "NA")):
+            entity = ContestEntity(
+                version_id=version.id,
+                namespace="cty",
+                authority_code=code,
+                name=f"Fixture entity {code}",
+                continent=continent,
+                entity_type=EntityType.CONTEST_ENTITY,
+            )
+            session.add(entity)
+            entity_rows[code] = entity
+        zone_rows = {}
+        for code in ("04", "05", "14"):
+            zone = CQZone(version_id=version.id, code=code, name=f"Fixture zone {code}")
+            session.add(zone)
+            zone_rows[code] = zone
+        session.flush()
+        for prefix_text, entity_code, zone_code in (
+            ("K", "K", "05"),
+            ("W", "K", "05"),
+            ("EA", "EA", "14"),
+            ("VE", "VE", "04"),
+        ):
+            prefix = CallsignPrefix(
+                version_id=version.id,
+                prefix_pattern=prefix_text,
+                allocation_type="prefix",
+            )
+            session.add(prefix)
+            session.flush()
+            session.add_all(
+                [
+                    PrefixEntityAssignment(
+                        version_id=version.id,
+                        prefix_id=prefix.id,
+                        entity_id=entity_rows[entity_code].id,
+                        source_note="Synthetic fixture mapping",
+                    ),
+                    PrefixCQZoneAssignment(
+                        version_id=version.id,
+                        prefix_id=prefix.id,
+                        cq_zone_id=zone_rows[zone_code].id,
+                    ),
+                ]
+            )
+        ruleset = save_ruleset_version(
+            session,
+            validate_ruleset(ruleset_payload),
+            created_by_user_id=manager_id,
+        ).version
+        contest = Contest(
+            owner_user_id=manager_id,
+            ruleset_version_id=ruleset.id,
+            name="CQ WW DX 2026 CW fixture",
+            slug=contest_slug,
+            starts_at=now - timedelta(minutes=5),
+            ends_at=now + timedelta(minutes=30),
+            log_submission_cutoff_at=now + timedelta(days=10),
+            status=ContestStatus.OPEN,
+        )
+        session.add(contest)
+        session.flush()
+        session.add(
+            ContestMasterDataVersion(
+                contest_id=contest.id,
+                dataset_key="cty",
+                master_data_version_id=version.id,
+                pinned_at=now,
+            )
+        )
+        contest_id = contest.id
+        version_id = version.id
+
+    with TestClient(app) as client:
+        uploaded_at = datetime.now(UTC).replace(second=0, microsecond=0)
+        lines = [
+            "START-OF-LOG: 3.0",
+            f"CONTEST: {contest_slug}",
+            f"CALLSIGN: {fixture['entrant']['callsign']}",
+            "EMAIL: k1out@nomail.invalid",
+            "NAME: Private CQ WW Fixture Operator",
+            f"CATEGORY-OPERATOR: {fixture['entrant']['category_operator']}",
+        ]
+        for index, contact in enumerate(fixture["contacts"], start=1):
+            timestamp = uploaded_at + timedelta(minutes=index)
+            lines.append(
+                f"QSO: 14025 CW {timestamp:%Y-%m-%d} {timestamp:%H%M} "
+                f"{fixture['entrant']['callsign']} 599 {fixture['entrant']['cq_zone']} "
+                f"{contact['worked_callsign']} 599 {contact['cq_zone']}"
+            )
+        lines.append("END-OF-LOG:")
+        uploaded = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "cqww-fixture-upload-2026"},
+            files={"file": ("cqww-2026.log", ("\n".join(lines) + "\n").encode(), "text/plain")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.json()["summary"]["accepted_qsos"] == expected["credited_qsos"]
+
+        with factory() as session:
+            resolved_version_ids = set(
+                session.scalars(
+                    select(Qso.resolved_master_data_version_id).where(
+                        Qso.entry_revision_id
+                        == session.scalar(
+                            select(EntryRevision.id).order_by(EntryRevision.id.desc())
+                        )
+                    )
+                )
+            )
+            assert resolved_version_ids <= {None, version_id}
+
+        closed = manager.put(
+            f"/api/v1/contests/{contest_id}/status", headers=headers, json={"status": "closed"}
+        )
+        assert closed.status_code == 200, closed.text
+        generated = manager.post(
+            f"/api/v1/contests/{contest_id}/results/generate",
+            headers={**headers, "Idempotency-Key": "cqww-fixture-generate-2026"},
+            json={"reason": "Sponsor-linked CQ WW DX 2026 fixture"},
+        )
+        assert generated.status_code == 202, generated.text
+        review = manager.get(f"/api/v1/contests/{contest_id}/results/review").json()
+        candidate = next(item for item in review["items"] if item["callsign"] == "K1OUT")
+        assert candidate["included_by_default"] is True, {
+            key: candidate.get(key) for key in ("result_status", "score", "explanation")
+        }
+        assert candidate["score"] == expected["final_score"]
+        assert candidate["explanation"]["multiplier_counts"] == expected["multiplier_counts"]
+        assert candidate["explanation"]["bonus_counts"] == expected["bonus_counts"]
+        with factory() as session:
+            run = session.get(ScoreRun, candidate["score_run_id"])
+            assert run is not None
+            assert run.master_data_snapshot == {"cty": version_id}
+            assert run.points == expected["qso_points"]
+            assert run.multiplier_count == sum(expected["multiplier_counts"].values())
+            assert run.bonus_points == expected["bonus_points"]
+            assert run.penalty_points == expected["penalty_points"]
+            assert run.final_score == expected["final_score"]
+
+        published = manager.post(
+            f"/api/v1/contests/{contest_id}/results/publish",
+            headers=headers,
+            json={"score_run_ids": [candidate["score_run_id"]]},
+        )
+        assert published.status_code == 201, published.text
+        standings = TestClient(app).get(f"/api/v1/public/contests/{contest_slug}/results")
+        assert standings.status_code == 200, standings.text
+        assert len(standings.json()["items"]) == 1
+        public_entry = standings.json()["items"][0]
+        assert public_entry["score"] == expected["final_score"]
+        explanation = public_entry["explanation"]
+        assert explanation["points"] == expected["qso_points"]
+        assert explanation["multiplier_counts"] == expected["multiplier_counts"]
+        assert explanation["bonus_counts"] == expected["bonus_counts"]
+        assert explanation["penalty_points"] == expected["penalty_points"]
+        assert explanation["score"] == expected["final_score"]
+        for private_value in (
+            "EA7AAA",
+            "W1AW",
+            "VE3ABC",
+            "k1out@nomail.invalid",
+            "Private CQ WW Fixture Operator",
+        ):
+            assert private_value not in standings.text
+
+
+def test_rsgb_2026_sponsor_fixture_scores_distance_and_session_resets_end_to_end(result_db):
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/rsgb-vhf-2026-distance-sessions-cabrillo.json"
+    )
+    fixture = json.loads(fixture_path.read_text())
+    expected = fixture["expected"]
+    ruleset_payload = fixture["ruleset"]
+    factory, _existing_contest_id, manager_id, _outsider_id = result_db
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    contest_slug = "rsgb-vhf-2026-parity"
+    contest_start = now - timedelta(minutes=80)
+
+    with factory.begin() as session:
+        for model, key, values in (
+            (
+                BandCatalogItem,
+                "2m",
+                {
+                    "label": "2 m",
+                    "description": "2 m VHF band",
+                    "frequency_range": "144 MHz",
+                    "sort_order": 20,
+                    "contest_free": False,
+                },
+            ),
+            (ModeCatalogItem, "CW", {"label": "CW", "description": "Morse code"}),
+        ):
+            item = session.scalar(select(model).where(model.key == key))
+            if item is None:
+                session.add(model(key=key, is_active=True, **values))
+            else:
+                item.is_active = True
+        session.flush()
+
+    manager = manager_client(factory, manager_id)
+    headers = {"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")}
+    validation = TestClient(app).post("/api/v1/rulesets/validate", json=ruleset_payload)
+    assert validation.status_code == 200, validation.text
+
+    with factory.begin() as session:
+        ruleset = save_ruleset_version(
+            session,
+            validate_ruleset(ruleset_payload),
+            created_by_user_id=manager_id,
+        ).version
+        contest = Contest(
+            owner_user_id=manager_id,
+            ruleset_version_id=ruleset.id,
+            name="RSGB VHF distance and sessions 2026 fixture",
+            slug=contest_slug,
+            starts_at=contest_start,
+            ends_at=now + timedelta(minutes=30),
+            log_submission_cutoff_at=now + timedelta(days=10),
+            status=ContestStatus.OPEN,
+        )
+        session.add(contest)
+        session.flush()
+        contest_id = contest.id
+
+    with TestClient(app) as client:
+        lines = [
+            "START-OF-LOG: 3.0",
+            f"CONTEST: {contest_slug}",
+            f"CALLSIGN: {fixture['entrant']['callsign']}",
+            "EMAIL: g0out@nomail.invalid",
+            "NAME: Private Synthetic Operator",
+            f"GRID-LOCATOR: {fixture['entrant']['grid']}",
+            f"CATEGORY-OPERATOR: {fixture['entrant']['category_operator']}",
+        ]
+        for contact, offset_minutes in zip(fixture["contacts"], (10, 70), strict=True):
+            timestamp = contest_start + timedelta(minutes=offset_minutes)
+            lines.append(
+                f"QSO: 144050 CW {timestamp:%Y-%m-%d} {timestamp:%H%M} "
+                f"{fixture['entrant']['callsign']} 599 {contact['sent_serial']:03} "
+                f"{contact['worked_callsign']} 599 {contact['received_grid']}"
+            )
+        lines.append("END-OF-LOG:")
+        uploaded = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "rsgb-distance-session-fixture-2026"},
+            files={
+                "file": (
+                    "rsgb-vhf-2026.log",
+                    ("\n".join(lines) + "\n").encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.json()["summary"]["accepted_qsos"] == expected["credited_qsos"]
+
+        closed = manager.put(
+            f"/api/v1/contests/{contest_id}/status",
+            headers=headers,
+            json={"status": "closed"},
+        )
+        assert closed.status_code == 200, closed.text
+        generated = manager.post(
+            f"/api/v1/contests/{contest_id}/results/generate",
+            headers={**headers, "Idempotency-Key": "rsgb-fixture-generate-2026"},
+            json={"reason": "Sponsor-linked RSGB distance and session fixture"},
+        )
+        assert generated.status_code == 202, generated.text
+        review = manager.get(f"/api/v1/contests/{contest_id}/results/review")
+        assert review.status_code == 200, review.text
+        candidate = next(
+            item
+            for item in review.json()["items"]
+            if item["callsign"] == fixture["entrant"]["callsign"]
+        )
+        assert candidate["included_by_default"] is True
+        assert candidate["score"] == expected["final_score"], candidate
+
+        with factory() as session:
+            run = session.get(ScoreRun, candidate["score_run_id"])
+            assert run is not None
+            assert run.points == expected["qso_points"]
+            assert run.final_score == expected["final_score"]
+            qso_scores = list(
+                session.scalars(
+                    select(QsoScore)
+                    .where(QsoScore.score_run_id == run.id)
+                    .order_by(QsoScore.qso_id)
+                )
+            )
+            assert [row.points for row in qso_scores] == [
+                contact["expected_points"] for contact in fixture["contacts"]
+            ]
+            assert [row.session_number for row in qso_scores] == [
+                contact["expected_session"] for contact in fixture["contacts"]
+            ]
+            assert all(row.status == "credited" for row in qso_scores)
+
+        published = manager.post(
+            f"/api/v1/contests/{contest_id}/results/publish",
+            headers=headers,
+            json={
+                "score_run_ids": [candidate["score_run_id"]],
+                "reason": "Sponsor-linked RSGB distance and session fixture",
+            },
+        )
+        assert published.status_code == 201, published.text
+        public = TestClient(app)
+        standings = public.get(f"/api/v1/public/contests/{contest_slug}/results")
+        assert standings.status_code == 200, standings.text
+        public_entry = standings.json()["items"][0]
+        assert public_entry["explanation"]["points"] == expected["qso_points"]
+        assert public_entry["explanation"]["score"] == expected["final_score"]
+        assert "G1GRID" not in standings.text
+        assert "g0out@nomail.invalid" not in standings.text
+        assert "Private Synthetic Operator" not in standings.text
+
+
+def test_sarl_zs2_2026_sponsor_fixture_scores_adif_exchange_end_to_end(result_db):
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/sarl-zs2-qso-party-2026-adif.json"
+    )
+    fixture = json.loads(fixture_path.read_text())
+    expected = fixture["expected"]
+    ruleset_payload = fixture["ruleset"]
+    factory, _existing_contest_id, manager_id, _outsider_id = result_db
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    contest_slug = "sarl-zs2-2026-adif-parity"
+
+    with factory.begin() as session:
+        for model, key, values in (
+            (
+                BandCatalogItem,
+                "40m",
+                {
+                    "label": "40 m",
+                    "description": "40 m HF band",
+                    "frequency_range": "7 MHz",
+                    "sort_order": 1,
+                    "contest_free": False,
+                },
+            ),
+            (ModeCatalogItem, "CW", {"label": "CW", "description": "Morse code"}),
+        ):
+            item = session.scalar(select(model).where(model.key == key))
+            if item is None:
+                session.add(model(key=key, is_active=True, **values))
+            else:
+                item.is_active = True
+        session.flush()
+
+    manager = manager_client(factory, manager_id)
+    headers = {"X-CSRF-Token": manager.cookies.get("contestmaster_csrf")}
+    validation = TestClient(app).post("/api/v1/rulesets/validate", json=ruleset_payload)
+    assert validation.status_code == 200, validation.text
+
+    with factory.begin() as session:
+        ruleset = save_ruleset_version(
+            session,
+            validate_ruleset(ruleset_payload),
+            created_by_user_id=manager_id,
+        ).version
+        contest = Contest(
+            owner_user_id=manager_id,
+            ruleset_version_id=ruleset.id,
+            name="SARL ZS2 QSO Party 2026 ADIF fixture",
+            slug=contest_slug,
+            starts_at=now - timedelta(minutes=10),
+            ends_at=now + timedelta(minutes=30),
+            log_submission_cutoff_at=now + timedelta(days=10),
+            status=ContestStatus.OPEN,
+        )
+        session.add(contest)
+        session.flush()
+        contest_id = contest.id
+
+    with TestClient(app) as client:
+        log_lines = [
+            "<ADIF_VER:5>3.1.4",
+            f"<STATION_CALLSIGN:{len(fixture['entrant']['callsign'])}>{fixture['entrant']['callsign']}",
+            f"<CATEGORY-OPERATOR:{len(fixture['entrant']['category_operator'])}>{fixture['entrant']['category_operator']}",
+            "<EOH>",
+        ]
+        for index, contact in enumerate(fixture["contacts"], start=1):
+            timestamp = now + timedelta(minutes=index)
+            qso_fields = (
+                ("QSO_DATE", timestamp.strftime("%Y%m%d")),
+                ("TIME_ON", timestamp.strftime("%H%M%S")),
+                ("CALL", contact["worked_callsign"]),
+                ("BAND", "40M"),
+                ("MODE", "CW"),
+                ("RST_SENT", "599"),
+                ("RST_RCVD", "599"),
+                ("STX_STRING", contact["sent_area"]),
+                ("SRX_STRING", contact["received_area"]),
+            )
+            log_lines.append(
+                "".join(f"<{name}:{len(value)}>{value}" for name, value in qso_fields) + "<EOR>"
+            )
+        log_content = "\n".join(log_lines) + "\n"
+        uploaded = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "sarl-zs2-adif-fixture-2026"},
+            files={
+                "file": (
+                    "K1OUT-SARL-ZS2-QSO-Party.adi",
+                    log_content.encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        assert uploaded.json()["summary"]["accepted_qsos"] == expected["credited_qsos"]
+
+        closed = manager.put(
+            f"/api/v1/contests/{contest_id}/status",
+            headers=headers,
+            json={"status": "closed"},
+        )
+        assert closed.status_code == 200, closed.text
+        generated = manager.post(
+            f"/api/v1/contests/{contest_id}/results/generate",
+            headers={**headers, "Idempotency-Key": "sarl-adif-fixture-generate-2026"},
+            json={"reason": "Sponsor-linked SARL ADIF scoring fixture"},
+        )
+        assert generated.status_code == 202, generated.text
+        review = manager.get(f"/api/v1/contests/{contest_id}/results/review")
+        assert review.status_code == 200, review.text
+        candidate = next(
+            item
+            for item in review.json()["items"]
+            if item["callsign"] == fixture["entrant"]["callsign"]
+        )
+        assert candidate["included_by_default"] is True
+        assert candidate["score"] == expected["final_score"]
+
+        with factory() as session:
+            run = session.get(ScoreRun, candidate["score_run_id"])
+            assert run is not None
+            assert run.points == expected["qso_points"]
+            assert run.multiplier_count == 0
+            assert run.bonus_points == expected["bonus_points"]
+            assert run.penalty_points == expected["penalty_points"]
+            qso_scores = list(
+                session.scalars(
+                    select(QsoScore)
+                    .where(QsoScore.score_run_id == run.id)
+                    .order_by(QsoScore.qso_id)
+                )
+            )
+            assert [row.points for row in qso_scores] == [
+                contact["qso_points"] for contact in fixture["contacts"]
+            ]
+
+        published = manager.post(
+            f"/api/v1/contests/{contest_id}/results/publish",
+            headers=headers,
+            json={
+                "score_run_ids": [candidate["score_run_id"]],
+                "reason": "Sponsor-linked SARL ADIF scoring fixture",
+            },
+        )
+        assert published.status_code == 201, published.text
+        standings = TestClient(app).get(f"/api/v1/public/contests/{contest_slug}/results")
+        assert standings.status_code == 200, standings.text
+        assert standings.json()["items"][0]["explanation"]["score"] == expected["final_score"]
+        assert "ZS2PE" not in standings.text
 
 
 def test_unpublishing_hides_snapshot_without_deleting_it_and_foreign_result_id_is_private(

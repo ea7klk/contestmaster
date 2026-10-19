@@ -275,8 +275,8 @@
         "rule": {
           "kind": "bonus",
           "basis": "per_entry",
-          "points": 250,
-          "cap": 250,
+          "points": 100000,
+          "cap": 100000,
           "minimum_eligible_qsos": 10
         },
         "when": {
@@ -343,13 +343,42 @@
         }
       },
       {
+        "id": "scoring-session-resets",
+        "rule": {
+          "kind": "session_resets",
+          "period_minutes": 60,
+          "serial_start_value": 1,
+          "reset_duplicates": true,
+          "reset_multipliers": true,
+          "reset_serials": false
+        }
+      },
+      {
         "id": "score-formula",
         "rule": {
           "kind": "score_formula",
           "start": {
-            "variable": "points_total"
+            "variable": "multiplier.worked-call-multiplier"
           },
           "steps": [
+            {
+              "operator": "add",
+              "operand": {
+                "variable": "multiplier.received-serial-multiplier"
+              }
+            },
+            {
+              "operator": "add",
+              "operand": {
+                "variable": "multiplier.mode-band-multiplier"
+              }
+            },
+            {
+              "operator": "multiply",
+              "operand": {
+                "variable": "points_total"
+              }
+            },
             {
               "operator": "add",
               "operand": {
@@ -360,12 +389,6 @@
               "operator": "subtract",
               "operand": {
                 "variable": "penalty_points"
-              }
-            },
-            {
-              "operator": "multiply",
-              "operand": {
-                "variable": "multiplier_count"
               }
             }
           ]

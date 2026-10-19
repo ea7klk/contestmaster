@@ -1,0 +1,208 @@
+{
+  "sponsor": "South African Radio League; event sponsored by Port Elizabeth Amateur Radio Society",
+  "edition": "ZS2 QSO Party 2026; outside-entrant profile",
+  "rules_url": "https://mysarl.org.za/wp-content/uploads/2025/11/2026-SARL-Contest-Manual-Version-1.0-2025-11-12.pdf",
+  "accepted_format": "adif",
+  "ruleset_key": "sarl-zs2-qso-party-2026-adif-conformance",
+  "ruleset_version": "2026-outside-fixture-1",
+  "entrant": {
+    "callsign": "K1OUT",
+    "category_operator": "SINGLE-OP",
+    "area": "outside ZS2"
+  },
+  "ruleset": {
+    "schema_version": 2,
+    "ruleset_key": "sarl-zs2-qso-party-2026-adif-conformance",
+    "version": "2026-outside-fixture-1",
+    "source_url": "https://mysarl.org.za/wp-content/uploads/2025/11/2026-SARL-Contest-Manual-Version-1.0-2025-11-12.pdf",
+    "source_edition": "2026 SARL Contest Manual, ZS2 QSO Party; simplified outside-entrant profile",
+    "rules": [
+      {
+        "id": "submission",
+        "rule": {
+          "kind": "submission",
+          "late_policy": "checklog"
+        }
+      },
+      {
+        "id": "categories",
+        "rule": {
+          "kind": "categories",
+          "dimensions": [
+            {
+              "key": "operator",
+              "label": "Operator",
+              "choices": [
+                {
+                  "key": "single",
+                  "label": "Single operator"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "exchange",
+        "rule": {
+          "kind": "exchange",
+          "fields": [
+            {
+              "key": "area",
+              "label": "Province or country abbreviation",
+              "value_type": "enum",
+              "direction": "both",
+              "required": true,
+              "choices": [
+                "K1",
+                "ZS1",
+                "ZS2"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "eligibility",
+        "rule": {
+          "kind": "eligibility",
+          "allowed_bands": [
+            "40m"
+          ],
+          "allowed_modes": [
+            "CW"
+          ]
+        }
+      },
+      {
+        "id": "duplicates",
+        "rule": {
+          "kind": "duplicates",
+          "scope": [
+            "worked_callsign",
+            "band"
+          ],
+          "effect": "not_credited"
+        }
+      },
+      {
+        "id": "club-station-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 5
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.worked_callsign",
+          "operator": "eq",
+          "value": "ZS2PE"
+        }
+      },
+      {
+        "id": "zs2-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 2
+        },
+        "when": {
+          "kind": "all",
+          "conditions": [
+            {
+              "kind": "compare",
+              "fact": "exchange.received.area",
+              "operator": "eq",
+              "value": "ZS2"
+            },
+            {
+              "kind": "compare",
+              "fact": "qso.worked_callsign",
+              "operator": "ne",
+              "value": "ZS2PE"
+            }
+          ]
+        }
+      },
+      {
+        "id": "other-area-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 1
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.received.area",
+          "operator": "eq",
+          "value": "ZS1"
+        }
+      },
+      {
+        "id": "score-formula",
+        "rule": {
+          "kind": "score_formula",
+          "start": {
+            "variable": "points_total"
+          }
+        }
+      },
+      {
+        "id": "format-mapping",
+        "rule": {
+          "kind": "format_mapping",
+          "format": "adif",
+          "category_mappings": [
+            {
+              "external_field": "CATEGORY-OPERATOR",
+              "external_value": "SINGLE-OP",
+              "category_values": {
+                "operator": "single"
+              }
+            }
+          ],
+          "adif_exchange_fields": [
+            {
+              "field_key": "area",
+              "sent_tag": "STX_STRING",
+              "received_tag": "SRX_STRING"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "contacts": [
+    {
+      "worked_callsign": "ZS2PE",
+      "sent_area": "K1",
+      "received_area": "ZS2",
+      "qso_points": 5
+    },
+    {
+      "worked_callsign": "ZS2ABC",
+      "sent_area": "K1",
+      "received_area": "ZS2",
+      "qso_points": 2
+    },
+    {
+      "worked_callsign": "ZS1ABC",
+      "sent_area": "K1",
+      "received_area": "ZS1",
+      "qso_points": 1
+    }
+  ],
+  "expected": {
+    "credited_qsos": 3,
+    "qso_points": 8,
+    "multiplier_counts": {},
+    "bonus_counts": {},
+    "bonus_points": 0,
+    "penalty_points": 0,
+    "final_score": 8
+  },
+  "notes": [
+    "The SARL 2026 manual accepts ADIF logs for the ZS2 QSO Party and identifies ZS2 club contacts as 5 points, ZS2 contacts to other stations as 2 points, and contacts with other ZS call areas or Southern African countries as 1 point for other stations.",
+    "This is a small outside-entrant scoring profile. It deliberately does not claim to represent local ZS2 entrants, all Southern African country exchanges, checklog policy, or the required accompanying summary sheet."
+  ]
+}
