@@ -10,7 +10,7 @@ Contestmaster's original source code is licensed under the GNU Affero General Pu
 - Node.js 24 (see `.nvmrc`) and npm. [nvm](https://github.com/nvm-sh/nvm) is the recommended per-user Node version manager. On macOS/Linux, install nvm using its official installer, then run `nvm install` and `nvm use` in the repository. A direct Node.js 24 installation is also supported.
 - Git and Make.
 
-Project Python dependencies are installed into the repository's `.venv` using the committed `uv.lock`; frontend dependencies are installed from `frontend/package-lock.json` using `npm ci`. Do not install project packages globally.
+Project Python dependencies are installed into the repository's `.venv` using the committed `uv.lock`; frontend dependencies are installed from `frontend/package-lock.json` using `npm ci`. Do not install project packages globally. The tracked `frontend/.npmrc` approves only the locked `fsevents@2.3.3` install script. `fsevents` is an optional macOS filesystem-watcher dependency whose install step builds its native binding; the approval lives in `.npmrc` so it survives package manifest regeneration. Keep the approval version-pinned and review it if the lockfile updates fsevents. Check for unapproved install scripts from `frontend/` with `npm install-scripts ls`.
 
 ## Bootstrap and run
 

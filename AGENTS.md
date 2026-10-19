@@ -52,6 +52,7 @@ Build a universal engine for amateur radio contest operation. Keep contest-speci
 - Create and use the project-local Python virtual environment (`.venv`) managed by the checked-in `uv.lock`; do not install application or development dependencies globally. Use the Python version recorded in `.python-version`.
 - Developers may install local toolchain managers required for project work (for example, `uv` in the user-local bin directory and nvm under the user's home directory); do not require a globally installed project toolchain.
 - Use the Node version recorded in `.nvmrc`. nvm is the recommended per-user Node version manager; document a direct Node.js installation as an alternative.
+- Keep reviewed frontend npm install-script approvals in tracked `frontend/.npmrc`, version-pin approvals when supported, and do not rely only on `package.json` approval metadata. Do not disable lifecycle checks globally or approve all dependency scripts to silence a warning.
 - Keep HTTP handlers thin. Put domain validation and scoring in reusable services, and return consistent error responses with useful field-level details.
 - Enforce request-body size limits even when a client omits `Content-Length`; test both declared and streamed/chunked oversized request bodies.
 - Publish and maintain an OpenAPI schema. Use explicit API versioning for breaking changes; paginate collection endpoints and define stable sorting and filtering behavior.
