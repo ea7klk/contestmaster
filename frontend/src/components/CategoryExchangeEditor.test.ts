@@ -92,6 +92,43 @@ describe('CategoryExchangeEditor', () => {
     await expectAccessible(wrapper.element)
   })
 
+  it('derives a readable custom dimension label from its stable key', async () => {
+    const wrapper = mount(CategoryExchangeEditor, {
+      props: {
+        kind: 'categories',
+        modelValue: {
+          kind: 'categories',
+          dimensions: [
+            {
+              key: 'custom-class',
+              label: 'Old label',
+              required: true,
+              choices: [{ key: 'a', label: 'Class A' }],
+            },
+          ],
+        },
+      },
+    })
+
+    const customKey = wrapper.get('input')
+    await customKey.setValue('operator-class')
+    const updated = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as {
+      dimensions: Array<Record<string, unknown>>
+    }
+    expect(updated.dimensions[0]).toMatchObject({
+      key: 'operator-class',
+      label: 'Operator Class',
+      required: true,
+      choices: [{ key: 'a', label: 'Class A' }],
+    })
+    await wrapper.setProps({ modelValue: updated })
+
+    expect(wrapper.get('.dimension-label-field output').text()).toBe(
+      'Operator Class',
+    )
+    expect(wrapper.find('.dimension-label-field input').exists()).toBe(false)
+  })
+
   it('selects preset values with display labels and keeps keys in the existing choices payload', async () => {
     const wrapper = mount(CategoryExchangeEditor, {
       props: {

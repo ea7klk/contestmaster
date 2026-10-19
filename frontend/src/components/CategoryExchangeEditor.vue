@@ -104,6 +104,34 @@ const rows = computed<Row[]>(() =>
 function updateRows(next: Row[]) {
   emit('update:modelValue', { ...props.modelValue, [fieldsName.value]: next })
 }
+function dimensionLabelForKey(rawKey: string): string {
+  const key = rawKey.trim()
+  if (!key) return ''
+  const preset = categoryDimensions.find(([presetKey]) => presetKey === key)
+  if (preset) return preset[1]
+  const acronyms: Record<string, string> = {
+    cq: 'CQ',
+    dx: 'DX',
+    ft4: 'FT4',
+    ft8: 'FT8',
+    iota: 'IOTA',
+    itu: 'ITU',
+    qrp: 'QRP',
+    rtty: 'RTTY',
+    rst: 'RST',
+    ssb: 'SSB',
+    yl: 'YL',
+  }
+  return key
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map(
+      (word) =>
+        acronyms[word.toLowerCase()] ??
+        `${word[0]?.toUpperCase()}${word.slice(1)}`,
+    )
+    .join(' ')
+}
 function add() {
   updateRows([
     ...rows.value,
@@ -136,8 +164,18 @@ function remove(index: number) {
   updateRows(rows.value.filter((_row, i) => i !== index))
 }
 function update(index: number, values: Row) {
+  const current = rows.value[index] ?? {}
+  const normalizedValues =
+    props.kind === 'categories'
+      ? {
+          ...values,
+          label: dimensionLabelForKey(String(values.key ?? current.key ?? '')),
+        }
+      : values
   updateRows(
-    rows.value.map((row, i) => (i === index ? { ...row, ...values } : row)),
+    rows.value.map((row, i) =>
+      i === index ? { ...row, ...normalizedValues } : row,
+    ),
   )
 }
 function choices(row: Row) {
@@ -315,34 +353,12 @@ function setChoice(index: number, choiceIndex: number, key: string) {
             )
           }}</span>
         </label>
-        <label
-          >{{ $tr('Dimension label')
-          }}<select
-            v-if="categoryDimensions.some(([key]) => key === row.key)"
-            :value="String(row.label ?? '')"
-            @change="
-              update(index, {
-                label: ($event.target as HTMLSelectElement).value,
-              })
-            "
-          >
-            <option
-              v-for="[key, label] in categoryDimensions"
-              v-show="key === row.key"
-              :key="key"
-              :value="label"
-            >
-              {{ $tr(label) }}
-            </option></select
-          ><input
-            v-else
-            :value="String(row.label ?? '')"
-            @input="
-              update(index, {
-                label: ($event.target as HTMLInputElement).value,
-              })
-            "
-        /></label>
+        <label class="dimension-label-field">
+          {{ $tr('Dimension label') }}
+          <output>{{
+            $tr(dimensionLabelForKey(String(row.key ?? '')))
+          }}</output>
+        </label>
         <label
           ><input
             type="checkbox"
@@ -845,6 +861,13 @@ function setChoice(index: number, choiceIndex: number, key: string) {
   display: grid;
   min-width: 0;
   gap: 0.3rem;
+}
+.dimension-label-field output {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.35rem;
+  background: var(--color-surface-muted);
 }
 .controlled-row > .dimension-guidance,
 .controlled-row > .category-description,
