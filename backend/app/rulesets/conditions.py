@@ -38,20 +38,32 @@ def _resolve_fact(context: Mapping[str, Any], path: str) -> Any:
 
 
 def evaluate_condition(condition: Condition, context: Mapping[str, Any]) -> bool:
-    """Evaluate a typed predicate against plain mapping data."""
+    """Return true only when the typed predicate is known to match."""
+    return evaluate_condition_result(condition, context) is True
+
+
+def evaluate_condition_result(condition: Condition, context: Mapping[str, Any]) -> bool | None:
+    """Evaluate a predicate with None representing missing/ambiguous fact data."""
     if isinstance(condition, AllCondition):
-        return all(evaluate_condition(child, context) for child in condition.conditions)
+        results = [evaluate_condition_result(child, context) for child in condition.conditions]
+        if False in results:
+            return False
+        return None if None in results else True
     if isinstance(condition, AnyCondition):
-        return any(evaluate_condition(child, context) for child in condition.conditions)
+        results = [evaluate_condition_result(child, context) for child in condition.conditions]
+        if True in results:
+            return True
+        return None if None in results else False
     if isinstance(condition, NotCondition):
-        return not evaluate_condition(condition.condition, context)
+        result = evaluate_condition_result(condition.condition, context)
+        return None if result is None else not result
 
     actual = _resolve_fact(context, condition.fact)
     expected = condition.value
     if condition.operator == "exists":
         return actual is not _MISSING and actual is not None
-    if actual is _MISSING:
-        return False
+    if actual is _MISSING or actual is None:
+        return None
     if condition.operator == "eq":
         return type(actual) is type(expected) and actual == expected
     if condition.operator == "ne":
@@ -85,3 +97,13 @@ def evaluate_condition(condition: Condition, context: Mapping[str, Any]) -> bool
     except TypeError:
         return False
     return False
+
+
+def condition_has_missing_data(condition: Condition, context: Mapping[str, Any]) -> bool:
+    """Identify whether a failed condition references a fact that is absent or unresolved."""
+    if isinstance(condition, (AllCondition, AnyCondition)):
+        return any(condition_has_missing_data(child, context) for child in condition.conditions)
+    if isinstance(condition, NotCondition):
+        return condition_has_missing_data(condition.condition, context)
+    actual = _resolve_fact(context, condition.fact)
+    return actual is _MISSING or actual is None or actual == ""

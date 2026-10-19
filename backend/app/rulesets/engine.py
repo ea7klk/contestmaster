@@ -10,7 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from backend.app.rulesets.call_signs import callsign_suffix, wpx_prefix_for_callsign
 from backend.app.rulesets.checks import validate_categories, validate_exchange
-from backend.app.rulesets.conditions import evaluate_condition
+from backend.app.rulesets.conditions import (
+    condition_has_missing_data,
+    evaluate_condition,
+    evaluate_condition_result,
+)
 from backend.app.rulesets.grid import distance_kilometers, normalize_locator
 from backend.app.rulesets.operating import evaluate_operating_constraints
 from backend.app.rulesets.schema import (
@@ -366,14 +370,35 @@ def score_entry(
 
         for configured_rule in eligibility_rules:
             rule = configured_rule.rule
-            if not isinstance(rule, EligibilityRule) or not _condition_applies(
-                configured_rule, context
-            ):
+            if not isinstance(rule, EligibilityRule):
                 continue
+            if configured_rule.when is not None:
+                activation = evaluate_condition_result(configured_rule.when, context)
+                if activation is False:
+                    continue
+                if activation is None:
+                    missing_action = rule.missing_fact_action
+                    if status == "credited":
+                        status = (
+                            "not_credited" if missing_action == "not_credited" else "needs_review"
+                        )
+                    reasons.extend(
+                        [
+                            "eligibility_rule_condition_unknown",
+                            "eligibility_condition_fact_missing",
+                        ]
+                    )
+                    continue
             invalid = False
-            if rule.eligible_if is not None and not evaluate_condition(rule.eligible_if, context):
-                invalid = True
-                reasons.append("eligibility_condition_failed")
+            missing_condition_fact = False
+            if rule.eligible_if is not None:
+                condition_result = evaluate_condition_result(rule.eligible_if, context)
+                if condition_result is not True:
+                    invalid = True
+                    missing_condition_fact = condition_has_missing_data(rule.eligible_if, context)
+                    reasons.append("eligibility_condition_failed")
+                    if missing_condition_fact:
+                        reasons.append("eligibility_condition_fact_missing")
             if rule.reject_out_of_period and (instant < start or instant >= end):
                 invalid = True
             if rule.allowed_bands and (qso.band or "").upper() not in {
@@ -406,7 +431,8 @@ def score_entry(
                         invalid = True
                         reasons.extend(issue.code for issue in check.issues)
             if invalid and status == "credited":
-                status = "not_credited" if rule.action == "not_credited" else "needs_review"
+                action = rule.missing_fact_action if missing_condition_fact else rule.action
+                status = "not_credited" if action == "not_credited" else "needs_review"
                 reasons.append("eligibility_rule_failed")
 
         eligible_before_duplicates = status == "credited"

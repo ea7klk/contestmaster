@@ -8,7 +8,11 @@ from pydantic import TypeAdapter, ValidationError
 from backend.app.main import app
 from backend.app.models import RulesetVersion
 from backend.app.rulesets.checks import validate_categories, validate_exchange
-from backend.app.rulesets.conditions import evaluate_condition
+from backend.app.rulesets.conditions import (
+    condition_has_missing_data,
+    evaluate_condition,
+    evaluate_condition_result,
+)
 from backend.app.rulesets.engine import RuleExecutionError, ScoringEntry, score_entry
 from backend.app.rulesets.operating import evaluate_operating_constraints
 from backend.app.rulesets.persistence import load_ruleset_version, save_ruleset_version
@@ -699,6 +703,117 @@ def test_condition_groups_are_typed_and_evaluated_without_code_execution():
     assert not evaluate_condition(
         condition, {"qso": {"band": "40m"}, "entry": {"categories": {"operator": "single"}}}
     )
+
+
+def test_unknown_condition_facts_remain_unknown_through_negation():
+    condition = TypeAdapter(Condition).validate_python(
+        {
+            "kind": "not",
+            "condition": {
+                "kind": "compare",
+                "fact": "qso.entity",
+                "operator": "eq",
+                "value": "AZ",
+            },
+        }
+    )
+    context = {"qso": {"entity": None}}
+
+    assert evaluate_condition_result(condition, context) is None
+    assert not evaluate_condition(condition, context)
+    assert condition_has_missing_data(condition, context)
+
+
+@pytest.mark.parametrize(
+    ("station_entity", "worked_entity", "expected_status"),
+    [
+        ("AZ", "K", "credited"),
+        ("K", "AZ", "credited"),
+        ("K", "K", "not_credited"),
+        (None, "AZ", "needs_review"),
+        ("K", None, "needs_review"),
+    ],
+)
+def test_regional_workability_uses_entry_and_qso_facts_and_reviews_unknowns(
+    station_entity, worked_entity, expected_status
+):
+    payload = valid_payload()
+    eligibility = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility["rule"].update(
+        {
+            "action": "not_credited",
+            "missing_fact_action": "needs_review",
+            "eligible_if": {
+                "kind": "all",
+                "conditions": [
+                    {
+                        "kind": "compare",
+                        "fact": "station.entity",
+                        "operator": "exists",
+                    },
+                    {
+                        "kind": "any",
+                        "conditions": [
+                            {
+                                "kind": "compare",
+                                "fact": "station.entity",
+                                "operator": "eq",
+                                "value": "AZ",
+                            },
+                            {
+                                "kind": "compare",
+                                "fact": "qso.entity",
+                                "operator": "eq",
+                                "value": "AZ",
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
+    entry = sample_entry().model_copy(
+        update={
+            "station_entity": station_entity,
+            "qsos": [sample_entry().qsos[0].model_copy(update={"entity": worked_entity})],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == expected_status
+    if expected_status == "needs_review":
+        assert "eligibility_condition_fact_missing" in result.qso_scores[0].reasons
+
+
+def test_eligibility_can_explicitly_withhold_unknown_region_without_review():
+    payload = valid_payload()
+    eligibility = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility["rule"].update(
+        {
+            "missing_fact_action": "not_credited",
+            "eligible_if": {
+                "kind": "compare",
+                "fact": "qso.entity",
+                "operator": "eq",
+                "value": "AZ",
+            },
+        }
+    )
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [sample_entry().qsos[0].model_copy(update={"entity": None})],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == "not_credited"
+    assert "eligibility_condition_fact_missing" in result.qso_scores[0].reasons
 
 
 def test_eligibility_predicates_apply_to_contact_geography_and_entry_facts():

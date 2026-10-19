@@ -251,6 +251,7 @@ class EligibilityRule(StrictModel):
     reject_out_of_period: bool = True
     reject_missing_required_exchange: bool = True
     action: Literal["not_credited", "needs_review"] = "not_credited"
+    missing_fact_action: Literal["not_credited", "needs_review"] = "needs_review"
 
 
 class DuplicateRule(StrictModel):
