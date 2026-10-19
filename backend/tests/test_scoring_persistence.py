@@ -38,6 +38,12 @@ from backend.app.models import (
     SystemRole,
     SystemUser,
 )
+from backend.app.models.enums import EntityType
+from backend.app.models.master_data import (
+    CallsignPrefix,
+    ContestEntity,
+    PrefixEntityAssignment,
+)
 from backend.app.rulesets.persistence import save_ruleset_version
 from backend.app.rulesets.validation import validate_ruleset
 from backend.tests.test_rulesets import valid_payload
@@ -418,9 +424,9 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
                 "id": "entity-multiplier",
                 "rule": {
                     "kind": "multiplier",
-                    "source_fact": "qso.entity",
+                    "source_fact": "station.continent",
                     "scope": "contest",
-                    "label": "Entity",
+                    "label": "Entrant continent",
                 },
             },
         ]
@@ -464,6 +470,27 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
         )
         session.add(pinned_version)
         session.flush()
+        pinned_entity = ContestEntity(
+            version_id=pinned_version.id,
+            namespace="cty",
+            authority_code="EA",
+            name="Pinned entity",
+            continent="EU",
+            entity_type=EntityType.CONTEST_ENTITY,
+        )
+        pinned_prefix = CallsignPrefix(
+            version_id=pinned_version.id, prefix_pattern="EA", allocation_type="prefix"
+        )
+        session.add_all([pinned_entity, pinned_prefix])
+        session.flush()
+        session.add(
+            PrefixEntityAssignment(
+                version_id=pinned_version.id,
+                prefix_id=pinned_prefix.id,
+                entity_id=pinned_entity.id,
+                source_note="pinned test allocation",
+            )
+        )
         newer_sync = MasterDataSyncRun(
             source_id=source.id,
             dataset_key="cty",
@@ -482,6 +509,27 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
         )
         session.add(active_version)
         session.flush()
+        active_entity = ContestEntity(
+            version_id=active_version.id,
+            namespace="cty",
+            authority_code="EA",
+            name="Current entity",
+            continent="NA",
+            entity_type=EntityType.CONTEST_ENTITY,
+        )
+        active_prefix = CallsignPrefix(
+            version_id=active_version.id, prefix_pattern="EA", allocation_type="prefix"
+        )
+        session.add_all([active_entity, active_prefix])
+        session.flush()
+        session.add(
+            PrefixEntityAssignment(
+                version_id=active_version.id,
+                prefix_id=active_prefix.id,
+                entity_id=active_entity.id,
+                source_note="later test allocation",
+            )
+        )
         session.add(
             ContestMasterDataVersion(
                 contest_id=contest_id,
@@ -495,6 +543,11 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
         assert run.status is ScoreRunStatus.COMPLETED
         assert run.master_data_snapshot == {"cty": pinned_version.id}
         assert run.master_data_version_id == pinned_version.id
+        first_qso_score = session.scalar(
+            select(QsoScore).where(QsoScore.score_run_id == run.id).order_by(QsoScore.qso_id)
+        )
+        assert first_qso_score is not None
+        assert any(key.endswith(":EU") for key in first_qso_score.multiplier_keys)
 
 
 def test_recalculation_after_upload_retries_the_same_trigger_once(scoring_db):

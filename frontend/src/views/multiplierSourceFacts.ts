@@ -24,6 +24,8 @@ export function availableMultiplierSourceFacts(
     { value: 'qso.entity', label: 'Worked station entity (CTY)' },
     { value: 'qso.cq_zone', label: 'CQ zone' },
     { value: 'qso.itu_zone', label: 'ITU zone' },
+    { value: 'station.entity', label: 'Entrant station entity (pinned CTY)' },
+    { value: 'station.continent', label: 'Entrant station continent (pinned CTY)' },
     { value: 'entry.id', label: 'Entry ID' },
     { value: 'entry.power_multiplier', label: 'Power multiplier' },
   ]

@@ -226,6 +226,9 @@ def _cross_reference_errors(
                     }
                 )
             )
+            valid_station = (
+                len(parts) == 2 and parts[0] == "station" and parts[1] in {"entity", "continent"}
+            )
             valid_exchange = False
             if parts[0] == "exchange" and len(parts) == 2:
                 field = exchange_fields.get(parts[1])
@@ -237,7 +240,7 @@ def _cross_reference_errors(
             ):
                 field = exchange_fields.get(parts[2])
                 valid_exchange = field is not None and field.direction in {parts[1], "both"}
-            if not (valid_qso or valid_entry or valid_exchange):
+            if not (valid_qso or valid_entry or valid_station or valid_exchange):
                 errors.append(
                     {
                         "path": f"rules[{index}].source_fact",
@@ -429,6 +432,9 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
         "entity",
         "cq_zone",
         "itu_zone",
+        "same_entity",
+        "same_continent",
+        "different_continent",
         "exchange_sent",
         "exchange_received",
     }
@@ -438,7 +444,11 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
             parts = comparison.fact.split(".")
             valid = (
                 (len(parts) == 2 and parts[0] == "qso" and parts[1] in qso_fields)
-                or (len(parts) == 2 and parts[0] == "station" and parts[1] == "callsign")
+                or (
+                    len(parts) == 2
+                    and parts[0] == "station"
+                    and parts[1] in {"callsign", "entity", "continent"}
+                )
                 or (
                     len(parts) == 3
                     and parts[0] == "entry"

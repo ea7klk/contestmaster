@@ -152,6 +152,10 @@ def _scoring_inputs(
         and grid_header[0].strip()
         else None
     )
+    station_callsign = station.callsign_normalized or station.callsign_submitted
+    station_mapping = (
+        resolve_cty_callsign(station_callsign, cty_mappings) if cty_version_id else None
+    )
     qsos = list(
         session.scalars(select(Qso).where(Qso.entry_revision_id == revision.id).order_by(Qso.id))
     )
@@ -234,8 +238,10 @@ def _scoring_inputs(
         )
     entry_input = ScoringEntry(
         entry_id=entry.id,
-        station_callsign=station.callsign_normalized or station.callsign_submitted,
+        station_callsign=station_callsign,
         station_grid=station_grid,
+        station_entity=station_mapping.entity if station_mapping else None,
+        station_continent=station_mapping.continent if station_mapping else None,
         categories=entry.category_values,
         declarations=declarations,
         qsos=scoring_qsos,

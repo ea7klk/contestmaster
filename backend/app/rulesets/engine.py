@@ -80,6 +80,8 @@ class ScoringEntry(BaseModel):
     entry_id: int = Field(gt=0)
     station_callsign: str = Field(min_length=1, max_length=32)
     station_grid: str | None = Field(default=None, max_length=32)
+    station_entity: str | None = None
+    station_continent: str | None = None
     categories: dict[str, str] = Field(default_factory=dict)
     declarations: dict[str, Any] = Field(default_factory=dict)
     power_multiplier: StrictInt = Field(default=1, ge=1)
@@ -154,6 +156,16 @@ def _condition_applies(configured: ConfiguredRule, context: Mapping[str, Any]) -
 def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]:
     qso_data: dict[str, Any] = {}
     if qso is not None:
+        same_entity = (
+            entry.station_entity == qso.entity
+            if entry.station_entity is not None and qso.entity is not None
+            else None
+        )
+        same_continent = (
+            entry.station_continent == qso.continent
+            if entry.station_continent is not None and qso.continent is not None
+            else None
+        )
         qso_data = {
             "id": qso.qso_id,
             "occurred_at": qso.occurred_at.astimezone(UTC).isoformat(),
@@ -168,6 +180,9 @@ def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]
             "entity": qso.entity,
             "cq_zone": qso.cq_zone,
             "itu_zone": qso.itu_zone,
+            "same_entity": same_entity,
+            "same_continent": same_continent,
+            "different_continent": not same_continent if same_continent is not None else None,
             "exchange_sent": qso.sent_exchange,
             "exchange_received": qso.received_exchange,
         }
@@ -179,7 +194,12 @@ def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]
             "declarations": entry.declarations,
             "power_multiplier": entry.power_multiplier,
         },
-        "station": {"callsign": entry.station_callsign, "grid": entry.station_grid},
+        "station": {
+            "callsign": entry.station_callsign,
+            "grid": entry.station_grid,
+            "entity": entry.station_entity,
+            "continent": entry.station_continent,
+        },
         "contest": {},
         "exchange": {
             "sent": qso.sent_exchange if qso is not None else {},

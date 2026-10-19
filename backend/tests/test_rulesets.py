@@ -1114,6 +1114,128 @@ def test_every_matching_duplicate_rule_must_allow_multiplier_credit():
 
 
 @pytest.mark.parametrize(
+    ("station_continent", "expected_points"),
+    [("EU", 2), ("NA", 0), (None, 0)],
+)
+def test_station_geography_condition_is_explicit_and_missing_data_does_not_match(
+    station_continent, expected_points
+):
+    payload = valid_payload()
+    point_rule = next(item for item in payload["rules"] if item["id"] == "points")
+    point_rule["when"] = {
+        "kind": "compare",
+        "fact": "station.continent",
+        "operator": "eq",
+        "value": "EU",
+    }
+    entry = sample_entry().model_copy(update={"station_continent": station_continent})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.points_total == expected_points
+
+
+@pytest.mark.parametrize(
+    ("station_entity", "station_continent", "worked_entity", "worked_continent", "expected"),
+    [
+        ("EA", "EU", "EA", "EU", 2),
+        ("EA", "EU", "F", "EU", 0),
+        ("EA", "EU", "K", "NA", 0),
+        (None, "EU", "EA", "EU", 0),
+        ("EA", None, "K", "NA", 0),
+    ],
+)
+def test_relative_geography_predicates_compare_pinned_entry_and_worked_facts(
+    station_entity, station_continent, worked_entity, worked_continent, expected
+):
+    payload = valid_payload()
+    point_rule = next(item for item in payload["rules"] if item["id"] == "points")
+    point_rule["when"] = {
+        "kind": "compare",
+        "fact": "qso.same_entity",
+        "operator": "eq",
+        "value": True,
+    }
+    entry = sample_entry().model_copy(
+        update={
+            "station_entity": station_entity,
+            "station_continent": station_continent,
+            "qsos": [
+                sample_entry()
+                .qsos[0]
+                .model_copy(update={"entity": worked_entity, "continent": worked_continent})
+            ],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.points_total == expected
+
+
+@pytest.mark.parametrize(
+    ("fact", "station_continent", "worked_continent", "expected"),
+    [
+        ("qso.same_continent", "EU", "EU", 2),
+        ("qso.same_continent", "EU", "NA", 0),
+        ("qso.different_continent", "EU", "NA", 2),
+        ("qso.different_continent", "EU", "EU", 0),
+        ("qso.different_continent", None, "NA", 0),
+    ],
+)
+def test_relative_continent_predicates_handle_equal_different_and_unknown(
+    fact, station_continent, worked_continent, expected
+):
+    payload = valid_payload()
+    point_rule = next(item for item in payload["rules"] if item["id"] == "points")
+    point_rule["when"] = {
+        "kind": "compare",
+        "fact": fact,
+        "operator": "eq",
+        "value": True,
+    }
+    entry = sample_entry().model_copy(
+        update={
+            "station_continent": station_continent,
+            "qsos": [sample_entry().qsos[0].model_copy(update={"continent": worked_continent})],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.points_total == expected
+
+
+def test_station_geography_can_be_used_as_a_multiplier_source():
+    payload = valid_payload()
+    payload["rules"].append(
+        {
+            "id": "entrant-entity-multiplier",
+            "rule": {
+                "kind": "multiplier",
+                "source_fact": "station.entity",
+                "scope": "contest",
+                "label": "Entrant entity",
+            },
+        }
+    )
+    entry = sample_entry().model_copy(update={"station_entity": "EA"})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.multiplier_count == 2
+    assert "entrant-entity-multiplier:*:EA" in result.qso_scores[0].multiplier_keys
+
+
+@pytest.mark.parametrize(
     ("scope", "expected"),
     [
         ("contest", 2),

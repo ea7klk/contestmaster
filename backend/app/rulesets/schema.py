@@ -336,7 +336,7 @@ class MultiplierRule(StrictModel):
         StringConstraints(
             min_length=1,
             max_length=160,
-            pattern=r"^(qso|entry|exchange)(\.[a-zA-Z0-9_-]+)+$",
+            pattern=r"^(qso|entry|station|exchange)(\.[a-zA-Z0-9_-]+)+$",
         ),
     ]
     scope: Literal["contest", "band", "mode", "band_mode", "grid", "transmitter"]

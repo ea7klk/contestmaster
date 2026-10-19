@@ -29,6 +29,8 @@ describe('availableMultiplierSourceFacts', () => {
     const paths = facts.map((fact) => fact.value)
 
     expect(paths).toContain('qso.entity')
+    expect(paths).toContain('station.entity')
+    expect(paths).toContain('station.continent')
     expect(paths).toContain('qso.wpx_prefix')
     expect(paths).toContain('qso.callsign_suffix')
     expect(paths).toContain('entry.categories.power')

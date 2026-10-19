@@ -208,12 +208,17 @@ function updateNegated(condition: Record<string, unknown>) {
           >
         </label>
         <datalist :id="factsListId">
-          <option value="qso.band" />
-          <option value="qso.mode" />
-          <option value="qso.continent" />
-          <option value="qso.entity" />
-          <option value="qso.cq_zone" />
-          <option value="qso.itu_zone" />
+          <option value="qso.band" label="Worked band" />
+          <option value="qso.mode" label="Worked mode" />
+          <option value="qso.continent" label="Worked station continent (CTY)" />
+          <option value="qso.entity" label="Worked station entity (CTY)" />
+          <option value="qso.cq_zone" label="Worked station CQ zone" />
+          <option value="qso.itu_zone" label="Worked station ITU zone" />
+          <option value="qso.same_entity" label="Entrant and worked station are in same entity" />
+          <option value="qso.same_continent" label="Entrant and worked station are in same continent" />
+          <option value="qso.different_continent" label="Entrant and worked station are in different continents" />
+          <option value="station.entity" label="Entrant station entity (pinned CTY)" />
+          <option value="station.continent" label="Entrant station continent (pinned CTY)" />
           <option value="entry.categories.operator" />
           <option value="entry.declarations.license_class" />
           <option value="entry.declarations.membership" />
