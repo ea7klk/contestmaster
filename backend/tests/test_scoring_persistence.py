@@ -232,6 +232,131 @@ def test_received_grid_exchange_is_exposed_to_multiplier_scoring(scoring_db):
         assert all(score.status == "credited" for score in persisted_scores)
 
 
+def test_distance_scoring_uses_persisted_entrant_and_received_grid_values(scoring_db):
+    factory, _contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        contest = session.get(Contest, _contest_id)
+        current_ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        config = dict(current_ruleset.configuration)
+        config["version"] = "distance-scoring"
+        exchange_rule = next(item for item in config["rules"] if item["id"] == "exchange")
+        exchange_rule["rule"]["fields"].append(
+            {
+                "key": "grid",
+                "label": "Grid",
+                "value_type": "grid",
+                "direction": "received",
+                "required": False,
+            }
+        )
+        config["rules"].append(
+            {
+                "id": "distance",
+                "rule": {
+                    "kind": "distance_points",
+                    "grid_field": "grid",
+                    "precision": 6,
+                    "points_per_kilometer": 1,
+                    "same_grid_points": 1,
+                },
+            }
+        )
+        persisted = save_ruleset_version(session, validate_ruleset(config), created_by_user_id=None)
+        contest.ruleset_version_id = persisted.version.id
+        revision = session.get(EntryRevision, revision_id)
+        revision.import_metadata = {"headers": {"GRID-LOCATOR": ["IO91AA"]}}
+        station = session.scalar(select(Station).where(Station.entry_revision_id == revision_id))
+        station.grid_submitted = "IO91AA"
+        qsos = list(
+            session.scalars(
+                select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
+            )
+        )
+        for index, (qso, callsign, grid) in enumerate(
+            zip(qsos, ("F4ABC", "VE3XYZ"), ("IO91AA", "IO91AA"), strict=True)
+        ):
+            qso.callsign_submitted = callsign
+            qso.callsign_normalized = callsign
+            qso.exchange_received_submitted = {"raw": grid, "values": {"grid": grid}}
+            if index == 0:
+                qso.exchange_sent_submitted = {
+                    "values": {"grid": "IO91AB"},
+                }
+
+        run = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="distance-scoring-run",
+        )
+
+        assert run.status is ScoreRunStatus.COMPLETED
+        scores = list(
+            session.scalars(
+                select(QsoScore).where(QsoScore.score_run_id == run.id).order_by(QsoScore.qso_id)
+            )
+        )
+        assert run.points == 10
+        assert [score.points for score in scores] == [7, 3]
+        assert all(score.status == "credited" for score in scores)
+
+
+def test_distance_scoring_does_not_reuse_legacy_location_as_grid(scoring_db):
+    factory, _contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        contest = session.get(Contest, _contest_id)
+        current_ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        config = dict(current_ruleset.configuration)
+        config["version"] = "distance-legacy-location"
+        exchange_rule = next(item for item in config["rules"] if item["id"] == "exchange")
+        exchange_rule["rule"]["fields"].append(
+            {
+                "key": "grid",
+                "label": "Grid",
+                "value_type": "grid",
+                "direction": "received",
+                "required": False,
+            }
+        )
+        config["rules"].append(
+            {
+                "id": "distance",
+                "rule": {
+                    "kind": "distance_points",
+                    "grid_field": "grid",
+                    "precision": 6,
+                    "points_per_kilometer": 1,
+                    "same_grid_points": 1,
+                },
+            }
+        )
+        persisted = save_ruleset_version(session, validate_ruleset(config), created_by_user_id=None)
+        contest.ruleset_version_id = persisted.version.id
+        revision = session.get(EntryRevision, revision_id)
+        revision.import_metadata = {"headers": {"LOCATION": ["IO91AA"]}}
+        station = session.scalar(select(Station).where(Station.entry_revision_id == revision_id))
+        station.grid_submitted = "IO91AA"
+        for qso in session.scalars(select(Qso).where(Qso.entry_revision_id == revision_id)):
+            qso.exchange_received_submitted = {
+                "raw": "IO91AA",
+                "values": {"grid": "IO91AA"},
+            }
+
+        run = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="legacy-location-not-grid",
+        )
+
+        first_score = session.scalar(
+            select(QsoScore).where(QsoScore.score_run_id == run.id).order_by(QsoScore.qso_id)
+        )
+        assert first_score.status == "needs_review"
+        assert first_score.points == 0
+        assert "distance_grid_missing_or_invalid:distance" in first_score.explanation
+
+
 def test_manual_decision_is_append_only_and_supersedes_in_a_new_score_run(scoring_db):
     factory, _contest_id, entry_id, revision_id = scoring_db
     with factory.begin() as session:

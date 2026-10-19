@@ -16,7 +16,7 @@ Contestmaster already has typed rules for categories, exchange validation, eligi
 
 The comparison identified these functional gaps:
 
-1. **Distance scoring (G1):** no entrant/worked-station distance fact or distance scoring service.
+1. **Distance scoring (G1):** a first declarative distance-points rule now computes integer points per commenced kilometer from entrant/worked-station Maidenhead locators. Other sponsor-specific distance methods remain to be verified and added as needed.
 2. **Entrant-relative geography (G2):** no native same-country/same-continent comparison using the entrant’s resolved station location.
 3. **Independent multiplier totals (G3):** the final formula can use only the combined multiplier count, not each configured multiplier rule’s count independently.
 4. **Compound event-specific scoring (G4):** QSO Party patterns need reusable rules for conditional point matrices and distinct bonus-station/county counts, beyond a simple per-QSO bonus.

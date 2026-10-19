@@ -14,6 +14,7 @@ from backend.app.rulesets.schema import (
     CompareCondition,
     Condition,
     ConfiguredRule,
+    DistancePointsRule,
     NotCondition,
     RulesetDefinition,
     rule_types_in,
@@ -296,6 +297,30 @@ def _cross_reference_errors(
                         "message": (
                             "Transmitter multiplier scope requires Cabrillo as every accepted "
                             "log format and the transmitter QSO column."
+                        ),
+                    }
+                )
+        elif isinstance(rule, DistancePointsRule):
+            grid_field = exchange_fields.get(rule.grid_field)
+            if grid_field is None:
+                errors.append(
+                    {
+                        "path": f"rules[{index}].grid_field",
+                        "message": (
+                            "Distance points reference an undefined received grid exchange field."
+                        ),
+                    }
+                )
+            elif grid_field.value_type != "grid" or grid_field.direction not in {
+                "received",
+                "both",
+            }:
+                errors.append(
+                    {
+                        "path": f"rules[{index}].grid_field",
+                        "message": (
+                            "Distance points require a received exchange field "
+                            "with grid value type."
                         ),
                     }
                 )

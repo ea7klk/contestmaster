@@ -62,6 +62,11 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
             )
         elif rule.kind == "points":
             summary = f"Integer points from {rule.fact}"
+        elif rule.kind == "distance_points":
+            summary = (
+                f"{rule.points_per_kilometer} integer point(s) per commenced kilometer from "
+                f"{rule.precision}-character grids; same-grid score {rule.same_grid_points}"
+            )
         elif rule.kind == "multiplier":
             summary = f"Multiplier from {rule.source_fact}, unique {rule.scope}"
         elif rule.kind == "score_formula":

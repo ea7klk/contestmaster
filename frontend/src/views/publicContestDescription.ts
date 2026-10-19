@@ -198,6 +198,7 @@ function sampleExchangeValue(
   field: JsonRecord,
   index: number,
   direction: 'sent' | 'received' | 'entry',
+  gridPrecision: number = 4,
 ): string | null {
   const valueType = stringValue(field.value_type, 'text')
   const maxLength =
@@ -234,7 +235,11 @@ function sampleExchangeValue(
         ? ['K1ABC', 'W1XYZ', 'N0TEST']
         : ['N0TEST', 'K1ABC', 'W1XYZ']
       : valueType === 'grid'
-        ? ['FN31', 'EM10', 'FN20']
+        ? gridPrecision >= 8
+          ? ['FN31PR12', 'EM10AB34', 'FN20AA56']
+          : gridPrecision >= 6
+            ? ['FN31PR', 'EM10AB', 'FN20AA']
+            : ['FN31', 'EM10', 'FN20']
         : valueType === 'zone'
           ? ['05', '14', '28']
           : fieldKey === 'rst'
@@ -350,6 +355,7 @@ export function generateCabrilloExample(
   if (!formatConfig || isRecord(formatConfig.when)) return null
 
   const rules = configuredRules.map((configured) => configured.rule)
+  const distanceRule = rules.find((rule) => rule.kind === 'distance_points')
   const eligibility = rules.find((rule) => rule.kind === 'eligibility')
   if (
     configuredRules.some(
@@ -402,6 +408,17 @@ export function generateCabrilloExample(
     'START-OF-LOG: 3.0',
     `${headerName('contest', 'CONTEST')}: ${contest.slug || contest.name}`,
     `${headerName('callsign', 'CALLSIGN')}: N0TEST`,
+    ...(distanceRule
+      ? [
+          `GRID-LOCATOR: ${
+            distanceRule.precision === 4
+              ? 'IO91'
+              : distanceRule.precision === 8
+                ? 'IO91AA12'
+                : 'IO91AA'
+          }`,
+        ]
+      : []),
   ]
 
   for (const field of exchangeFields.filter(
@@ -434,7 +451,12 @@ export function generateCabrilloExample(
     )
     if (fields.length === 0) return 'TEST'
     const tokens = fields.map((field) =>
-      sampleExchangeValue(field, index, direction),
+      sampleExchangeValue(
+        field,
+        index,
+        direction,
+        typeof distanceRule?.precision === 'number' ? distanceRule.precision : 4,
+      ),
     )
     return tokens.every((value): value is string => value !== null)
       ? tokens.join(' ')
@@ -591,6 +613,9 @@ function describeLogSubmissionRequirements(
   const exchangeCondition = isRecord(exchangeConfig?.when)
     ? describeCondition(exchangeConfig.when)
     : undefined
+  const requiresStationGrid = rules.some(
+    (rule) => rule.kind === 'distance_points',
+  )
 
   return [
     ...new Set(
@@ -622,6 +647,13 @@ function describeLogSubmissionRequirements(
               'CALLSIGN: non-empty header value. CONTEST: non-empty header value; {contestHeader}.',
               { contestHeader },
             ),
+            ...(requiresStationGrid
+              ? [
+                  tx(
+                    'GRID-LOCATOR: entrant station Maidenhead locator required for distance scoring.',
+                  ),
+                ]
+              : []),
             `${tx('Each QSO must include frequency or band.')} (FREQ or BAND)`,
             `${tx('Each QSO must include mode.')} (MODE)`,
             `${tx('Each QSO must include date in UTC as YYYY-MM-DD.')} (DATE)`,
@@ -650,7 +682,7 @@ function describeLogSubmissionRequirements(
           ],
         }
       }
-      return tx(
+      const requiredAdif = tx(
         'Required ADIF fields: identify the station with STATION_CALLSIGN or OPERATOR in the header or a QSO record; every QSO record must end with <EOR> and include QSO_DATE (valid UTC date as YYYYMMDD), TIME_ON (HHMM or HHMMSS UTC), CALL (callsign), MODE or SUBMODE, BAND or FREQ in MHz, and sent and received exchange data. {bandConstraint} {modeConstraint}{exchangeDetails}',
         {
           bandConstraint: bandConstraint(format),
@@ -658,6 +690,9 @@ function describeLogSubmissionRequirements(
           exchangeDetails,
         },
       )
+      return requiresStationGrid
+        ? `${requiredAdif} ${tx('Include MY_GRIDSQUARE for entrant station distance scoring.')}`
+        : requiredAdif
     })
 }
 
@@ -1034,6 +1069,30 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
         : tx('Contact points are based on {fact}.', {
             fact: fact || tx('the configured scoring rule'),
           })
+    }
+    case 'distance_points': {
+      const precision =
+        typeof rule.precision === 'number' ? String(rule.precision) : '6'
+      const points =
+        typeof rule.points_per_kilometer === 'number'
+          ? String(rule.points_per_kilometer)
+          : '1'
+      const sameGrid =
+        typeof rule.same_grid_points === 'number'
+          ? String(rule.same_grid_points)
+          : '1'
+      return tx(
+        'Distance points use {precision}-character Maidenhead locator cell centers: {points} point(s) per commenced kilometer, or {sameGrid} point(s) for the same cell. Missing or invalid locators are {action}.',
+        {
+          precision,
+          points,
+          sameGrid,
+          action:
+            rule.missing_grid_action === 'not_credited'
+              ? tx('not credited')
+              : tx('sent for review'),
+        },
+      )
     }
     case 'multiplier': {
       const source = stringValue(

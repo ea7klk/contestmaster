@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from backend.app.rulesets.schema import (
     BonusRule,
     CategoryRule,
+    DistancePointsRule,
     DuplicateRule,
     EligibilityRule,
     ExchangeRule,
@@ -76,6 +77,13 @@ RULE_TYPES: tuple[RuleType, ...] = (
         "Assign integer point values from supported QSO facts.",
         "automatic",
         PointRule,
+    ),
+    RuleType(
+        "distance_points",
+        "Distance points",
+        "Award integer points from entrant and received Maidenhead locators.",
+        "automatic",
+        DistancePointsRule,
     ),
     RuleType(
         "multiplier",

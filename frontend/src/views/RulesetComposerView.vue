@@ -90,6 +90,7 @@ const RULE_STEP: Record<string, number> = {
   eligibility: 3,
   duplicates: 3,
   points: 4,
+  distance_points: 4,
   multiplier: 4,
   bonus: 4,
   penalty: 4,
@@ -591,6 +592,8 @@ const helpText: Record<string, string> = {
     'Choose the values that make two contacts count as the same contact. Worked callsign is always part of the identity; adding band, mode, grid, or transmitter makes otherwise repeated contacts distinct when that value changes. For example, callsign plus band permits one contact per station on each band. Then choose the sponsor’s consequence for another contact in the same scope: ignore it, leave it uncredited, apply an integer penalty, or send it for review. Duplicate contacts never earn QSO points. Enable “Count for multipliers” only when the sponsor allows a duplicate to supply a new multiplier; the duplicate must still pass the other eligibility checks. This option defaults off.',
   points:
     'This rule assigns the base integer points for each eligible contact, before multiplier and bonus rules. Fixed points give every eligible contact the same value. A lookup assigns a value by one supported fact, such as band, mode, entity, zone, or an exchange field. Add a default only if the sponsor defines what to do when the fact has no matching lookup entry. Every value must be an integer at least zero; do not convert fractional point rules into decimals.',
+  distance_points:
+    'Use this when the sponsor awards points from the distance between station locations. The entrant locator comes from each ADIF QSO MY_GRIDSQUARE value when present, otherwise the station locator; Cabrillo uses the GRID-LOCATOR header. The worked station locator is a received grid exchange. Contestmaster calculates great-circle distance between locator cell centers using the selected 4, 6, or 8 character precision, then awards integer points per commenced kilometer. Same-cell contacts use the configured same-grid points. Choose review or not credited when either locator is missing or invalid.',
   multiplier:
     'A multiplier is a distinct value that increases the score according to the contest formula. Choose the submitted or resolved fact that supplies the value, then choose where uniqueness resets: once for the whole contest, per band, per mode, per band and mode, per grid, or per transmitter. Multiple contacts can earn points while the same multiplier value is counted only once within its configured scope. Use the scope stated in the sponsor rules.',
   bonus:
@@ -608,6 +611,8 @@ const helpText: Record<string, string> = {
 }
 
 const scoringExamples: Record<string, string> = {
+  distance_points:
+    'Example: with 6-character grid centers, a 4.2 km contact is 5 commenced kilometers and earns 5 points at 1 point per kilometer. Two contacts in the same 6-character cell use the configured same-grid score instead.',
   score_formula:
     'Example: 120 QSO points × 8 multiplier credits + 10 bonus points − 5 penalty points = 965 final points. Operations run from top to bottom, and each result is an integer.',
   multiplier:

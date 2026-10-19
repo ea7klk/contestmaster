@@ -384,7 +384,6 @@ def parse_adif(text: str) -> ParsedLog:
     for header, field_names in {
         "CALLSIGN": ("STATION_CALLSIGN", "OPERATOR"),
         "NAME": ("MY_NAME",),
-        "LOCATION": ("MY_GRIDSQUARE",),
     }.items():
         if not headers.get(header):
             value = next(
@@ -398,4 +397,11 @@ def parse_adif(text: str) -> ParsedLog:
             )
             if value:
                 headers[header] = [value]
+    if not headers.get("GRID-LOCATOR") and qsos:
+        qso_grids = [qso.fields.get("my_gridsquare") for qso in qsos]
+        if (
+            all(isinstance(value, str) and value.strip() for value in qso_grids)
+            and len({str(value).strip().upper() for value in qso_grids}) == 1
+        ):
+            headers["GRID-LOCATOR"] = [str(qso_grids[0]).strip()]
     return ParsedLog(headers, unknown_headers, qsos, errors, [], text.splitlines(), {})

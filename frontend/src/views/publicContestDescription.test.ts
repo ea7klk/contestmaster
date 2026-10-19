@@ -73,6 +73,62 @@ describe('describeContestRuleset', () => {
     expect(sample).toContain('END-OF-LOG:')
   })
 
+  it('describes grid requirements and generates a distance-scoring Cabrillo sample', () => {
+    const ruleset = {
+      schema_version: 2 as const,
+      ruleset_key: 'distance-example',
+      version: '2026',
+      rules: [
+        {
+          id: 'exchange',
+          rule: {
+            kind: 'exchange',
+            fields: [
+              {
+                key: 'grid',
+                label: 'Locator',
+                value_type: 'grid',
+                direction: 'received',
+                required: true,
+              },
+            ],
+          },
+        },
+        {
+          id: 'distance',
+          rule: {
+            kind: 'distance_points',
+            grid_field: 'grid',
+            precision: 6,
+            points_per_kilometer: 1,
+            same_grid_points: 1,
+          },
+        },
+        { id: 'format', rule: { kind: 'format_mapping', format: 'cabrillo' } },
+        {
+          id: 'format-adif',
+          rule: { kind: 'format_mapping', format: 'adif' },
+        },
+      ],
+    }
+    const contest = {
+      name: 'Grid Distance Test',
+      slug: 'grid-distance-test',
+      starts_at: '2026-10-20T00:00:00Z',
+      ends_at: '2026-10-20T06:00:00Z',
+    }
+
+    const descriptions = describeContestRuleset(ruleset, contest)
+    const sample = generateCabrilloExample(ruleset, contest)
+
+    const descriptionText = descriptions.map(summaryText).join(' ')
+    expect(descriptionText).toContain('commenced kilometer')
+    expect(descriptionText).toContain('GRID-LOCATOR')
+    expect(descriptionText).toContain('MY_GRIDSQUARE')
+    expect(sample).toContain('GRID-LOCATOR: IO91AA')
+    expect(sample).toContain('FN31PR')
+  })
+
   it('generates a Cabrillo example from the importable CQ WW SSB draft', () => {
     const sample = generateCabrilloExample(
       cqWwSsbDraft as unknown as RulesetDraft,

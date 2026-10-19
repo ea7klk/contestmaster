@@ -140,6 +140,18 @@ def _scoring_inputs(
     station = session.scalar(select(Station).where(Station.entry_revision_id == revision.id))
     if station is None:
         raise ScoreRunError("Entry revision is missing its station record.")
+    revision_headers = revision.import_metadata.get("headers", {})
+    grid_header = (
+        revision_headers.get("GRID-LOCATOR") if isinstance(revision_headers, dict) else None
+    )
+    station_grid = (
+        str(grid_header[0]).strip()
+        if isinstance(grid_header, list)
+        and len(grid_header) == 1
+        and isinstance(grid_header[0], str)
+        and grid_header[0].strip()
+        else None
+    )
     qsos = list(
         session.scalars(select(Qso).where(Qso.entry_revision_id == revision.id).order_by(Qso.id))
     )
@@ -223,6 +235,7 @@ def _scoring_inputs(
     entry_input = ScoringEntry(
         entry_id=entry.id,
         station_callsign=station.callsign_normalized or station.callsign_submitted,
+        station_grid=station_grid,
         categories=entry.category_values,
         declarations=declarations,
         qsos=scoring_qsos,

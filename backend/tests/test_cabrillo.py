@@ -6,6 +6,8 @@ VALID = """START-OF-LOG
 CONTEST: test-contest
 CALLSIGN: EA7KLK
 NAME: Operator
+LOCATION: EMA
+GRID-LOCATOR: IO91AA
 CATEGORY-POWER: LOW
 X-LOCAL-HEADER: preserved
 QSO: 14025 CW 2026-10-15 1234 EA7KLK 599 001 F4ABC 599 002 extra
@@ -18,6 +20,8 @@ def test_cabrillo_parse_preserves_unknowns_and_reports_extra_qso_fields():
 
     assert not parsed.errors
     assert parsed.headers["CALLSIGN"] == ["EA7KLK"]
+    assert parsed.headers["LOCATION"] == ["EMA"]
+    assert parsed.headers["GRID-LOCATOR"] == ["IO91AA"]
     assert parsed.qsos[0].callsign_received == "F4ABC"
     assert parsed.qsos[0].occurred_at.isoformat() == "2026-10-15T12:34:00+00:00"
     assert parsed.qsos[0].extra_fields == ["extra"]

@@ -11,6 +11,7 @@ def test_adif_reads_length_delimited_ft8_qso_and_normalizes_exchange_fields():
     parsed = parse_adif(LOG)
 
     assert parsed.errors == []
+    assert parsed.headers["GRID-LOCATOR"] == ["IM87"]
     assert len(parsed.qsos) == 1
     qso = parsed.qsos[0]
     assert qso.occurred_at.isoformat() == "2026-10-15T12:34:00+00:00"
@@ -34,6 +35,23 @@ def test_adif_without_optional_header_uses_first_record_and_submode_ft4():
     assert parsed.headers["CALLSIGN"] == ["EA7KLK"]
     assert parsed.qsos[0].mode == "FT4"
     assert parsed.qsos[0].frequency == "20m"
+
+
+def test_adif_moving_station_keeps_per_qso_grids_without_inventing_one_station_grid():
+    parsed = parse_adif(
+        "<ADIF_VER:5>3.1.8<EOH>"
+        "<QSO_DATE:8>20261015<TIME_ON:4>1200<BAND:3>20m<MODE:2>CW"
+        "<STATION_CALLSIGN:6>EA7KLK<CALL:5>F4ABC"
+        "<MY_GRIDSQUARE:6>IO91AA<GRIDSQUARE:6>JN18AA<RST_SENT:3>599<RST_RCVD:3>599<EOR>"
+        "<QSO_DATE:8>20261015<TIME_ON:4>1201<BAND:3>20m<MODE:2>CW"
+        "<STATION_CALLSIGN:6>EA7KLK<CALL:5>F4ABC"
+        "<MY_GRIDSQUARE:6>IO91AB<GRIDSQUARE:6>JN18AB<RST_SENT:3>599<RST_RCVD:3>599<EOR>"
+    )
+
+    assert parsed.errors == []
+    assert "GRID-LOCATOR" not in parsed.headers
+    assert parsed.qsos[0].fields["_exchange_sent_values"]["grid"] == "IO91AA"
+    assert parsed.qsos[1].fields["_exchange_sent_values"]["grid"] == "IO91AB"
 
 
 def test_adif_derives_band_from_frequency_and_reports_invalid_records():

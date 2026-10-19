@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 from backend.app.rulesets.call_signs import callsign_suffix, wpx_prefix_for_callsign
 from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
+from backend.app.rulesets.grid import distance_kilometers, normalize_locator
 from backend.app.rulesets.operating import evaluate_operating_constraints
 from backend.app.rulesets.schema import (
     AllCondition,
@@ -18,6 +19,7 @@ from backend.app.rulesets.schema import (
     BonusRule,
     CompareCondition,
     ConfiguredRule,
+    DistancePointsRule,
     DuplicateRule,
     EligibilityRule,
     ExchangeRule,
@@ -77,6 +79,7 @@ class ScoringEntry(BaseModel):
 
     entry_id: int = Field(gt=0)
     station_callsign: str = Field(min_length=1, max_length=32)
+    station_grid: str | None = Field(default=None, max_length=32)
     categories: dict[str, str] = Field(default_factory=dict)
     declarations: dict[str, Any] = Field(default_factory=dict)
     power_multiplier: StrictInt = Field(default=1, ge=1)
@@ -176,7 +179,7 @@ def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]
             "declarations": entry.declarations,
             "power_multiplier": entry.power_multiplier,
         },
-        "station": {"callsign": entry.station_callsign},
+        "station": {"callsign": entry.station_callsign, "grid": entry.station_grid},
         "contest": {},
         "exchange": {
             "sent": qso.sent_exchange if qso is not None else {},
@@ -301,6 +304,7 @@ def score_entry(
     eligibility_rules = [item for item in configured if item.rule.kind == "eligibility"]
     duplicate_rules = [item for item in configured if item.rule.kind == "duplicates"]
     point_rules = [item for item in configured if item.rule.kind == "points"]
+    distance_rules = [item for item in configured if item.rule.kind == "distance_points"]
     multiplier_rules = [item for item in configured if item.rule.kind == "multiplier"]
     bonus_rules = [item for item in configured if item.rule.kind == "bonus"]
     penalty_rules = [item for item in configured if item.rule.kind == "penalty"]
@@ -460,6 +464,42 @@ def score_entry(
                     points = 0
                     break
                 points += point_value
+            if status == "credited":
+                for configured_rule in distance_rules:
+                    rule = configured_rule.rule
+                    if not isinstance(rule, DistancePointsRule) or not _condition_applies(
+                        configured_rule, context
+                    ):
+                        continue
+                    raw_worked_grid = qso.received_exchange.get(rule.grid_field)
+                    raw_entrant_grid = qso.sent_exchange.get("grid", entry.station_grid)
+                    entrant_grid = (
+                        normalize_locator(raw_entrant_grid, rule.precision)
+                        if isinstance(raw_entrant_grid, str)
+                        else None
+                    )
+                    worked_grid = (
+                        normalize_locator(raw_worked_grid, rule.precision)
+                        if isinstance(raw_worked_grid, str)
+                        else None
+                    )
+                    distance = (
+                        distance_kilometers(entrant_grid, worked_grid, rule.precision)
+                        if entrant_grid is not None and worked_grid is not None
+                        else None
+                    )
+                    if distance is None:
+                        status = rule.missing_grid_action
+                        multiplier_eligible = False
+                        reasons.append(f"distance_grid_missing_or_invalid:{configured_rule.id}")
+                        points = 0
+                        break
+                    same_grid = entrant_grid == worked_grid
+                    awarded = (
+                        rule.same_grid_points if same_grid else distance * rule.points_per_kilometer
+                    )
+                    points += awarded
+                    reasons.append(f"distance_points:{configured_rule.id}:{distance}km:{awarded}")
         if multiplier_eligible:
             for configured_rule in multiplier_rules:
                 rule = configured_rule.rule

@@ -133,12 +133,14 @@ def persist_revision(
         ",".join(f"{key}={value}" for key, value in sorted(category_values.items())) or None
     )
     station_call = _header(parsed, "CALLSIGN") or "UNKNOWN"
+    station_grid_values = parsed.headers.get("GRID-LOCATOR", [])
+    station_grid = station_grid_values[0] if len(station_grid_values) == 1 else None
     station = Station(
         entry_revision_id=revision.id,
         callsign_submitted=station_call,
         callsign_normalized="".join(station_call.upper().split()),
         operator_name_submitted=_header(parsed, "NAME"),
-        grid_submitted=_header(parsed, "LOCATION") or _header(parsed, "GRID-LOCATOR"),
+        grid_submitted=station_grid,
         station_configuration={
             "operators": parsed.headers.get("OPERATORS", []),
             "unknown_headers": parsed.unknown_headers,

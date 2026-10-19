@@ -35,6 +35,8 @@ CONTEST: guest-sprint
 CALLSIGN: EA7KLK
 EMAIL: operator@example.test
 NAME: Radio Operator
+LOCATION: EMA
+GRID-LOCATOR: IO91AA
 X-EXTRA: kept for audit
 QSO: 14025 CW 2026-10-15 1234 EA7KLK 599 001 F4ABC 599 002
 END-OF-LOG
@@ -175,6 +177,7 @@ def test_guest_upload_persists_original_log_and_scoped_receipt(log_database):
         assert session.scalar(select(ParticipantEmail)).verified_at is None
         assert session.scalar(select(EntryRevision)).original_content == LOG
         assert session.scalar(select(Station)).callsign_submitted == "EA7KLK"
+        assert session.scalar(select(Station)).grid_submitted == "IO91AA"
         assert session.scalar(select(Qso)).callsign_submitted == "F4ABC"
         assert session.scalar(select(EntryAccessGrant)).token_hash != result["receipt_token"]
         upload_event = session.scalar(
@@ -443,6 +446,30 @@ def test_guest_upload_accepts_ruleset_enabled_adif_and_preserves_format(log_data
         assert revision.original_content == ADIF_LOG
         assert qso is not None and qso.mode == "FT8" and qso.band == "2m"
         assert qso.exchange_received_submitted["values"]["grid"] == "JN18"
+        assert session.scalar(select(Station)).grid_submitted == "IM87"
+
+
+def test_cabrillo_location_is_not_used_as_station_grid(log_database):
+    log_without_grid = LOG.replace("GRID-LOCATOR: IO91AA\n", "")
+
+    response = submit(TestClient(app), log_without_grid, key="location-not-grid")
+
+    assert response.status_code == 201, response.text
+    with log_database() as session:
+        assert session.scalar(select(Station)).grid_submitted is None
+
+
+def test_cabrillo_ambiguous_station_grid_headers_are_not_silently_selected(log_database):
+    ambiguous_log = LOG.replace(
+        "GRID-LOCATOR: IO91AA\n",
+        "GRID-LOCATOR: IO91AA\nGRID-LOCATOR: IO91AB\n",
+    )
+
+    response = submit(TestClient(app), ambiguous_log, key="ambiguous-station-grid")
+
+    assert response.status_code == 201, response.text
+    with log_database() as session:
+        assert session.scalar(select(Station)).grid_submitted is None
 
 
 def test_guest_upload_rejects_format_not_enabled_by_contest_ruleset(log_database):

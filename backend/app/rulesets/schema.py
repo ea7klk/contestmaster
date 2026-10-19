@@ -300,6 +300,35 @@ class PointRule(StrictModel):
         return self
 
 
+class DistancePointsRule(StrictModel):
+    kind: Literal["distance_points"]
+    grid_field: Literal["grid"] = Field(
+        default="grid",
+        description=(
+            "The standard received grid exchange field containing the worked station's "
+            "Maidenhead locator."
+        ),
+    )
+    precision: Literal[4, 6, 8] = Field(
+        default=6,
+        description="Use 4, 6, or 8 character Maidenhead cell centers for distance calculations.",
+    )
+    points_per_kilometer: PositiveInteger = Field(
+        default=1,
+        description="Integer points awarded for each commenced kilometer between locator centers.",
+    )
+    same_grid_points: NonNegativeInteger = Field(
+        default=1,
+        description=(
+            "Integer points when both locators identify the same cell at configured precision."
+        ),
+    )
+    missing_grid_action: Literal["not_credited", "needs_review"] = Field(
+        default="needs_review",
+        description="Outcome when either entrant or worked-station grid is missing or invalid.",
+    )
+
+
 class MultiplierRule(StrictModel):
     kind: Literal["multiplier"]
     source_fact: Annotated[
@@ -704,6 +733,7 @@ RuleDefinition = Annotated[
     | EligibilityRule
     | DuplicateRule
     | PointRule
+    | DistancePointsRule
     | MultiplierRule
     | BonusRule
     | PenaltyRule

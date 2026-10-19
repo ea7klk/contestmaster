@@ -195,6 +195,7 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
         "eligibility",
         "duplicates",
         "points",
+        "distance_points",
         "multiplier",
         "bonus",
         "penalty",
@@ -218,6 +219,120 @@ def test_ruleset_summary_includes_contest_specific_category_explanations():
 
     assert "Operators may rotate at the station." in summary
     assert "Single operator — One operator may transmit at a time." in summary
+
+
+def _distance_ruleset_payload():
+    payload = valid_payload()
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")["rule"]
+    exchange["fields"].append(
+        {
+            "key": "grid",
+            "label": "Locator",
+            "value_type": "grid",
+            "direction": "received",
+            "required": False,
+        }
+    )
+    payload["rules"].append(
+        {
+            "id": "distance",
+            "rule": {
+                "kind": "distance_points",
+                "grid_field": "grid",
+                "precision": 6,
+                "points_per_kilometer": 1,
+                "same_grid_points": 1,
+            },
+        }
+    )
+    return payload
+
+
+def _single_grid_qso_entry(worked_grid: str | None) -> ScoringEntry:
+    qso = (
+        sample_entry()
+        .qsos[1]
+        .model_copy(
+            update={
+                "received_exchange": {
+                    "serial": "8",
+                    **({"grid": worked_grid} if worked_grid else {}),
+                }
+            }
+        )
+    )
+    return sample_entry().model_copy(update={"station_grid": "IO91AA", "qsos": [qso]})
+
+
+def test_distance_points_score_same_locator_and_commenced_kilometer_integer_values():
+    definition = validate_ruleset(_distance_ruleset_payload())
+
+    same_grid = score_entry(
+        definition,
+        _single_grid_qso_entry("IO91AA"),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+    adjacent_subsquare = score_entry(
+        definition,
+        _single_grid_qso_entry("IO91AB"),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    assert same_grid.qso_scores[0].points == 3
+    assert same_grid.qso_scores[0].reasons[-1] == "distance_points:distance:0km:1"
+    assert adjacent_subsquare.qso_scores[0].points == 7
+    assert adjacent_subsquare.qso_scores[0].reasons[-1] == "distance_points:distance:5km:5"
+    assert type(adjacent_subsquare.points_total) is int
+
+    qso_location = (
+        _single_grid_qso_entry("IO91AA")
+        .qsos[0]
+        .model_copy(update={"sent_exchange": {"serial": "1", "grid": "IO91AA"}})
+    )
+    per_qso_location = score_entry(
+        definition,
+        sample_entry().model_copy(update={"station_grid": None, "qsos": [qso_location]}),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+    assert per_qso_location.qso_scores[0].points == 3
+
+
+@pytest.mark.parametrize(
+    ("station_grid", "worked_grid", "action", "expected_status"),
+    [
+        (None, "IO91AA", "needs_review", "needs_review"),
+        ("IO91AA", "bad-grid", "needs_review", "needs_review"),
+        ("IO91AA", None, "not_credited", "not_credited"),
+    ],
+)
+def test_distance_points_missing_or_invalid_grid_has_explicit_outcome(
+    station_grid, worked_grid, action, expected_status
+):
+    payload = _distance_ruleset_payload()
+    distance = next(item for item in payload["rules"] if item["id"] == "distance")["rule"]
+    distance["missing_grid_action"] = action
+    entry = _single_grid_qso_entry(worked_grid).model_copy(update={"station_grid": station_grid})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == expected_status
+    assert result.qso_scores[0].points == 0
+    assert "distance_grid_missing_or_invalid:distance" in result.qso_scores[0].reasons
+
+
+def test_distance_points_rule_requires_a_received_grid_exchange_field():
+    payload = _distance_ruleset_payload()
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")["rule"]
+    exchange["fields"] = [field for field in exchange["fields"] if field["key"] != "grid"]
+
+    with pytest.raises(RulesetValidationError) as exc_info:
+        validate_ruleset(payload)
+    assert "undefined received grid exchange field" in str(exc_info.value.errors)
 
 
 def test_validation_endpoint_returns_summary_and_integer_worked_example():

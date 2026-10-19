@@ -294,6 +294,8 @@ def parse_cabrillo(
                 "NAME",
                 "OPERATORS",
                 "CREATED-BY",
+                "GRID-LOCATOR",
+                "LOCATION",
             }
             and name not in set(aliases.values())
             and not name.startswith("CATEGORY-")
