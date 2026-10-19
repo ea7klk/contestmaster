@@ -1,0 +1,1058 @@
+{
+  "artifact_schema": "contestmaster.n1mm-data-backed-profile-selectors.v1",
+  "n1mm_build": "1.0.11466",
+  "handler_dispatch_key": "QSOPARTY",
+  "profile_selector_count": 50,
+  "profiles": [
+    {
+      "profile_id": "QSOP_7QP",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_AK",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_AL",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_AR",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_AZ",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_BC",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_CA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_CO",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_CT",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_DE",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_GA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_HI",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_IA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_ID",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_IL",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_IN",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_IN7QPE",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_KS",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_KY",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_LA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MARAC_",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MCC",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MD",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MI",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MN",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MO",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_MT",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NC",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_ND",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NE",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NEWE",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NH",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NJ",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NM",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NV",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_NY",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_OH",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_OK",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_ON",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_OR",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_PA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_SC",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_SD",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_TN",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_TX",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_VA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_VT",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_WA",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_WI",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    },
+    {
+      "profile_id": "QSOP_WV",
+      "status": "blocked_from_import",
+      "importable_ruleset": false,
+      "blocker_kind": "lookup_profile_data_not_in_factory_inventory",
+      "source_trace": {
+        "handler": "CQSOpartyNr",
+        "methods": [
+          "Initialize",
+          "ComputePoints",
+          "MultSqlString",
+          "QsoErrorString"
+        ],
+        "notes": "The factory constructs only the shared QSOPARTY handler. The handler selects subtype and lookup rows at runtime; its factory case does not contain this profile's full exchange and scoring tables."
+      },
+      "known_capability_gaps": [
+        "Exact profile lookup rows, accepted sections/counties, and scoring data were not extracted from the factory handler.",
+        "The shared QSO Party handler has profile-specific point, multiplier, entrant, mobile/rover, and bonus branches that must be selected and traced for this subtype.",
+        "Contestmaster has no imported QSO Party reference table for this profile; any lookup data must be sourced and licensed separately or represented as reviewed declarative values."
+      ]
+    }
+  ]
+}

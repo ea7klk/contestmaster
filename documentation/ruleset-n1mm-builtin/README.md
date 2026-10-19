@@ -6,7 +6,9 @@ This directory is the working area for translating built-in N1MM Logger+ contest
 
 [`profile-inventory.json`](profile-inventory.json) maps all **263 factory dispatch keys** to **142 handler classes**. It also records decompiled source method locations and selected literal setup values for review. These records are source inventory only: **there are no N1MM-derived, importable ruleset JSON files in this directory yet**. Do not import the inventory as contest rules or use it to score a contest.
 
-N1MM handlers are executable code and some shared handlers branch on the selected profile or entrant. The extracted default metadata alone is insufficient to reconstruct their exchange validation, duplicate scopes, multiplier rules, scoring formulas, and format behavior. Each profile must be translated and checked for fidelity. Sponsor-published rules remain authoritative for a real contest edition. Profiles that cannot be faithfully represented must be listed in [`unconverted-profiles.md`](unconverted-profiles.md), with their concrete Contestmaster functionality gaps.
+N1MM handlers are executable code and some shared handlers branch on the selected profile or entrant. The extracted default metadata alone is insufficient to reconstruct their exchange validation, duplicate scopes, multiplier rules, scoring formulas, and format behavior. Each profile must be translated and checked for fidelity. Sponsor-published rules remain authoritative for a real contest edition. [`unconverted-profiles.md`](unconverted-profiles.md) now lists all 263 dispatch keys that are blocked from import pending that review, with a structured record and source-method trace per key. It separately tracks 50 data-backed QSO Party selectors that all route through the single `QSOPARTY` factory key. “Blocked” means not yet proven faithful; it does not claim that every profile requires new engine work.
+
+The gap list is checked against the current Contestmaster engine. It recognizes existing declarative distance points, independent per-rule multiplier totals, formulas, conditional rules, and Cabrillo/ADIF mappings. It does not repeat earlier comparisons that described those broad primitives as wholly absent. Per-profile custom conventions, external lookup facts, and logger-only behavior may still require new capabilities or may be out of scope for a server ruleset.
 
 ## Source provenance
 
@@ -25,6 +27,10 @@ ilspycmd -p -o /tmp/n1mm-decompiled /path/to/N1MM-Logger-Update-1.0.11466.exe
 python3 documentation/ruleset-n1mm-builtin/extract_inventory.py \
   --decompiled-source /tmp/n1mm-decompiled \
   --output documentation/ruleset-n1mm-builtin/profile-inventory.json
+python3 documentation/ruleset-n1mm-builtin/build_blocked_profiles.py \
+  --inventory documentation/ruleset-n1mm-builtin/profile-inventory.json \
+  --output-dir documentation/ruleset-n1mm-builtin/blocked \
+  --markdown documentation/ruleset-n1mm-builtin/unconverted-profiles.md
 ```
 
 The tool records dispatch keys, handler names, source method line references, and selected literal setup metadata. It intentionally does not copy method bodies or claim that literals alone comprise the contest rules.
@@ -32,6 +38,9 @@ The tool records dispatch keys, handler names, source method line references, an
 ## Output layout
 
 - `profile-inventory.json` — complete key-to-handler inventory and extraction references.
+- `blocked/*.json` — non-importable, per-key blocker records with method references and known capability gaps.
+- `blocked/qso-party-selectors.json` — 50 known data-backed QSO Party selectors behind the `QSOPARTY` handler; these are not factory keys, and their scoring lookup tables have not been extracted.
+- `build_blocked_profiles.py` — reproducibly builds the blocker records and the Markdown index from the source inventory.
 - `rulesets/` — only fidelity-reviewed Contestmaster import drafts; each draft must retain source provenance and pass the current schema and semantic validation.
 - `blocked/` — structured analysis JSON for profiles whose behavior cannot yet be represented safely.
 - `unconverted-profiles.md` — human-readable list of blocked profiles, their behavior, and the specific missing Contestmaster capability or reference facts.

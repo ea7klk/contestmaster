@@ -1,0 +1,127 @@
+{
+  "artifact_schema": "contestmaster.n1mm-blocked-profile.v1",
+  "n1mm_build": "1.0.11466",
+  "profile_id": "FOCCW",
+  "dispatch_key": "FOCCW",
+  "handler": "CFOC",
+  "status": "blocked_from_import",
+  "importable_ruleset": false,
+  "blocker_kind": "not_fidelity_reviewed",
+  "source_trace": {
+    "file": "N1MMLogger.Net/CFOC.cs",
+    "methods": {
+      "Initialize": [
+        16
+      ],
+      "ComputePoints": [
+        65
+      ],
+      "ComputeScore": [
+        305
+      ],
+      "MultSqlString": [
+        124
+      ],
+      "MultSqlString2": [
+        286
+      ],
+      "MultSqlString3": [
+        295
+      ],
+      "Nummults": [
+        60
+      ],
+      "DupeSqlString": [
+        256
+      ],
+      "IsWorkable": [
+        246
+      ],
+      "QsoErrorString": [
+        133
+      ],
+      "SentExch": [
+        114
+      ],
+      "RcvdExch": [
+        109
+      ],
+      "DefaultContestExchange": [
+        241
+      ],
+      "CabrilloFormat": [
+        236
+      ],
+      "SetSentExch": [
+        50
+      ],
+      "SetRcvdExch": [
+        105
+      ]
+    },
+    "default_exchange_literal": "1234",
+    "constant_method_returns": {
+      "CabrilloFormat": [
+        "1"
+      ],
+      "Nummults": [
+        "2"
+      ]
+    }
+  },
+  "known_capability_gaps": [
+    {
+      "id": "profile_translation_unverified",
+      "detail": "This profile has no fidelity-reviewed mapping from its handler branches to Contestmaster's declarative rules. It is blocked from import until its exchange, categories, eligibility, duplicate identity, multipliers, points, formula, and format behavior are traced and represented."
+    },
+    {
+      "id": "points_branch_translation",
+      "detail": "Contestmaster supports fixed, lookup, conditional, and grid-distance points, but does not execute arbitrary N1MM C# branches. Trace every token-specific branch and identify any unsupported fact, lookup table, distance convention, or rounding behavior before conversion."
+    },
+    {
+      "id": "final_formula_translation",
+      "detail": "Contestmaster supports integer arithmetic over points, bonuses, penalties, power, and individual multiplier totals. Any branch or operand outside those declarative facts needs a new typed rule capability or must remain blocked."
+    },
+    {
+      "id": "multiplier_source_translation",
+      "detail": "Contestmaster supports per-rule multiplier facts and scopes, but not arbitrary N1MM SQL joins or profile-specific external tables. Trace the selected profile's source values, uniqueness key, and scope."
+    },
+    {
+      "id": "second_multiplier_source_translation",
+      "detail": "The second N1MM multiplier query must be translated to a separately identified Contestmaster multiplier rule with equivalent source, uniqueness, and scope; arbitrary SQL is not supported."
+    },
+    {
+      "id": "third_multiplier_source_translation",
+      "detail": "The third N1MM multiplier query must be translated to a separately identified Contestmaster multiplier rule with equivalent source, uniqueness, and scope; arbitrary SQL is not supported."
+    },
+    {
+      "id": "duplicate_identity_translation",
+      "detail": "Contestmaster has declarative duplicate scopes, but does not execute N1MM's profile SQL. Verify the full identity key and whether a duplicate can still contribute to multipliers for this profile."
+    },
+    {
+      "id": "workability_predicate_translation",
+      "detail": "Contestmaster supports validated declarative conditions, not arbitrary handler predicates. Identify required entrant, station, exchange, mode, and reference facts and check that each is available to the scorer."
+    },
+    {
+      "id": "exchange_validation_translation",
+      "detail": "Contestmaster validates configured exchange fields and supported file mappings, but does not import N1MM's interactive parser and correction behavior. Trace mandatory fields, value domains, and profile-specific validation."
+    },
+    {
+      "id": "sent_exchange_translation",
+      "detail": "Map the exact sent exchange fields and semantics to Contestmaster's exchange schema and accepted Cabrillo/ADIF mappings; N1MM logger-entry behavior is not a portable ruleset capability."
+    },
+    {
+      "id": "received_exchange_translation",
+      "detail": "Map the exact received exchange fields and semantics to Contestmaster's exchange schema and accepted Cabrillo/ADIF mappings; N1MM logger-entry behavior is not a portable ruleset capability."
+    },
+    {
+      "id": "cabrillo_layout_translation",
+      "detail": "Contestmaster uses explicit Cabrillo field mappings. Trace the handler's format identifier and verify that required WWROF QSO columns and category headers can represent this profile without losing scoring inputs."
+    },
+    {
+      "id": "default_exchange_is_not_a_complete_schema",
+      "detail": "N1MM's default exchange string is only a logger default. Contestmaster still needs an explicit typed exchange schema, allowed values, and format mappings; the literal alone is insufficient."
+    }
+  ],
+  "conversion_note": "Blocked means no complete, verified Contestmaster translation exists in this output yet. It does not claim every listed behavior is permanently impossible; sponsor-edition validation and exact branch tracing may show that supported declarative rules suffice."
+}
