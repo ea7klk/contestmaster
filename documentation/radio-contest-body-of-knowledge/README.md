@@ -111,6 +111,8 @@ The observations below are patterns present in sponsor rules, not universal defa
 
 The schema is in `backend/app/rulesets/schema.py`; execution is in `backend/app/rulesets/engine.py`; composition is in `frontend/src/views/RulesetComposerView.vue` and the related editors. Status describes the current repository implementation, not the whole range of real rules.
 
+The [N1MM parity behavior matrix](../ruleset-parity/behavior-matrix.md) turns representative gaps into sponsor-verified expected outcomes for distance scoring, entrant-relative geography, separate multiplier terms, QSO Party behavior, conditional exchange/workability, and session resets.
+
 | Pattern | Current fit | Gap / review caution |
 |---|---|---|
 | UTC event dates and independent log deadline | Supported in contest configuration | Recurrence creates editions; confirm exact sponsor timezone before materializing UTC instants. |

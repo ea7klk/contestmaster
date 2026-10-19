@@ -4,6 +4,8 @@
 
 This plan turns the user-provided gap analysis into staged work for Contestmaster. That report statically examined the built-in contest handlers in N1MM Logger+ update 1.0.11466 (2026-10-13) and compared them with Contestmaster ruleset schema v2 at commit `8661bbd`. The supplied report is outside this repository; its findings needed for implementation are summarized below.
 
+The first sponsor-verified benchmark is in [`behavior-matrix.md`](behavior-matrix.md). The current sample ruleset and synthetic contest refresh is tracked separately in child [#395](https://github.com/ea7klk/contestmaster/issues/395), so engine-schema changes can be exercised by importable examples and generated logs rather than existing only as unit-level behavior.
+
 “Functional parity” means that Contestmaster can express and reproducibly score the same rule outcome for a selected, sponsor-verified contest edition. It does not mean reproducing N1MM’s logger UI, operating workflow, private APIs, implementation language, every historical handler, or every UDC. N1MM’s executable dispatch inventory is a source of test scenarios, not an authoritative rulebook. A sponsor’s published edition rules remain the authority.
 
 Do not translate handlers mechanically. First establish the applicable published rule, required input facts, output, and edge cases. Implement reusable declarative primitives for recurring rule patterns. Do not load N1MM code, add arbitrary contest-supplied code or `eval`, or claim support because a JSON draft validates. Any unsupported sponsor requirement must remain explicit and block activation/scoring where necessary.
@@ -62,6 +64,7 @@ The implementation is tracked by parent issue [#385](https://github.com/ea7klk/c
 | [#392 — Exchange/import conformance for sponsor rules](https://github.com/ea7klk/contestmaster/issues/392) | Validate conditional/asymmetric exchange semantics through each supported format adapter. | Benchmark. |
 | [#393 — Scoring session reset policies](https://github.com/ea7klk/contestmaster/issues/393) | Support sponsor-required reset boundaries for duplicates, multipliers, and serial sequences without moving event schedules into rulesets. | Benchmark. |
 | [#394 — Sponsor-linked scoring conformance fixtures](https://github.com/ea7klk/contestmaster/issues/394) | Exercise selected representative built-in profiles end-to-end and document residual gaps. | Relevant implemented primitives above. |
+| [#395 — Sample rulesets and synthetic contests](https://github.com/ea7klk/contestmaster/issues/395) | Audit and update all current sample drafts and generated synthetic contests to exercise the new schema and rules. | Update incrementally with feature changes; finalize after the engine issues. |
 
 ## Completion criteria
 
