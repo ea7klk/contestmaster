@@ -391,8 +391,16 @@ class PenaltyRule(StrictModel):
 
 class ScoreOperand(StrictModel):
     variable: (
-        Literal[
-            "points_total", "multiplier_count", "bonus_points", "penalty_points", "power_multiplier"
+        Annotated[
+            str,
+            StringConstraints(
+                min_length=1,
+                max_length=160,
+                pattern=(
+                    r"^(points_total|multiplier_count|bonus_points|penalty_points|power_multiplier|"
+                    r"multiplier\.[a-z][a-z0-9_.-]*)$"
+                ),
+            ),
         ]
         | None
     ) = None

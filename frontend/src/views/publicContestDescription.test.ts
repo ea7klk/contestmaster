@@ -585,6 +585,48 @@ describe('describeContestRuleset', () => {
     )
   })
 
+  it('uses multiplier rule labels for independently counted formula terms', () => {
+    const descriptions = describeContestRuleset({
+      schema_version: 2,
+      ruleset_key: 'separate-multiplier-counts',
+      version: '2026',
+      rules: [
+        {
+          id: 'zones',
+          rule: {
+            kind: 'multiplier',
+            label: 'Zone',
+            source_fact: 'qso.cq_zone',
+            scope: 'band',
+          },
+        },
+        {
+          id: 'countries',
+          rule: {
+            kind: 'multiplier',
+            label: 'Country',
+            source_fact: 'qso.entity',
+            scope: 'band',
+          },
+        },
+        {
+          id: 'score',
+          rule: {
+            kind: 'score_formula',
+            start: { variable: 'points_total' },
+            steps: [
+              { operator: 'multiply', operand: { variable: 'multiplier.zones' } },
+              { operator: 'add', operand: { variable: 'multiplier.countries' } },
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(summaryText(descriptions[2]!)).toContain('Zone multiplier count')
+    expect(summaryText(descriptions[2]!)).toContain('Country multiplier count')
+  })
+
   it('explains category segmentation, required choices, declarations, and exclusions', () => {
     const descriptions = describeContestRuleset({
       schema_version: 2,

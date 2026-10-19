@@ -18,7 +18,7 @@ For a source-linked survey of contest rule patterns and their mapping to the cur
 - Create participant and station records from contest entry details; participants can submit logs without registering for a system account.
 - Record contacts (QSOs) with UTC time, callsigns, band, mode, and contest-specific exchange data.
 - Validate entries and contacts against the active contest ruleset, with clear field-level feedback.
-- Calculate reproducible integer-only scores, multipliers, penalties, and standings. Retain a breakdown so an organizer can explain how a result was reached.
+- Calculate reproducible integer-only scores, multipliers, penalties, and standings. Retain aggregate and per-rule multiplier totals so an organizer can explain how each score formula component was reached.
 - Let participants upload logs without a system account. Guests manage an entry with its receipt token; they may later register, verify their email, and claim associated guest logs by proving access with a live receipt token for the matching callsign. Keep guest-only identities out of System User Administration. Provide public contest result and standings views without login, alongside organizer views for managing contests.
 
 ### Log handling

@@ -147,6 +147,23 @@ const categoryDimensions = computed(() => {
 const multiplierSourceFacts = computed(() =>
   availableMultiplierSourceFacts(rules.value),
 )
+const scoreFormulaVariables = computed(() => [
+  { value: 'points_total', label: 'QSO points total' },
+  { value: 'multiplier_count', label: 'Combined multiplier count (legacy)' },
+  { value: 'bonus_points', label: 'Bonus points' },
+  { value: 'penalty_points', label: 'Penalty points' },
+  { value: 'power_multiplier', label: 'Power multiplier' },
+  ...rules.value.flatMap((configured) => {
+    if (configured.rule.kind !== 'multiplier') return []
+    const label = String(configured.rule.label || configured.id)
+    return [
+      {
+        value: `multiplier.${configured.id}`,
+        label: `${label} count (${configured.id})`,
+      },
+    ]
+  }),
+])
 const cabrilloExchangeMapPreview = computed(() => {
   const exchangeRule = rules.value.find(
     (item) => item.rule.kind === 'exchange',
@@ -601,7 +618,7 @@ const helpText: Record<string, string> = {
   penalty:
     'Add one penalty rule for each distinct violation and consequence described by the sponsor. Give the reason a stable code so score explanations can identify it. Choose whether the violation removes a contact, deducts integer points, reclassifies the entry, disqualifies it, or sends it for review. Point deductions require a positive integer; set the maximum number of times this penalty can apply to one entry.',
   score_formula:
-    'This is the final arithmetic applied after contacts, multipliers, bonuses, and penalties have been determined. Select the starting score and add operations in the same order as the published formula. Each step consumes the prior integer result and another supported integer variable or constant. Division must specify its integer rounding rule. Review the worked example after validation; it demonstrates the formula with sample values and is not a prediction of an entrant’s score. Example: 120 points × 8 multipliers + 10 bonus − 5 penalty = 965.',
+    'This is the final arithmetic applied after contacts, multipliers, bonuses, and penalties have been determined. Select the starting score and add operations in the same order as the published formula. Each step consumes the prior integer result and another supported integer variable or constant. The combined multiplier_count remains available; choose a named multiplier rule count to use independent dimensions. Rule IDs are stable formula references, while labels can change. Division must specify its integer rounding rule. Review the worked example after validation; it demonstrates the formula with sample values and is not a prediction of an entrant’s score. Example: points × country multipliers + zone multipliers.',
   operating_constraints:
     'Use this rule for entry-level or operating limits the engine can check, such as required off-time periods, a maximum number of transmitters, or a permitted band/mode combination. Add only constraints supported by the shown fields and the official rules. Choose whether a violation is uncredited or requires human review when the result is ambiguous.',
   format_mapping:
@@ -1340,6 +1357,7 @@ function catalogErrorMessage(reason: unknown) {
                   "
                   :category-dimensions="categoryDimensions"
                   :fact-options="multiplierSourceFacts"
+                  :variable-options="scoreFormulaVariables"
                   :label="`${configured.rule.kind} rule settings`"
                   :path="`rules-${index}`"
                   @update:model-value="updateRule(configured, $event)"

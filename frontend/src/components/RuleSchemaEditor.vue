@@ -23,6 +23,7 @@ const props = withDefaults(
     arraySiblings?: unknown[]
     headerKey?: string
     factOptions?: Array<{ value: string; label: string }>
+    variableOptions?: Array<{ value: string; label: string }>
   }>(),
   {
     label: '',
@@ -34,6 +35,7 @@ const props = withDefaults(
     arraySiblings: () => [],
     headerKey: '',
     factOptions: () => [],
+    variableOptions: () => [],
   },
 )
 
@@ -82,6 +84,10 @@ function enumLabel(value: unknown): string {
       option?.label ??
       `${value} (${translateText('Unavailable in this ruleset')})`
     )
+  }
+  if (props.path.endsWith('-variable')) {
+    const option = props.variableOptions.find((item) => item.value === value)
+    return option?.label ?? `${value} (${translateText('Unavailable in this ruleset')})`
   }
   const words = String(value).replaceAll('_', ' ')
   const title = words.replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -183,6 +189,12 @@ const enumOptions = computed(() => {
     const currentValue = String(props.modelValue ?? '')
     if (currentValue && !values.includes(currentValue))
       values.unshift(currentValue)
+    return values
+  }
+  if (props.path.endsWith('-variable')) {
+    const values = props.variableOptions.map((item) => item.value)
+    const currentValue = String(props.modelValue ?? '')
+    if (currentValue && !values.includes(currentValue)) values.unshift(currentValue)
     return values
   }
   const values = primitiveSchema.value.enum ?? []
@@ -543,6 +555,7 @@ function onEnumInput(event: Event) {
               :category-dimensions="categoryDimensions"
               :category-header="categoryHeader"
               :fact-options="factOptions"
+              :variable-options="variableOptions"
               @update:model-value="updateProperty(key, $event)"
             />
           </template>
@@ -570,6 +583,7 @@ function onEnumInput(event: Event) {
           :category-dimensions="categoryDimensions"
           :category-header="categoryHeader"
           :fact-options="factOptions"
+          :variable-options="variableOptions"
           @update:model-value="updateArrayItem(index, $event)"
         />
         <div v-if="isQsoColumnList()" class="schema-array-order">
@@ -690,6 +704,7 @@ function onEnumInput(event: Event) {
             :category-dimensions="categoryDimensions"
             :header-key="isHeaderFieldsMap() ? key : ''"
             :fact-options="factOptions"
+            :variable-options="variableOptions"
             @update:model-value="updateMapValue(key, $event)"
           />
         </div>

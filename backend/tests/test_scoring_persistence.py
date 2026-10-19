@@ -548,6 +548,7 @@ def test_master_data_rules_require_contest_start_pin_and_copy_exact_version(scor
         )
         assert first_qso_score is not None
         assert any(key.endswith(":EU") for key in first_qso_score.multiplier_keys)
+        assert run.explanation["multiplier_counts"] == {"entity-multiplier": 1}
 
 
 def test_recalculation_after_upload_retries_the_same_trigger_once(scoring_db):

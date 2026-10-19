@@ -1235,6 +1235,138 @@ def test_station_geography_can_be_used_as_a_multiplier_source():
     assert "entrant-entity-multiplier:*:EA" in result.qso_scores[0].multiplier_keys
 
 
+def test_formula_can_combine_independent_multiplier_rule_counts():
+    payload = valid_payload()
+    payload["rules"].extend(
+        [
+            {
+                "id": "mode-count",
+                "rule": {
+                    "kind": "multiplier",
+                    "source_fact": "qso.mode",
+                    "scope": "contest",
+                    "label": "Mode",
+                },
+            },
+            {
+                "id": "country-count",
+                "rule": {
+                    "kind": "multiplier",
+                    "source_fact": "qso.entity",
+                    "scope": "contest",
+                    "label": "Country",
+                },
+            },
+        ]
+    )
+    formula = next(item for item in payload["rules"] if item["id"] == "score")
+    formula["rule"] = {
+        "kind": "score_formula",
+        "start": {"variable": "points_total"},
+        "steps": [
+            {"operator": "multiply", "operand": {"variable": "multiplier.country-count"}},
+            {"operator": "add", "operand": {"variable": "multiplier.mode-count"}},
+        ],
+    }
+    first, second = sample_entry().qsos
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [
+                first,
+                second.model_copy(
+                    update={
+                        "worked_callsign": "VE3XYZ",
+                        "entity": "VE",
+                        "mode": "SSB",
+                    }
+                ),
+            ]
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.multiplier_counts == {
+        "entity-multiplier": 2,
+        "mode-count": 2,
+        "country-count": 2,
+    }
+    assert result.multiplier_count == 6
+    assert result.final_score == 10
+    assert "Multiplier country-count: 2." in result.explanation
+    assert "Multiplier mode-count: 2." in result.explanation
+
+
+def test_formula_rejects_unknown_multiplier_rule_reference():
+    payload = valid_payload()
+    formula = next(item for item in payload["rules"] if item["id"] == "score")
+    formula["rule"] = {
+        "kind": "score_formula",
+        "start": {"variable": "multiplier.unknown"},
+        "steps": [],
+    }
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any(
+        "unknown multiplier rule ID unknown" in item["message"] for item in error.value.errors
+    )
+
+
+def test_conditionally_inactive_multiplier_has_zero_named_count():
+    payload = valid_payload()
+    payload["rules"].append(
+        {
+            "id": "inactive-multiplier",
+            "rule": {
+                "kind": "multiplier",
+                "source_fact": "qso.entity",
+                "scope": "contest",
+                "label": "Inactive",
+            },
+            "when": {
+                "kind": "compare",
+                "fact": "qso.band",
+                "operator": "eq",
+                "value": "10m",
+            },
+        }
+    )
+    formula = next(item for item in payload["rules"] if item["id"] == "score")
+    formula["rule"] = {
+        "kind": "score_formula",
+        "start": {"variable": "multiplier.inactive-multiplier"},
+        "steps": [],
+    }
+
+    result = score_entry(
+        validate_ruleset(payload), sample_entry(), contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.multiplier_counts["inactive-multiplier"] == 0
+    assert result.final_score == 0
+
+
+def test_formula_example_supplies_sample_values_for_named_multiplier_counts():
+    from backend.app.rulesets.summary import worked_score_example
+
+    payload = valid_payload()
+    formula = next(item for item in payload["rules"] if item["id"] == "score")
+    formula["rule"] = {
+        "kind": "score_formula",
+        "start": {"variable": "multiplier.entity-multiplier"},
+        "steps": [],
+    }
+    definition = validate_ruleset(payload)
+
+    example = worked_score_example(definition)
+
+    assert example["variables"]["multiplier.entity-multiplier"] == 1
+    assert example["final_score"] == 1
+
+
 @pytest.mark.parametrize(
     ("scope", "expected"),
     [

@@ -110,6 +110,32 @@ def _cross_reference_errors(
         errors.append(
             {"path": "rules", "message": "A ruleset must define exactly one score_formula."}
         )
+    multiplier_ids = {
+        configured.id for configured in definition.rules if configured.rule.kind == "multiplier"
+    }
+    formula = next(
+        (
+            configured.rule
+            for configured in definition.rules
+            if configured.rule.kind == "score_formula"
+        ),
+        None,
+    )
+    if formula is not None:
+        operands = [formula.start, *(step.operand for step in formula.steps)]
+        for index, operand in enumerate(operands):
+            variable = operand.variable
+            if variable and variable.startswith("multiplier."):
+                rule_id = variable.removeprefix("multiplier.")
+                if rule_id not in multiplier_ids:
+                    errors.append(
+                        {
+                            "path": f"rules.score_formula.operands[{index}].variable",
+                            "message": (
+                                f"Score formula references unknown multiplier rule ID {rule_id}."
+                            ),
+                        }
+                    )
     if kinds.count("submission") > 1:
         errors.append(
             {

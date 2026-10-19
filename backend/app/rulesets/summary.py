@@ -139,6 +139,9 @@ def worked_score_example(
     if not isinstance(formula, ScoreFormulaRule):
         raise RuleExecutionError("Ruleset has no score formula to preview")
     values = dict(EXAMPLE_VARIABLES if variables is None else variables)
+    for configured in definition.rules:
+        if configured.rule.kind == "multiplier":
+            values.setdefault(f"multiplier.{configured.id}", 1)
     if any(type(value) is not int for value in values.values()):
         raise RuleExecutionError("Worked examples accept integer values only")
     current = formula.start.constant

@@ -208,10 +208,19 @@ def unresolved_items(session: Session, contest: Contest) -> list[dict[str, Any]]
 
 def _safe_explanation(run: ScoreRun, qso_count: int, credited_count: int) -> dict[str, Any]:
     """Expose score arithmetic and counts, never contact rows or internal review notes."""
+    multiplier_counts = run.explanation.get("multiplier_counts", {})
+    if not isinstance(multiplier_counts, dict):
+        multiplier_counts = {}
+    multiplier_counts = {
+        str(rule_id): count
+        for rule_id, count in multiplier_counts.items()
+        if type(count) is int and count >= 0
+    }
     return {
-        "format_version": 1,
+        "format_version": 2,
         "points": run.points,
         "multipliers": run.multiplier_count,
+        "multiplier_counts": multiplier_counts,
         "bonus_points": run.bonus_points,
         "penalty_points": run.penalty_points,
         "score": run.final_score,

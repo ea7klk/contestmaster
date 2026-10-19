@@ -596,6 +596,7 @@ def score_entry_revision(
     explanation = {
         "outcome": result.outcome,
         "summary": result.explanation,
+        "multiplier_counts": result.multiplier_counts,
         "review_reasons": result.review_reasons,
         "workflow_actions": [item.model_dump(mode="json") for item in result.workflow_actions],
         "cross_log": {

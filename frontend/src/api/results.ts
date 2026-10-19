@@ -30,6 +30,7 @@ export interface ResultExplanation {
   format_version: number
   points: number
   multipliers: number
+  multiplier_counts?: Record<string, number>
   bonus_points: number
   penalty_points: number
   score: number

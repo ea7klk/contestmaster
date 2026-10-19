@@ -4,6 +4,38 @@ import type { JsonSchema } from '../api/rulesets'
 import RuleSchemaEditor from './RuleSchemaEditor.vue'
 
 describe('RuleSchemaEditor', () => {
+  it('offers configured multiplier counts by stable rule ID', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        variable: { type: 'string', title: 'Variable' },
+      },
+      required: ['variable'],
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { variable: 'multiplier.zone' },
+        path: 'rules-score-start',
+        variableOptions: [
+          { value: 'points_total', label: 'QSO points total' },
+          { value: 'multiplier.zone', label: 'Zone count (zone)' },
+        ],
+      },
+    })
+
+    const variableSelect = wrapper.get('select')
+    expect(variableSelect.findAll('option').map((option) => option.text())).toEqual([
+      'QSO points total',
+      'Zone count (zone)',
+    ])
+    await variableSelect.setValue('multiplier.zone')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      variable: 'multiplier.zone',
+    })
+  })
+
   it('shows multiplier source facts in a dropdown and emits the chosen fact', async () => {
     const schema: JsonSchema = {
       type: 'object',

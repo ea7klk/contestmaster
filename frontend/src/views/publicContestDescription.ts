@@ -806,7 +806,10 @@ function describeCondition(value: unknown): string {
   return tx('the configured condition')
 }
 
-function summarizeRule(rule: JsonRecord): ContestSummaryItem {
+function summarizeRule(
+  rule: JsonRecord,
+  multiplierLabels: Map<string, string> = new Map(),
+): ContestSummaryItem {
   switch (rule.kind) {
     case 'submission': {
       const latePolicy = {
@@ -1169,8 +1172,15 @@ function summarizeRule(rule: JsonRecord): ContestSummaryItem {
       const operand = (value: unknown) => {
         if (!isRecord(value)) return tx('a configured value')
         if (typeof value.constant === 'number') return String(value.constant)
+        const variable = stringValue(value.variable)
+        const multiplierRuleId = /^multiplier\.(.+)$/.exec(variable)?.[1]
+        if (multiplierRuleId) {
+          return tx('the {name} multiplier count', {
+            name: multiplierLabels.get(multiplierRuleId) ?? multiplierRuleId,
+          })
+        }
         return (
-          variableNames[stringValue(value.variable)] ?? tx('a configured value')
+          variableNames[variable] ?? tx('a configured value')
         )
       }
       const operators: Record<string, string> = {
@@ -1272,9 +1282,26 @@ export function describeContestRuleset(
   contest?: { name: string; slug: string },
 ): ContestSummaryItem[] {
   if (!ruleset || !Array.isArray(ruleset.rules)) return []
+  const multiplierLabels = new Map(
+    ruleset.rules.flatMap((configured) => {
+      if (
+        !isRecord(configured) ||
+        typeof configured.id !== 'string' ||
+        !isRecord(configured.rule) ||
+        configured.rule.kind !== 'multiplier'
+      )
+        return []
+      return [
+        [
+          configured.id,
+          stringValue(configured.rule.label, configured.id),
+        ] as const,
+      ]
+    }),
+  )
   const descriptions = ruleset.rules.flatMap((configured) => {
     if (!isRecord(configured) || !isRecord(configured.rule)) return []
-    const summary = summarizeRule(configured.rule)
+    const summary = summarizeRule(configured.rule, multiplierLabels)
     if (configured.when === undefined || configured.when === null)
       return [summary]
     const conditionPrefix = tx('Only when {condition}: ', {

@@ -131,6 +131,7 @@ class EntryScoreResult(BaseModel):
     credited_qso_count: StrictInt
     points_total: StrictInt = Field(ge=0)
     multiplier_count: StrictInt = Field(ge=0)
+    multiplier_counts: dict[str, StrictInt]
     bonus_points: StrictInt = Field(ge=0)
     penalty_points: StrictInt = Field(ge=0)
     final_score: StrictInt = Field(ge=0)
@@ -597,6 +598,10 @@ def score_entry(
     points_total = sum(result.points for result in qso_scores)
     penalty_points = sum(result.penalty_points for result in qso_scores)
     multiplier_count = len(multiplier_keys)
+    multiplier_counts = {
+        configured_rule.id: sum(key.startswith(f"{configured_rule.id}:") for key in multiplier_keys)
+        for configured_rule in multiplier_rules
+    }
     disqualified = any(
         rule.action == "disqualify"
         and any(rule.reason_code in score.reasons for score in qso_scores)
@@ -615,6 +620,7 @@ def score_entry(
         "bonus_points": bonus_total,
         "penalty_points": penalty_points,
         "power_multiplier": entry.power_multiplier,
+        **{f"multiplier.{rule_id}": count for rule_id, count in multiplier_counts.items()},
     }
     final_score = 0 if disqualified else _apply_formula(formula, variables)
     review_reasons = [
@@ -683,6 +689,10 @@ def score_entry(
     explanation = [
         f"QSO points total: {points_total}.",
         f"Unique multiplier count: {multiplier_count}.",
+        *[
+            f"Multiplier {rule_id}: {count}."
+            for rule_id, count in sorted(multiplier_counts.items())
+        ],
         f"Bonus points: {bonus_total}.",
         f"Penalty points: {penalty_points}.",
         "Score formula evaluated left to right in configured operation order using integers.",
@@ -696,6 +706,7 @@ def score_entry(
         credited_qso_count=sum(result.status == "credited" for result in qso_scores),
         points_total=points_total,
         multiplier_count=multiplier_count,
+        multiplier_counts=multiplier_counts,
         bonus_points=bonus_total,
         penalty_points=penalty_points,
         final_score=final_score,

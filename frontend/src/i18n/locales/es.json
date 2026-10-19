@@ -1164,5 +1164,7 @@
   "s_ffb0ff72": "Formato",
   "s_ffda6982": "Las reglas detalladas del concurso aún no están disponibles.",
   "s_ffeb6c21": "dividido por",
-  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable."
+  "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable.",
+  "s_fab3f8ef": "recuento de multiplicadores de {name}",
+  "s_c25230ea": "Regla de multiplicador {rule}"
 }

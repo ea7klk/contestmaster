@@ -1164,5 +1164,7 @@
   "s_ffb0ff72": "Format",
   "s_ffda6982": "Detailed contest rules are not available yet.",
   "s_ffeb6c21": "divided by",
-  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit."
+  "s_fff3c460": "Maximum transmit output: up to the applicable legal limit.",
+  "s_fab3f8ef": "the {name} multiplier count",
+  "s_c25230ea": "Multiplier rule {rule}"
 }
