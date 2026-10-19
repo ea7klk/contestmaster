@@ -86,7 +86,14 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
                 f"{len(rule.allowed_modes)} mode limits"
             )
         elif rule.kind == "bonus":
-            summary = f"Bonus: {rule.points} integer points ({rule.basis})"
+            if rule.basis == "per_distinct_value":
+                group = f" in exclusive group {rule.award_group}" if rule.award_group else ""
+                summary = (
+                    f"Bonus: {rule.points} integer points per distinct {rule.source_fact} "
+                    f"within {rule.scope} scope{group}"
+                )
+            else:
+                summary = f"Bonus: {rule.points} integer points ({rule.basis})"
         elif rule.kind == "penalty":
             summary = f"Penalty {rule.reason_code}: {rule.action}"
         else:

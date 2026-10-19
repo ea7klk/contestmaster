@@ -1166,5 +1166,8 @@
   "s_ffeb6c21": "diviso per",
   "s_fff3c460": "Uscita di trasmissione massima: fino al limite legale applicabile.",
   "s_fab3f8ef": "conteggio dei moltiplicatori {name}",
-  "s_c25230ea": "Regola del moltiplicatore {rule}"
+  "s_c25230ea": "Regola del moltiplicatore {rule}",
+  "s_a72bbc7c": "Regola del bonus {rule}",
+  "s_943cf5da": "per ogni {fact} distinto per {scope}",
+  "s_b4c2a3bc": "valore configurato"
 }

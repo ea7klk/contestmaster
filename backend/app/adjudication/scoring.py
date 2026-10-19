@@ -85,7 +85,7 @@ def _required_datasets(definition) -> set[str]:
         if getattr(rule, "fact", None) in geographic:
             return {"cty"}
         source_fact = getattr(rule, "source_fact", "")
-        if set(source_fact.split(".")) & geographic:
+        if source_fact and set(source_fact.split(".")) & geographic:
             return {"cty"}
         for condition in (configured.when, getattr(rule, "eligible_if", None)):
             if condition is not None and _condition_uses_geography(condition):
@@ -597,6 +597,7 @@ def score_entry_revision(
         "outcome": result.outcome,
         "summary": result.explanation,
         "multiplier_counts": result.multiplier_counts,
+        "bonus_counts": result.bonus_counts,
         "review_reasons": result.review_reasons,
         "workflow_actions": [item.model_dump(mode="json") for item in result.workflow_actions],
         "cross_log": {

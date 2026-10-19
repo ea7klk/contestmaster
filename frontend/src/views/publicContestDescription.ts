@@ -1114,7 +1114,15 @@ function summarizeRule(
       const basis =
         rule.basis === 'per_entry'
           ? tx('per entry')
-          : tx('per eligible contact')
+          : rule.basis === 'per_distinct_value'
+            ? tx('for each distinct {fact} per {scope}', {
+                fact: stringValue(rule.source_fact, tx('configured value')),
+                scope: stringValue(rule.scope, tx('contest')).replaceAll(
+                  '_',
+                  ' ',
+                ),
+              })
+            : tx('per eligible contact')
       const cap =
         typeof rule.cap === 'number'
           ? tx(', up to {points} points', { points: rule.cap })

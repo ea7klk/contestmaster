@@ -1166,5 +1166,8 @@
   "s_ffeb6c21": "geteilt durch",
   "s_fff3c460": "Maximale Sendeleistung: bis zur geltenden gesetzlichen Grenze.",
   "s_fab3f8ef": "Anzahl der {name}-Multiplikatoren",
-  "s_c25230ea": "Multiplikatorregel {rule}"
+  "s_c25230ea": "Multiplikatorregel {rule}",
+  "s_a72bbc7c": "Bonuspunkte-Regel {rule}",
+  "s_943cf5da": "für jeden eindeutigen {fact}-Wert je {scope}",
+  "s_b4c2a3bc": "konfigurierter Wert"
 }

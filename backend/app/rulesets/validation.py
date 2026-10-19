@@ -329,6 +329,71 @@ def _cross_reference_errors(
                         ),
                     }
                 )
+        elif rule.kind == "bonus" and rule.basis == "per_distinct_value":
+            parts = rule.source_fact.split(".") if rule.source_fact else []
+            qso_fields = {
+                "id",
+                "occurred_at",
+                "worked_callsign",
+                "wpx_prefix",
+                "callsign_suffix",
+                "band",
+                "mode",
+                "grid",
+                "transmitter",
+                "continent",
+                "entity",
+                "cq_zone",
+                "itu_zone",
+            }
+            valid_fact = len(parts) == 2 and parts[0] == "qso" and parts[1] in qso_fields
+            valid_fact = valid_fact or (
+                len(parts) == 2 and parts[0] == "station" and parts[1] in {"entity", "continent"}
+            )
+            if len(parts) == 2 and parts[0] == "exchange":
+                field = exchange_fields.get(parts[1])
+                valid_fact = field is not None and field.direction in {"received", "both"}
+            elif len(parts) == 3 and parts[0] == "exchange":
+                field = exchange_fields.get(parts[2])
+                valid_fact = field is not None and field.direction in {parts[1], "both"}
+            if not valid_fact:
+                errors.append(
+                    {
+                        "path": f"rules[{index}].source_fact",
+                        "message": (
+                            "Distinct-value bonuses require a supported QSO, station, or "
+                            "configured exchange fact."
+                        ),
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.source_fact == "qso.grid"
+                and not grid_exchange_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].source_fact",
+                        "message": (
+                            "A distinct bonus using qso.grid requires a received or bidirectional "
+                            "grid exchange field supported by every accepted log format."
+                        ),
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.source_fact == "qso.transmitter"
+                and not transmitter_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].source_fact",
+                        "message": (
+                            "A distinct bonus using qso.transmitter requires Cabrillo as every "
+                            "accepted log format and the transmitter QSO column."
+                        ),
+                    }
+                )
         elif isinstance(rule, DistancePointsRule):
             grid_field = exchange_fields.get(rule.grid_field)
             if grid_field is None:

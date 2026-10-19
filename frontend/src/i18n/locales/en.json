@@ -1166,5 +1166,8 @@
   "s_ffeb6c21": "divided by",
   "s_fff3c460": "Maximum transmit output: up to the applicable legal limit.",
   "s_fab3f8ef": "the {name} multiplier count",
-  "s_c25230ea": "Multiplier rule {rule}"
+  "s_c25230ea": "Multiplier rule {rule}",
+  "s_a72bbc7c": "Bonus rule {rule}",
+  "s_943cf5da": "for each distinct {fact} per {scope}",
+  "s_b4c2a3bc": "configured value"
 }

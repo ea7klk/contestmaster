@@ -269,6 +269,15 @@ watch(
                       <dt>{{ $tr('Multiplier rule {rule}', { rule: ruleId }) }}</dt>
                       <dd>{{ formatInteger(count) }}</dd>
                     </div>
+                    <div
+                      v-for="([ruleId, count], index) in Object.entries(
+                        item.explanation.bonus_counts ?? {},
+                      )"
+                      :key="`${ruleId}-${index}`"
+                    >
+                      <dt>{{ $tr('Bonus rule {rule}', { rule: ruleId }) }}</dt>
+                      <dd>{{ formatInteger(count) }}</dd>
+                    </div>
                     <div>
                       <dt>{{ $tr('Bonuses') }}</dt>
                       <dd>

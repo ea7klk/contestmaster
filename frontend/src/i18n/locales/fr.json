@@ -1166,5 +1166,8 @@
   "s_ffeb6c21": "divisé par",
   "s_fff3c460": "Sortie de transmission maximale : jusqu'à la limite légale applicable.",
   "s_fab3f8ef": "nombre de multiplicateurs {name}",
-  "s_c25230ea": "Règle de multiplicateur {rule}"
+  "s_c25230ea": "Règle de multiplicateur {rule}",
+  "s_a72bbc7c": "Règle de bonus {rule}",
+  "s_943cf5da": "pour chaque {fact} distinct par {scope}",
+  "s_b4c2a3bc": "valeur configurée"
 }

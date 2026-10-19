@@ -1166,5 +1166,8 @@
   "s_ffeb6c21": "dividido por",
   "s_fff3c460": "Salida máxima de transmisión: hasta el límite legal aplicable.",
   "s_fab3f8ef": "recuento de multiplicadores de {name}",
-  "s_c25230ea": "Regla de multiplicador {rule}"
+  "s_c25230ea": "Regla de multiplicador {rule}",
+  "s_a72bbc7c": "Regla de bonificación {rule}",
+  "s_943cf5da": "por cada {fact} distinto por {scope}",
+  "s_b4c2a3bc": "valor configurado"
 }

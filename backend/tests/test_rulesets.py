@@ -1367,6 +1367,177 @@ def test_formula_example_supplies_sample_values_for_named_multiplier_counts():
     assert example["final_score"] == 1
 
 
+def _distinct_bonus_rule(
+    rule_id="special-call-bonus",
+    *,
+    points=100,
+    cap=None,
+    award_group=None,
+    source_fact="qso.worked_callsign",
+    scope="contest",
+    missing_fact_action="needs_review",
+    when=None,
+    minimum_eligible_qsos=0,
+):
+    configured = {
+        "id": rule_id,
+        "rule": {
+            "kind": "bonus",
+            "basis": "per_distinct_value",
+            "points": points,
+            "source_fact": source_fact,
+            "scope": scope,
+            "missing_fact_action": missing_fact_action,
+            "minimum_eligible_qsos": minimum_eligible_qsos,
+        },
+    }
+    if cap is not None:
+        configured["rule"]["cap"] = cap
+    if award_group is not None:
+        configured["rule"]["award_group"] = award_group
+    if when is not None:
+        configured["when"] = when
+    return configured
+
+
+def test_distinct_bonus_counts_a_qualifying_callsign_only_once_across_bands():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["scope"].append("band")
+    payload["rules"].append(
+        _distinct_bonus_rule(
+            when={
+                "kind": "compare",
+                "fact": "qso.worked_callsign",
+                "operator": "eq",
+                "value": "K1ABC",
+            }
+        )
+    )
+    first, second = sample_entry().qsos
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [
+                first,
+                second.model_copy(update={"band": "20m", "worked_callsign": "K1ABC"}),
+            ]
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.bonus_counts["special-call-bonus"] == 1
+    assert result.bonus_points == 105
+
+
+def test_distinct_bonus_cap_allocates_integer_awards_in_contact_order():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["scope"].append("band")
+    payload["rules"].append(_distinct_bonus_rule(points=100, cap=150))
+    first, second = sample_entry().qsos
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [
+                first,
+                second.model_copy(update={"band": "20m", "worked_callsign": "K2XYZ"}),
+            ]
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.bonus_counts["special-call-bonus"] == 2
+    assert result.bonus_points == 155
+    assert [item.bonus_points for item in result.qso_scores] == [100, 50]
+
+
+def test_distinct_bonus_award_group_prevents_overlapping_rules_from_stacking():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["scope"].append("band")
+    payload["rules"].extend(
+        [
+            _distinct_bonus_rule("first-award", award_group="special-contact"),
+            _distinct_bonus_rule("overlapping-award", points=50, award_group="special-contact"),
+        ]
+    )
+    first, second = sample_entry().qsos
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [
+                first,
+                second.model_copy(update={"band": "20m", "worked_callsign": "K2XYZ"}),
+            ]
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.bonus_counts == {
+        "entry-bonus": 1,
+        "first-award": 2,
+        "overlapping-award": 0,
+    }
+    assert result.bonus_points == 205
+
+
+def test_missing_distinct_bonus_value_is_configurably_reviewed_or_ignored():
+    for action, expected_outcome in [("needs_review", "needs_review"), ("ignore", "scored")]:
+        payload = valid_payload()
+        exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+        exchange["rule"]["fields"].append(
+            {
+                "key": "county",
+                "label": "County",
+                "value_type": "text",
+                "direction": "received",
+                "required": False,
+            }
+        )
+        payload["rules"].append(
+            _distinct_bonus_rule(source_fact="exchange.received.county", missing_fact_action=action)
+        )
+
+        result = score_entry(
+            validate_ruleset(payload), sample_entry(), contest_starts_at=START, contest_ends_at=END
+        )
+
+        assert result.outcome == expected_outcome
+        assert result.bonus_points == 5
+        if action == "needs_review":
+            assert "missing_bonus_value:special-call-bonus" in result.review_reasons
+
+
+def test_distinct_bonus_with_no_eligible_contacts_awards_nothing():
+    payload = valid_payload()
+    payload["rules"].append(_distinct_bonus_rule(minimum_eligible_qsos=1))
+    entry = sample_entry().model_copy(update={"qsos": []})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.bonus_counts["special-call-bonus"] == 0
+    assert result.qso_count == 0
+
+
+def test_distinct_bonus_rejects_undefined_source_fact_and_requires_configuration():
+    payload = valid_payload()
+    payload["rules"].append(_distinct_bonus_rule(source_fact="exchange.received.undefined"))
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any("configured exchange fact" in item["message"] for item in error.value.errors)
+
+
 @pytest.mark.parametrize(
     ("scope", "expected"),
     [

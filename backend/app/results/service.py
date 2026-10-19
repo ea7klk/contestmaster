@@ -216,11 +216,20 @@ def _safe_explanation(run: ScoreRun, qso_count: int, credited_count: int) -> dic
         for rule_id, count in multiplier_counts.items()
         if type(count) is int and count >= 0
     }
+    bonus_counts = run.explanation.get("bonus_counts", {})
+    if not isinstance(bonus_counts, dict):
+        bonus_counts = {}
+    bonus_counts = {
+        str(rule_id): count
+        for rule_id, count in bonus_counts.items()
+        if type(count) is int and count >= 0
+    }
     return {
-        "format_version": 2,
+        "format_version": 3,
         "points": run.points,
         "multipliers": run.multiplier_count,
         "multiplier_counts": multiplier_counts,
+        "bonus_counts": bonus_counts,
         "bonus_points": run.bonus_points,
         "penalty_points": run.penalty_points,
         "score": run.final_score,

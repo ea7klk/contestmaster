@@ -360,8 +360,9 @@ def test_manager_generates_reviews_publishes_snapshot_and_exports_consistently(
     row = data["items"][0]
     assert row["callsign"] == "EA7AAA"
     assert row["score"] == row["explanation"]["score"]
-    assert row["explanation"]["format_version"] == 2
+    assert row["explanation"]["format_version"] == 3
     assert isinstance(row["explanation"]["multiplier_counts"], dict)
+    assert isinstance(row["explanation"]["bonus_counts"], dict)
     assert row["status"] == "scored"
     assert "score_run_id" not in row and "entry_id" not in row
     assert "qso_scores" not in row

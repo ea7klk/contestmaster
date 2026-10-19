@@ -132,6 +132,7 @@ class EntryScoreResult(BaseModel):
     points_total: StrictInt = Field(ge=0)
     multiplier_count: StrictInt = Field(ge=0)
     multiplier_counts: dict[str, StrictInt]
+    bonus_counts: dict[str, StrictInt]
     bonus_points: StrictInt = Field(ge=0)
     penalty_points: StrictInt = Field(ge=0)
     final_score: StrictInt = Field(ge=0)
@@ -226,6 +227,19 @@ def _scope_value(rule: DuplicateRule | MultiplierRule, qso: ScoringQso) -> tuple
             return None
         values.append(str(value).strip().upper())
     return tuple(values)
+
+
+def _bonus_scope_value(scope: str, qso: ScoringQso) -> tuple[str, ...] | None:
+    if scope == "contest":
+        return ("*",)
+    values = {
+        "band": (qso.band,),
+        "mode": (qso.mode,),
+        "band_mode": (qso.band, qso.mode),
+    }.get(scope)
+    if values is None or any(value is None or value == "" for value in values):
+        return None
+    return tuple(str(value).strip().upper() for value in values)
 
 
 def _point_value(rule: PointRule, qso: ScoringQso) -> int | None:
@@ -559,32 +573,81 @@ def score_entry(
         }
 
     bonus_total = 0
+    bonus_counts: dict[str, int] = {}
     bonus_by_qso: dict[int, int] = {}
+    bonus_review_reasons: list[str] = []
+    grouped_bonus_values: dict[str, set[tuple[str, ...]]] = {}
+    ordered_eligible_contexts = sorted(
+        eligible_contexts,
+        key=lambda item: (item[0].occurred_at.astimezone(UTC), item[0].qso_id),
+    )
     for configured_rule in bonus_rules:
         rule = configured_rule.rule
         if not isinstance(rule, BonusRule):
             continue
         amount = 0
-        if (
+        award_count = 0
+        if rule.basis == "per_distinct_value":
+            distinct_values: set[tuple[str, ...]] = set()
+            evidence_present = not rule.evidence_key or bool(
+                entry.declarations.get(rule.evidence_key)
+            )
+            if evidence_present and len(ordered_eligible_contexts) >= rule.minimum_eligible_qsos:
+                for qso, context in ordered_eligible_contexts:
+                    if not _condition_applies(configured_rule, context):
+                        continue
+                    value = _safe_value(rule.source_fact or "", context)
+                    scope = _bonus_scope_value(rule.scope or "", qso)
+                    if value is None or scope is None:
+                        reason = f"missing_bonus_value:{configured_rule.id}"
+                        if rule.missing_fact_action == "needs_review":
+                            bonus_review_reasons.append(reason)
+                            results[qso.qso_id]["reasons"].append(reason)
+                        continue
+                    normalized_value = (
+                        " ".join(value.split()).upper() if isinstance(value, str) else str(value)
+                    )
+                    unique_key = (*scope, normalized_value)
+                    if unique_key in distinct_values:
+                        continue
+                    distinct_values.add(unique_key)
+                    if rule.award_group and unique_key in grouped_bonus_values.setdefault(
+                        rule.award_group, set()
+                    ):
+                        continue
+                    award = rule.points
+                    if rule.cap is not None:
+                        award = min(award, max(rule.cap - amount, 0))
+                    if award <= 0:
+                        continue
+                    amount += award
+                    award_count += 1
+                    bonus_by_qso[qso.qso_id] = bonus_by_qso.get(qso.qso_id, 0) + award
+                    if rule.award_group:
+                        grouped_bonus_values[rule.award_group].add(unique_key)
+        elif (
             rule.basis == "per_eligible_qso"
-            and len(eligible_contexts) >= rule.minimum_eligible_qsos
+            and len(ordered_eligible_contexts) >= rule.minimum_eligible_qsos
         ):
-            for _qso, context in eligible_contexts:
+            for qso, context in ordered_eligible_contexts:
                 if _condition_applies(configured_rule, context):
                     if rule.evidence_key and not entry.declarations.get(rule.evidence_key):
                         continue
                     amount += rule.points
-                    bonus_by_qso[_qso.qso_id] = bonus_by_qso.get(_qso.qso_id, 0) + rule.points
+                    award_count += 1
+                    bonus_by_qso[qso.qso_id] = bonus_by_qso.get(qso.qso_id, 0) + rule.points
         elif (
-            _condition_applies(configured_rule, entry_context)
-            and len(eligible_contexts) >= rule.minimum_eligible_qsos
+            rule.basis == "per_entry"
+            and _condition_applies(configured_rule, entry_context)
+            and len(ordered_eligible_contexts) >= rule.minimum_eligible_qsos
         ):
-            if rule.evidence_key and not entry.declarations.get(rule.evidence_key):
-                continue
-            amount = rule.points
+            if not rule.evidence_key or entry.declarations.get(rule.evidence_key):
+                amount = rule.points
+                award_count = 1
         if rule.cap is not None:
             amount = min(amount, rule.cap)
         bonus_total += amount
+        bonus_counts[configured_rule.id] = award_count
 
     qso_scores = [
         QsoScoreResult.model_validate(
@@ -629,6 +692,7 @@ def score_entry(
         if score.status == "needs_review"
         for reason in score.reasons
     ]
+    review_reasons.extend(sorted(set(bonus_review_reasons)))
     workflow_actions: list[WorkflowAction] = []
     for configured_rule in configured:
         if isinstance(configured_rule.rule, WorkflowHookRule):
@@ -694,6 +758,10 @@ def score_entry(
             for rule_id, count in sorted(multiplier_counts.items())
         ],
         f"Bonus points: {bonus_total}.",
+        *[
+            f"Bonus {rule_id}: {count} qualifying award(s)."
+            for rule_id, count in sorted(bonus_counts.items())
+        ],
         f"Penalty points: {penalty_points}.",
         "Score formula evaluated left to right in configured operation order using integers.",
         f"Final score: {final_score}.",
@@ -707,6 +775,7 @@ def score_entry(
         points_total=points_total,
         multiplier_count=multiplier_count,
         multiplier_counts=multiplier_counts,
+        bonus_counts=bonus_counts,
         bonus_points=bonus_total,
         penalty_points=penalty_points,
         final_score=final_score,

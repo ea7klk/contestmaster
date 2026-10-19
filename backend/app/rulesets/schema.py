@@ -345,10 +345,30 @@ class MultiplierRule(StrictModel):
 
 class BonusRule(StrictModel):
     kind: Literal["bonus"]
-    basis: Literal["per_eligible_qso", "per_entry"]
+    basis: Literal["per_eligible_qso", "per_entry", "per_distinct_value"]
     points: PositiveInteger
     cap: NonNegativeInteger | None = None
     minimum_eligible_qsos: NonNegativeInteger = 0
+    source_fact: (
+        Annotated[
+            str,
+            StringConstraints(
+                min_length=1,
+                max_length=160,
+                pattern=r"^(qso|station|exchange)(\.[a-zA-Z0-9_-]+)+$",
+            ),
+        ]
+        | None
+    ) = None
+    scope: Literal["contest", "band", "mode", "band_mode"] | None = None
+    missing_fact_action: Literal["ignore", "needs_review"] = "needs_review"
+    award_group: Identifier | None = Field(
+        default=None,
+        description=(
+            "Distinct-value bonuses with the same group do not award the same source value "
+            "and scope more than once. Use separate groups only when the sponsor permits stacking."
+        ),
+    )
     evidence_key: Identifier | None = Field(
         default=None,
         description=(
@@ -371,6 +391,19 @@ class BonusRule(StrictModel):
         if legacy_required != (evidence_key is not None):
             raise ValueError("legacy evidence_required must agree with evidence_key presence")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_distinct_bonus(self) -> BonusRule:
+        distinct = self.basis == "per_distinct_value"
+        if distinct and (self.source_fact is None or self.scope is None):
+            raise ValueError("per_distinct_value bonuses require source_fact and scope")
+        if not distinct and (self.source_fact is not None or self.scope is not None):
+            raise ValueError(
+                "source_fact and scope are supported only for per_distinct_value bonuses"
+            )
+        if not distinct and self.award_group is not None:
+            raise ValueError("award_group is supported only for per_distinct_value bonuses")
+        return self
 
 
 class PenaltyRule(StrictModel):
