@@ -686,6 +686,26 @@ CabrilloQsoColumn = Literal[
 ]
 
 
+class AdifExchangeMapping(StrictModel):
+    """Map a configured exchange field to ADIF's per-contact sent/received tags."""
+
+    field_key: Identifier
+    sent_tag: (
+        Annotated[str, StringConstraints(min_length=1, max_length=32, pattern=r"^[A-Z][A-Z0-9_]*$")]
+        | None
+    ) = None
+    received_tag: (
+        Annotated[str, StringConstraints(min_length=1, max_length=32, pattern=r"^[A-Z][A-Z0-9_]*$")]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def has_at_least_one_tag(self) -> AdifExchangeMapping:
+        if self.sent_tag is None and self.received_tag is None:
+            raise ValueError("an ADIF exchange mapping needs a sent or received tag")
+        return self
+
+
 class FormatMappingRule(StrictModel):
     kind: Literal["format_mapping"]
     format: Literal["cabrillo", "adif", "csv", "native"]
@@ -705,6 +725,14 @@ class FormatMappingRule(StrictModel):
         ),
     )
     qso_columns: list[CabrilloQsoColumn] = Field(default_factory=list, max_length=11)
+    adif_exchange_fields: list[AdifExchangeMapping] = Field(
+        default_factory=list,
+        max_length=80,
+        description=(
+            "Optional ADIF tag mappings for configured exchange fields not represented by "
+            "the standard exchange string or built-in ADIF tags."
+        ),
+    )
     preserve_unknown_fields: bool = True
 
     @model_validator(mode="after")
@@ -720,6 +748,17 @@ class FormatMappingRule(StrictModel):
             seen_categories.add(key)
         if len(self.qso_columns) != len(set(self.qso_columns)):
             raise ValueError("QSO columns must not contain duplicate fields")
+        if self.format != "adif" and self.adif_exchange_fields:
+            raise ValueError("ADIF exchange mappings are valid only for the ADIF format")
+        if len({item.field_key for item in self.adif_exchange_fields}) != len(
+            self.adif_exchange_fields
+        ):
+            raise ValueError("ADIF exchange field keys must be unique")
+        for direction in ("sent_tag", "received_tag"):
+            tags = [getattr(item, direction) for item in self.adif_exchange_fields]
+            present_tags = [tag for tag in tags if tag is not None]
+            if len({tag.upper() for tag in present_tags}) != len(present_tags):
+                raise ValueError(f"ADIF {direction.replace('_tag', '')} tags must be unique")
         if any(
             key == "callsign" and value != "CALLSIGN" for key, value in self.header_fields.items()
         ):

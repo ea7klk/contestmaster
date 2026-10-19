@@ -95,3 +95,21 @@ def test_adif_exchange_values_feed_configured_scoring_fields():
     assert _exchange_values(
         {"raw": "JN18", "values": {"grid": "JN18"}}, exchange, direction="received"
     ) == {"grid": "JN18"}
+
+
+def test_adif_custom_exchange_tags_map_to_configured_field_keys_and_preserve_source_tags():
+    text = LOG.replace(
+        "<APP_TEST:6>kept!!",
+        "<MY_COUNTY:5>Maric<COUNTY:5>Pinal<APP_TEST:6>kept!!",
+    )
+    parsed = parse_adif(
+        text,
+        exchange_mappings={"county": {"sent_tag": "MY_COUNTY", "received_tag": "COUNTY"}},
+    )
+
+    assert parsed.errors == []
+    qso = parsed.qsos[0]
+    assert qso.fields["_exchange_sent_values"]["county"] == "Maric"
+    assert qso.fields["_exchange_received_values"]["county"] == "Pinal"
+    assert qso.fields["my_county"] == "Maric"
+    assert qso.fields["county"] == "Pinal"

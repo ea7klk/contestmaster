@@ -15,6 +15,7 @@ from backend.app.rulesets.schema import (
     Condition,
     ConfiguredRule,
     DistancePointsRule,
+    ExchangeRule,
     NotCondition,
     RulesetDefinition,
     rule_types_in,
@@ -92,6 +93,49 @@ def _condition_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
                             "safe subset.",
                         }
                     )
+    return errors
+
+
+def _conditional_exchange_schema_errors(definition: RulesetDefinition) -> list[dict[str, object]]:
+    """Reject alternative exchange selectors that need their own parsed output."""
+    exchange_rules = [
+        configured for configured in definition.rules if isinstance(configured.rule, ExchangeRule)
+    ]
+    signatures = {
+        tuple((field.key, field.direction, field.value_type) for field in configured.rule.fields)
+        for configured in exchange_rules
+    }
+    if len(signatures) <= 1:
+        return []
+
+    errors: list[dict[str, object]] = []
+    for index, configured in enumerate(definition.rules):
+        if not isinstance(configured.rule, ExchangeRule):
+            continue
+        if configured.when is None:
+            errors.append(
+                {
+                    "path": f"rules[{index}].when",
+                    "message": (
+                        "Alternative exchange schemas must each have a condition so the "
+                        "importer can select their field order and direction."
+                    ),
+                }
+            )
+            continue
+        if any(
+            comparison.fact.startswith("exchange.") or comparison.fact == "qso.grid"
+            for comparison in _walk_conditions(configured.when)
+        ):
+            errors.append(
+                {
+                    "path": f"rules[{index}].when",
+                    "message": (
+                        "Alternative exchange schema conditions cannot depend on exchange values "
+                        "or qso.grid because those facts require the schema to be parsed first."
+                    ),
+                }
+            )
     return errors
 
 
@@ -451,6 +495,45 @@ def _cross_reference_errors(
                             }
                         )
 
+            if rule.format == "adif":
+                for mapping_index, mapping in enumerate(rule.adif_exchange_fields):
+                    field = exchange_fields.get(mapping.field_key)
+                    path = f"rules[{index}].adif_exchange_fields[{mapping_index}]"
+                    if field is None:
+                        errors.append(
+                            {
+                                "path": f"{path}.field_key",
+                                "message": "ADIF mapping references an undefined exchange field.",
+                            }
+                        )
+                        continue
+                    if mapping.sent_tag is not None and field.direction not in {
+                        "sent",
+                        "both",
+                    }:
+                        errors.append(
+                            {
+                                "path": f"{path}.sent_tag",
+                                "message": (
+                                    "A sent ADIF tag requires a sent or bidirectional field."
+                                ),
+                            }
+                        )
+                    if mapping.received_tag is not None and field.direction not in {
+                        "received",
+                        "both",
+                    }:
+                        errors.append(
+                            {
+                                "path": f"{path}.received_tag",
+                                "message": (
+                                    "A received ADIF tag requires a received or bidirectional "
+                                    "field."
+                                ),
+                            }
+                        )
+
+            if check_import_mapping_consistency:
                 mapped_dimensions = {
                     dimension_key
                     for mapping in rule.category_mappings
@@ -589,6 +672,7 @@ def validate_ruleset(
         raise RulesetValidationError(errors) from exc
     errors = (
         _condition_errors(definition)
+        + _conditional_exchange_schema_errors(definition)
         + _cross_reference_errors(
             definition, check_import_mapping_consistency=check_import_mapping_consistency
         )

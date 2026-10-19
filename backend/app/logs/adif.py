@@ -97,7 +97,11 @@ def _first(fields: dict[str, list[str]], *names: str) -> str:
     return ""
 
 
-def _qso(fields: dict[str, list[str]], line: int) -> tuple[ParsedQso | None, ImportMessage | None]:
+def _qso(
+    fields: dict[str, list[str]],
+    line: int,
+    exchange_mappings: dict[str, dict[str, str]] | None = None,
+) -> tuple[ParsedQso | None, ImportMessage | None]:
     date_value = _first(fields, "QSO_DATE")
     time_value = _first(fields, "TIME_ON")
     if not re.fullmatch(r"\d{8}", date_value) or not re.fullmatch(r"\d{4}(?:\d{2})?", time_value):
@@ -141,6 +145,19 @@ def _qso(fields: dict[str, list[str]], line: int) -> tuple[ParsedQso | None, Imp
     received_rst = _first(fields, "RST_RCVD")
     sent = _first(fields, "STX_STRING", "STX", "MY_GRIDSQUARE")
     received = _first(fields, "SRX_STRING", "SRX", "GRIDSQUARE")
+    mappings = exchange_mappings or {}
+    if not sent:
+        sent = " ".join(
+            fields[tags["sent_tag"]][0]
+            for tags in mappings.values()
+            if tags.get("sent_tag") and fields.get(tags["sent_tag"])
+        )
+    if not received:
+        received = " ".join(
+            fields[tags["received_tag"]][0]
+            for tags in mappings.values()
+            if tags.get("received_tag") and fields.get(tags["received_tag"])
+        )
     if not sent:
         sent = " ".join(
             value[0].strip()
@@ -182,6 +199,13 @@ def _qso(fields: dict[str, list[str]], line: int) -> tuple[ParsedQso | None, Imp
         "cq_zone": _first(fields, "CQZ"),
         "itu_zone": _first(fields, "ITUZ"),
     }
+    for field_key, tags in mappings.items():
+        sent_tag = tags.get("sent_tag")
+        received_tag = tags.get("received_tag")
+        if sent_tag and fields.get(sent_tag):
+            canonical_sent[field_key] = fields[sent_tag][0]
+        if received_tag and fields.get(received_tag):
+            canonical_received[field_key] = fields[received_tag][0]
     canonical_sent = {key: value for key, value in canonical_sent.items() if value}
     canonical_received = {key: value for key, value in canonical_received.items() if value}
     return ParsedQso(
@@ -208,7 +232,11 @@ def _qso(fields: dict[str, list[str]], line: int) -> tuple[ParsedQso | None, Imp
     ), None
 
 
-def parse_adif(text: str) -> ParsedLog:
+def parse_adif(
+    text: str,
+    *,
+    exchange_mappings: dict[str, dict[str, str]] | None = None,
+) -> ParsedLog:
     """Parse ADI text (the standard ADIF interchange serialization)."""
     line_count = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
     if line_count > MAX_LOG_LINES:
@@ -296,7 +324,7 @@ def parse_adif(text: str) -> ParsedLog:
             break
         if tag.casefold() == "eor":
             fields = record_fields if explicit_header else header_fields
-            parsed, issue_message = _qso(fields, _line_at(text, record_start))
+            parsed, issue_message = _qso(fields, _line_at(text, record_start), exchange_mappings)
             if issue_message:
                 errors.append(issue_message)
             elif parsed is not None:

@@ -44,9 +44,20 @@ from backend.app.models import (
 )
 from backend.app.models.master_data import ScoreRunMasterDataVersion
 from backend.app.models.types import utc_now
-from backend.app.rulesets.engine import ScoringEntry, ScoringQso, score_entry
+from backend.app.rulesets.engine import (
+    ScoringEntry,
+    ScoringQso,
+    build_rule_context,
+    evaluate_condition_result,
+    score_entry,
+)
 from backend.app.rulesets.persistence import load_ruleset_version
-from backend.app.rulesets.schema import ExchangeRule, FormatMappingRule, RulesetDefinition
+from backend.app.rulesets.schema import (
+    ConfiguredRule,
+    ExchangeRule,
+    FormatMappingRule,
+    RulesetDefinition,
+)
 
 logger = logging.getLogger("contestmaster.adjudication")
 
@@ -134,7 +145,7 @@ def _scoring_inputs(
     revision: EntryRevision,
     cty_mappings: list[CtyCallsignMatch],
     cty_version_id: int | None,
-    exchange_rule: ExchangeRule | None,
+    exchange_rules: list[ConfiguredRule],
     declarations: dict[str, Any],
 ) -> tuple[ScoringEntry, list[Qso], list[QsoFacts]]:
     station = session.scalar(select(Station).where(Station.entry_revision_id == revision.id))
@@ -186,16 +197,6 @@ def _scoring_inputs(
                 cq_zone = cq_zone or mapping.cq_zone
                 itu_zone = itu_zone or mapping.itu_zone
                 continent = continent or mapping.continent
-        sent_exchange = _exchange_values(
-            qso.exchange_sent_normalized or qso.exchange_sent_submitted,
-            exchange_rule,
-            direction="sent",
-        )
-        received_exchange = _exchange_values(
-            qso.exchange_received_normalized or qso.exchange_received_submitted,
-            exchange_rule,
-            direction="received",
-        )
         occurred = qso.occurred_at.astimezone(UTC)
         scoring_band = _scoring_band(qso.band)
         raw_transmitter = qso.source_fields.get("transmitter")
@@ -210,18 +211,14 @@ def _scoring_inputs(
                 # Grid exchanges are parsed into their semantic field names. Expose
                 # the received locator as the canonical QSO grid fact used by
                 # multiplier rules and conditions.
-                grid=(
-                    str(received_exchange["grid"]).strip().upper()
-                    if received_exchange.get("grid") is not None
-                    else None
-                ),
+                grid=None,
                 transmitter=transmitter or None,
                 entity=entity,
                 cq_zone=cq_zone,
                 itu_zone=itu_zone,
                 continent=continent,
-                sent_exchange=sent_exchange,
-                received_exchange=received_exchange,
+                sent_exchange={},
+                received_exchange={},
             )
         )
         source_facts.append(
@@ -232,8 +229,8 @@ def _scoring_inputs(
                 worked_callsign=callsign,
                 band=scoring_band,
                 mode=qso.mode,
-                sent_exchange=sent_exchange,
-                received_exchange=received_exchange,
+                sent_exchange={},
+                received_exchange={},
             )
         )
     entry_input = ScoringEntry(
@@ -244,8 +241,39 @@ def _scoring_inputs(
         station_continent=station_mapping.continent if station_mapping else None,
         categories=entry.category_values,
         declarations=declarations,
-        qsos=scoring_qsos,
+        qsos=[],
     )
+    for index, qso in enumerate(qsos):
+        scored_qso = scoring_qsos[index]
+        selected_exchange_rule = _exchange_schema_for_qso(exchange_rules, entry_input, scored_qso)
+        sent_exchange = _exchange_values(
+            qso.exchange_sent_normalized or qso.exchange_sent_submitted,
+            selected_exchange_rule,
+            direction="sent",
+        )
+        received_exchange = _exchange_values(
+            qso.exchange_received_normalized or qso.exchange_received_submitted,
+            selected_exchange_rule,
+            direction="received",
+        )
+        scored_qso.sent_exchange = sent_exchange
+        scored_qso.received_exchange = received_exchange
+        scored_qso.grid = (
+            str(received_exchange["grid"]).strip().upper()
+            if received_exchange.get("grid") is not None
+            else None
+        )
+        entry_input.qsos.append(scored_qso)
+        source_facts[index] = QsoFacts(
+            qso_id=qso.id,
+            occurred_at=scored_qso.occurred_at,
+            station_callsign=station.callsign_normalized or station.callsign_submitted,
+            worked_callsign=scored_qso.worked_callsign,
+            band=scored_qso.band,
+            mode=scored_qso.mode,
+            sent_exchange=sent_exchange,
+            received_exchange=received_exchange,
+        )
     return entry_input, qsos, source_facts
 
 
@@ -261,6 +289,35 @@ def _scoring_band(value: str | None) -> str | None:
         frequency /= 1000
     band = band_from_frequency_mhz(str(frequency))
     return band or value
+
+
+def _exchange_schema_for_qso(
+    exchange_rules: list[ConfiguredRule], entry: ScoringEntry, qso: ScoringQso
+) -> ExchangeRule | None:
+    """Select one unambiguous conditional exchange layout before interpreting tokens."""
+    schemas = [
+        configured for configured in exchange_rules if isinstance(configured.rule, ExchangeRule)
+    ]
+    signatures = {
+        tuple((field.key, field.direction, field.value_type) for field in configured.rule.fields)
+        for configured in schemas
+    }
+    if len(signatures) == 1:
+        return schemas[0].rule
+
+    active = [
+        configured
+        for configured in schemas
+        if configured.when is not None
+        and evaluate_condition_result(configured.when, build_rule_context(entry, qso)) is True
+    ]
+    active_signatures = {
+        tuple((field.key, field.direction, field.value_type) for field in item.rule.fields)
+        for item in active
+    }
+    if len(active_signatures) != 1 or not active:
+        return None
+    return active[0].rule
 
 
 def _entry_declarations(definition: RulesetDefinition, revision: EntryRevision) -> dict[str, Any]:
@@ -442,14 +499,9 @@ def score_entry_revision(
     if ruleset_row is None:
         raise ScoreRunError("Contest ruleset version is unavailable.")
     definition = load_ruleset_version(ruleset_row)
-    exchange_rule = next(
-        (
-            configured.rule
-            for configured in definition.rules
-            if isinstance(configured.rule, ExchangeRule)
-        ),
-        None,
-    )
+    exchange_rules = [
+        configured for configured in definition.rules if isinstance(configured.rule, ExchangeRule)
+    ]
     master_versions = _contest_snapshot(session, contest, definition)
     snapshot_ids = dict(master_versions)
     cty_version_id = snapshot_ids.get("cty")
@@ -457,7 +509,7 @@ def score_entry_revision(
     declarations = _entry_declarations(definition, revision)
 
     input_entry, revision_qsos, qso_facts = _scoring_inputs(
-        session, entry, revision, cty_mappings, cty_version_id, exchange_rule, declarations
+        session, entry, revision, cty_mappings, cty_version_id, exchange_rules, declarations
     )
     qso_ids = [qso.id for qso in revision_qsos]
     latest = _latest_decisions(session, qso_ids)
@@ -492,7 +544,7 @@ def score_entry_revision(
                     other_revision,
                     cty_mappings,
                     cty_version_id,
-                    exchange_rule,
+                    exchange_rules,
                     _entry_declarations(definition, other_revision),
                 )
                 other_facts.extend(candidate_facts)

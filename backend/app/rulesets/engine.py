@@ -159,7 +159,7 @@ def _condition_applies(configured: ConfiguredRule, context: Mapping[str, Any]) -
     return configured.when is None or evaluate_condition(configured.when, context)
 
 
-def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]:
+def build_rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]:
     qso_data: dict[str, Any] = {}
     if qso is not None:
         same_entity = (
@@ -357,9 +357,9 @@ def score_entry(
     penalty_occurrences: dict[str, int] = {item.id: 0 for item in penalty_rules}
     qso_overrides = qso_overrides or {}
     eligible_contexts: list[tuple[ScoringQso, dict[str, Any]]] = []
-    entry_context = _rule_context(entry, None)
+    entry_context = build_rule_context(entry, None)
     for qso in sorted(entry.qsos, key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id)):
-        context = _rule_context(entry, qso)
+        context = build_rule_context(entry, qso)
         status: Literal["credited", "not_credited", "needs_review"] = "credited"
         reasons: list[str] = []
         qso_penalties = 0
@@ -728,12 +728,12 @@ def score_entry(
             )
             candidates = (
                 [
-                    (qso.qso_id, _rule_context(entry, qso))
+                    (qso.qso_id, build_rule_context(entry, qso))
                     for qso in sorted(
                         entry.qsos,
                         key=lambda item: (item.occurred_at.astimezone(UTC), item.qso_id),
                     )
-                    if _condition_applies(configured_rule, _rule_context(entry, qso))
+                    if _condition_applies(configured_rule, build_rule_context(entry, qso))
                 ]
                 if uses_qso_facts
                 else [(None, entry_context)]

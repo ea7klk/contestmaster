@@ -71,6 +71,59 @@ describe('RuleSchemaEditor', () => {
     })
   })
 
+  it('selects a configured exchange field for ADIF tag mappings', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        adif_exchange_fields: {
+          type: 'array',
+          title: 'ADIF exchange fields',
+          items: {
+            type: 'object',
+            properties: {
+              field_key: { type: 'string', title: 'Field key' },
+              sent_tag: {
+                anyOf: [{ type: 'string' }, { type: 'null' }],
+                title: 'Sent tag',
+              },
+              received_tag: {
+                anyOf: [{ type: 'string' }, { type: 'null' }],
+                title: 'Received tag',
+              },
+            },
+            required: ['field_key'],
+          },
+        },
+      },
+      required: ['adif_exchange_fields'],
+    }
+    const initial = {
+      adif_exchange_fields: [{ field_key: 'county' }],
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: initial,
+        path: 'rules-adif-exchange-fields',
+        exchangeFieldOptions: [
+          { value: 'county', label: 'County' },
+          { value: 'section', label: 'ARRL section' },
+        ],
+      },
+    })
+
+    const fieldKeySelect = wrapper.get('.schema-array-item select')
+    expect(fieldKeySelect.findAll('option').map((option) => option.text())).toEqual([
+      'County',
+      'ARRL section',
+    ])
+    await fieldKeySelect.setValue('section')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      adif_exchange_fields: [{ field_key: 'section' }],
+    })
+  })
+
   it('keeps an existing source fact visible when it is no longer defined', async () => {
     const schema: JsonSchema = {
       type: 'object',

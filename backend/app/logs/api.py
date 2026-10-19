@@ -241,6 +241,10 @@ def _contest_rules(
                 format_configs[configured.rule.format] = {
                     "qso_columns": configured.rule.qso_columns or None,
                     "header_fields": configured.rule.header_fields,
+                    "adif_exchange_fields": [
+                        item.model_dump(mode="json")
+                        for item in configured.rule.adif_exchange_fields
+                    ],
                     "category_mappings": [
                         item.model_dump(mode="json") for item in configured.rule.category_mappings
                     ],
@@ -277,7 +281,16 @@ def _selected_format_config(
 
 def _parse_log(content: str, upload_format: str, config: dict[str, object]) -> ParsedLog:
     if upload_format == "adif":
-        return parse_adif(content)
+        mappings = {
+            str(item["field_key"]): {
+                key: str(value)
+                for key, value in item.items()
+                if key in {"sent_tag", "received_tag"} and value is not None
+            }
+            for item in config.get("adif_exchange_fields", [])
+            if isinstance(item, dict) and isinstance(item.get("field_key"), str)
+        }
+        return parse_adif(content, exchange_mappings=mappings)
     return parse_cabrillo(
         content,
         qso_columns=config.get("qso_columns") or None,
@@ -699,6 +712,10 @@ async def resubmit_log(
                     format_configs[configured.rule.format] = {
                         "qso_columns": configured.rule.qso_columns or None,
                         "header_fields": configured.rule.header_fields,
+                        "adif_exchange_fields": [
+                            item.model_dump(mode="json")
+                            for item in configured.rule.adif_exchange_fields
+                        ],
                         "category_mappings": [
                             item.model_dump(mode="json")
                             for item in configured.rule.category_mappings

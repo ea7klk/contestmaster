@@ -147,6 +147,24 @@ const categoryDimensions = computed(() => {
 const multiplierSourceFacts = computed(() =>
   availableMultiplierSourceFacts(rules.value),
 )
+const exchangeFieldOptions = computed(() => {
+  const options = new Map<string, string>()
+  for (const configured of rules.value) {
+    if (configured.rule.kind !== 'exchange') continue
+    const fields = configured.rule.fields
+    if (!Array.isArray(fields)) continue
+    for (const candidate of fields) {
+      if (!candidate || typeof candidate !== 'object') continue
+      const field = candidate as Record<string, unknown>
+      if (typeof field.key !== 'string') continue
+      options.set(
+        field.key,
+        typeof field.label === 'string' ? field.label : field.key,
+      )
+    }
+  }
+  return [...options].map(([value, label]) => ({ value, label }))
+})
 const scoreFormulaVariables = computed(() => [
   { value: 'points_total', label: 'QSO points total' },
   { value: 'multiplier_count', label: 'Combined multiplier count (legacy)' },
@@ -602,7 +620,7 @@ const helpText: Record<string, string> = {
   categories:
     'Use these dimensions and choices to define the entrant classes shown in results. The controls below explain stable keys, required choices, declarations, and incompatible combinations.',
   exchange:
-    'Define the canonical values used to validate contacts and entrant declarations. The controls below explain field keys, labels, directions, value types, and serial settings; format mappings connect these values to uploaded log fields.',
+    'Define the canonical values used to validate contacts and entrant declarations. The controls below explain field keys, labels, directions, value types, and serial settings; format mappings connect these values to uploaded log fields. If the sponsor uses a different ordered exchange for different entry or contact classes, add a separate exchange rule and condition each layout on facts known before parsing the exchange. Do not use an exchange value or qso.grid to choose the layout; if different layouts match the same QSO, Contestmaster will not guess.',
   eligibility:
     'This rule determines which submitted contacts may count before points and multipliers are applied. Use band and mode selections when the sponsor restricts operating segments; leave those lists unrestricted when any catalog value is allowed. Add a condition for geography or other supported contact facts only when the written rules define that limit. Conditions that refer to unresolved facts stay unknown, including when wrapped in Not; unknown facts follow Missing Fact Action (review by default), while known mismatches follow Action. For regional workability, for example, require station.entity to exist and then allow either an Arizona entrant or a worked Arizona station. The built-in checks can reject self-contacts, out-of-period contacts, and missing required exchange data.',
   duplicates:
@@ -622,7 +640,7 @@ const helpText: Record<string, string> = {
   operating_constraints:
     'Use this rule for entry-level or operating limits the engine can check, such as required off-time periods, a maximum number of transmitters, or a permitted band/mode combination. Add only constraints supported by the shown fields and the official rules. Choose whether a violation is uncredited or requires human review when the result is ambiguous.',
   format_mapping:
-    'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Map sponsor-specific exchange names to stable field keys. Unrecognized source fields can be preserved for later review.',
+    'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Cabrillo exchange values follow the active ordered exchange schema. ADIF uses STX_STRING/SRX_STRING for ordered exchange tokens, standard tags when recognized, or optional custom sent/received tag mappings for other configured exchange fields. Unrecognized source fields can be preserved for later review.',
   workflow_hook:
     'Workflow hooks describe cross-log comparisons, review, publication, or award behavior that affects more than one contact. Enable a hook only when the sponsor’s rules require that workflow and its configured settings express the rule. Hooks do not execute arbitrary code; unsupported or ambiguous cases must be reviewed rather than guessed.',
 }
@@ -1358,6 +1376,7 @@ function catalogErrorMessage(reason: unknown) {
                   :category-dimensions="categoryDimensions"
                   :fact-options="multiplierSourceFacts"
                   :variable-options="scoreFormulaVariables"
+                  :exchange-field-options="exchangeFieldOptions"
                   :label="`${configured.rule.kind} rule settings`"
                   :path="`rules-${index}`"
                   @update:model-value="updateRule(configured, $event)"

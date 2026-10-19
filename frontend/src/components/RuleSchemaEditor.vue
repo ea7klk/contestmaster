@@ -24,6 +24,7 @@ const props = withDefaults(
     headerKey?: string
     factOptions?: Array<{ value: string; label: string }>
     variableOptions?: Array<{ value: string; label: string }>
+    exchangeFieldOptions?: Array<{ value: string; label: string }>
   }>(),
   {
     label: '',
@@ -36,6 +37,7 @@ const props = withDefaults(
     headerKey: '',
     factOptions: () => [],
     variableOptions: () => [],
+    exchangeFieldOptions: () => [],
   },
 )
 
@@ -93,6 +95,11 @@ function enumLabel(value: unknown): string {
   const title = words.replace(/\b\w/g, (letter) => letter.toUpperCase())
   return translateText(title)
 }
+const isExchangeFieldKey = computed(
+  () =>
+    props.path.includes('-adif_exchange_fields-') &&
+    props.path.endsWith('-field_key'),
+)
 const isObject = computed(() => effectiveSchema.value.type === 'object')
 const isArray = computed(() => effectiveSchema.value.type === 'array')
 const isMap = computed(
@@ -556,6 +563,7 @@ function onEnumInput(event: Event) {
               :category-header="categoryHeader"
               :fact-options="factOptions"
               :variable-options="variableOptions"
+              :exchange-field-options="exchangeFieldOptions"
               @update:model-value="updateProperty(key, $event)"
             />
           </template>
@@ -584,6 +592,7 @@ function onEnumInput(event: Event) {
           :category-header="categoryHeader"
           :fact-options="factOptions"
           :variable-options="variableOptions"
+          :exchange-field-options="exchangeFieldOptions"
           @update:model-value="updateArrayItem(index, $event)"
         />
         <div v-if="isQsoColumnList()" class="schema-array-order">
@@ -705,6 +714,7 @@ function onEnumInput(event: Event) {
             :header-key="isHeaderFieldsMap() ? key : ''"
             :fact-options="factOptions"
             :variable-options="variableOptions"
+            :exchange-field-options="exchangeFieldOptions"
             @update:model-value="updateMapValue(key, $event)"
           />
         </div>
@@ -733,6 +743,25 @@ function onEnumInput(event: Event) {
       <template v-if="primitiveSchema.const !== undefined">
         <p class="fixed-value">{{ primitiveSchema.const }}</p>
       </template>
+
+      <label v-else-if="isExchangeFieldKey" class="schema-control">
+        {{ displayLabel(fieldLabel) }}
+        <select
+          :value="inputValue"
+          @change="setValue(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-if="!inputValue" value="" disabled>
+            {{ $tr('Choose an exchange field') }}
+          </option>
+          <option
+            v-for="option in exchangeFieldOptions"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ $tr(option.label) }}
+          </option>
+        </select>
+      </label>
 
       <label v-else-if="primitiveType === 'boolean'" class="schema-boolean">
         <input
