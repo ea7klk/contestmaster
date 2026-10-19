@@ -107,10 +107,16 @@ describe('ContestEditorView', () => {
       'Summer Sprint',
     )
     expect(wrapper.text()).toContain('Contest periodicity')
-    await wrapper.get('textarea').setValue('Updated _description_')
+    const descriptionEditor = wrapper.get('[contenteditable="true"]')
+    descriptionEditor.element.textContent = 'Updated _description_'
+    await descriptionEditor.trigger('input')
+    await flushPromises()
+    expect(wrapper.get('.preview-content').text()).toContain(
+      'Updated description',
+    )
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(updates[0]?.description).toBe('Updated _description_')
+    expect(updates[0]?.description).toBe('Updated *description*')
     expect(updates[0]?.periodicity).toEqual({
       frequency: 'annual_date',
       month: 7,

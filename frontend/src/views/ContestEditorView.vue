@@ -20,6 +20,7 @@ import { getCurrentUser } from '../api/identity'
 import { formatUtcDateTime, formatUtcMonth } from '../i18n'
 import ConfirmationModal from '../components/ConfirmationModal.vue'
 import ResourceAdministrators from '../components/ResourceAdministrators.vue'
+import ContestDescriptionEditor from '../components/ContestDescriptionEditor.vue'
 
 const props = defineProps<{ contestId?: string }>()
 const router = useRouter()
@@ -462,20 +463,17 @@ watch(
               $tr('Letters, numbers, and hyphens.')
             }}</span>
           </label>
-          <label class="full-width">
-            {{ $tr('Contest description (Markdown)') }}
-            <textarea
-              v-model="form.description"
-              maxlength="10000"
-              rows="6"
-              aria-describedby="contest-description-help"
-            />
+          <div class="full-width contest-description-field">
+            <span class="field-label" id="contest-description-label">
+              {{ $tr('Contest description (Markdown)') }}
+            </span>
+            <ContestDescriptionEditor v-model="form.description" />
             <span id="contest-description-help" class="field-help">{{
               $tr(
                 'Supports Markdown such as paragraphs, lists, emphasis, and links. This description is shown to participants above the generated rules summary.',
               )
             }}</span>
-          </label>
+          </div>
           <label
             >{{ $tr('Contest starts (UTC)')
             }}<input
@@ -891,6 +889,15 @@ watch(
 }
 .full-width {
   grid-column: 1 / -1;
+}
+.contest-description-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  font-weight: 650;
+}
+.contest-description-field > .field-help {
+  font-weight: 400;
 }
 .schedule-controls {
   display: grid;
