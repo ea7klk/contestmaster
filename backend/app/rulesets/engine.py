@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
+from backend.app.rulesets.call_signs import callsign_suffix, wpx_prefix_for_callsign
 from backend.app.rulesets.checks import validate_categories, validate_exchange
 from backend.app.rulesets.conditions import evaluate_condition
 from backend.app.rulesets.operating import evaluate_operating_constraints
@@ -154,6 +155,8 @@ def _rule_context(entry: ScoringEntry, qso: ScoringQso | None) -> dict[str, Any]
             "id": qso.qso_id,
             "occurred_at": qso.occurred_at.astimezone(UTC).isoformat(),
             "worked_callsign": qso.worked_callsign,
+            "wpx_prefix": wpx_prefix_for_callsign(qso.worked_callsign),
+            "callsign_suffix": callsign_suffix(qso.worked_callsign),
             "band": qso.band,
             "mode": qso.mode,
             "grid": qso.grid,

@@ -494,10 +494,24 @@ describe('RulesetComposerView', () => {
       required: false,
       schema: {
         type: 'object',
-        properties: { kind: { const: 'multiplier', type: 'string' } },
-        required: ['kind'],
+        properties: {
+          kind: { const: 'multiplier', type: 'string' },
+          source_fact: { type: 'string', title: 'Source Fact' },
+          scope: {
+            type: 'string',
+            enum: [
+              'contest',
+              'band',
+              'mode',
+              'band_mode',
+              'grid',
+              'transmitter',
+            ],
+          },
+        },
+        required: ['kind', 'source_fact', 'scope'],
       },
-    })
+    } as (typeof response.rule_types)[number])
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -532,6 +546,12 @@ describe('RulesetComposerView', () => {
     expect(multiplierCard!.get('.rule-explanation').text()).toContain(
       'once for the whole contest, per band, per mode',
     )
+    expect(multiplierCard!.get('option[value="qso.wpx_prefix"]').text()).toBe(
+      'WPX-style prefix from worked callsign',
+    )
+    expect(
+      multiplierCard!.get('option[value="qso.callsign_suffix"]').text(),
+    ).toBe('Suffix from worked callsign')
   })
 
   it('shows worked integer examples for formula, multiplier, bonus, and penalty rules', async () => {

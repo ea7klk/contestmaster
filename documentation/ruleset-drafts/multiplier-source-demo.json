@@ -1,0 +1,198 @@
+{
+  "ruleset_key": "multiplier-source-demo",
+  "version": "1",
+  "rules": [
+    {
+      "id": "submission",
+      "rule": {
+        "kind": "submission",
+        "late_policy": "checklog",
+        "manager_extension_allowed": true
+      }
+    },
+    {
+      "id": "categories",
+      "rule": {
+        "kind": "categories",
+        "dimensions": [
+          {
+            "key": "operator",
+            "label": "Operator",
+            "choices": [
+              {
+                "key": "single",
+                "label": "Single operator"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "exchange",
+      "rule": {
+        "kind": "exchange",
+        "fields": [
+          {
+            "key": "serial",
+            "label": "Serial number",
+            "value_type": "serial",
+            "direction": "both",
+            "serial_scope": "entry"
+          },
+          {
+            "key": "section",
+            "label": "Section",
+            "value_type": "text",
+            "direction": "entry"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eligibility",
+      "rule": {
+        "kind": "eligibility"
+      }
+    },
+    {
+      "id": "duplicates",
+      "rule": {
+        "kind": "duplicates",
+        "scope": [
+          "worked_callsign",
+          "band"
+        ],
+        "effect": "not_credited"
+      }
+    },
+    {
+      "id": "points",
+      "rule": {
+        "kind": "points",
+        "fact": "fixed",
+        "fixed_points": 2
+      }
+    },
+    {
+      "id": "score",
+      "rule": {
+        "kind": "score_formula",
+        "start": {
+          "variable": "points_total"
+        },
+        "steps": [
+          {
+            "operator": "multiply",
+            "operand": {
+              "variable": "multiplier_count"
+            }
+          },
+          {
+            "operator": "add",
+            "operand": {
+              "variable": "bonus_points"
+            }
+          },
+          {
+            "operator": "subtract",
+            "operand": {
+              "variable": "penalty_points"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "format",
+      "rule": {
+        "kind": "format_mapping",
+        "format": "cabrillo",
+        "qso_columns": [
+          "frequency",
+          "mode",
+          "date",
+          "time",
+          "callsign_sent",
+          "rst_sent",
+          "exchange_sent",
+          "callsign_received",
+          "rst_received",
+          "exchange_received"
+        ],
+        "category_mappings": [
+          {
+            "external_value": "SINGLE-OP",
+            "category_values": {
+              "operator": "single"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "worked-entity",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "qso.entity",
+        "scope": "contest",
+        "label": "Worked station entity"
+      }
+    },
+    {
+      "id": "wpx-prefix",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "qso.wpx_prefix",
+        "scope": "contest",
+        "label": "WPX-style prefix"
+      },
+      "when": {
+        "kind": "any",
+        "conditions": [
+          {
+            "kind": "not",
+            "condition": {
+              "kind": "compare",
+              "fact": "qso.callsign_suffix",
+              "operator": "exists"
+            }
+          },
+          {
+            "kind": "compare",
+            "fact": "qso.callsign_suffix",
+            "operator": "not_in",
+            "value": [
+              "M",
+              "AM",
+              "MM"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "worked-suffix",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "qso.callsign_suffix",
+        "scope": "contest",
+        "label": "Worked callsign suffix"
+      },
+      "when": {
+        "kind": "compare",
+        "fact": "qso.callsign_suffix",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "exact-worked-callsign",
+      "rule": {
+        "kind": "multiplier",
+        "source_fact": "qso.worked_callsign",
+        "scope": "contest",
+        "label": "Exact worked callsign"
+      }
+    }
+  ]
+}

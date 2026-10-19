@@ -19,7 +19,7 @@ describe('RuleSchemaEditor', () => {
         modelValue: { source_fact: '' },
         path: 'rules-3',
         factOptions: [
-          { value: 'qso.entity', label: 'Contest entity' },
+          { value: 'qso.entity', label: 'Worked station entity (CTY)' },
           { value: 'exchange.received.section', label: 'Section — received' },
         ],
       },
@@ -28,7 +28,11 @@ describe('RuleSchemaEditor', () => {
     const sourceFactSelect = wrapper.get('select')
     expect(
       sourceFactSelect.findAll('option').map((option) => option.text()),
-    ).toEqual(['Choose a fact', 'Contest entity', 'Section — received'])
+    ).toEqual([
+      'Choose a fact',
+      'Worked station entity (CTY)',
+      'Section — received',
+    ])
     await sourceFactSelect.setValue('exchange.received.section')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
       source_fact: 'exchange.received.section',
@@ -49,7 +53,9 @@ describe('RuleSchemaEditor', () => {
         rootSchema: schema,
         modelValue: { source_fact: 'exchange.old_field' },
         path: 'rules-3',
-        factOptions: [{ value: 'qso.entity', label: 'Contest entity' }],
+        factOptions: [
+          { value: 'qso.entity', label: 'Worked station entity (CTY)' },
+        ],
       },
     })
 
