@@ -1432,6 +1432,49 @@ def test_distinct_bonus_counts_a_qualifying_callsign_only_once_across_bands():
     assert result.bonus_points == 105
 
 
+def test_distinct_bonus_applies_all_conditions_before_counting_values():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["scope"].append("band")
+    payload["rules"].append(
+        _distinct_bonus_rule(
+            when={
+                "kind": "all",
+                "conditions": [
+                    {
+                        "kind": "compare",
+                        "fact": "qso.worked_callsign",
+                        "operator": "eq",
+                        "value": "K1ABC",
+                    },
+                    {
+                        "kind": "compare",
+                        "fact": "qso.mode",
+                        "operator": "eq",
+                        "value": "CW",
+                    },
+                ],
+            }
+        )
+    )
+    first, second = sample_entry().qsos
+    entry = sample_entry().model_copy(
+        update={
+            "qsos": [
+                first,
+                second.model_copy(update={"band": "20m", "mode": "SSB"}),
+            ]
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.bonus_counts["special-call-bonus"] == 1
+    assert result.bonus_points == 105
+
+
 def test_distinct_bonus_cap_allocates_integer_awards_in_contact_order():
     payload = valid_payload()
     duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
