@@ -196,6 +196,81 @@ describe('RuleSchemaEditor', () => {
     ])
   })
 
+  it('offers sent and received exchange fields in duplicate-scope dropdowns', () => {
+    const options = [
+      { value: 'worked_callsign', label: 'Worked callsign' },
+      { value: 'exchange.sent.county', label: 'Sent: County' },
+      { value: 'exchange.received.county', label: 'Received: County' },
+    ]
+    const schema: JsonSchema = {
+      type: 'array',
+      title: 'Duplicate scope',
+      items: { type: 'string' },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: ['worked_callsign', 'exchange.sent.county'],
+        path: 'rules-duplicates-scope',
+        duplicateScopeOptions: options,
+      },
+    })
+
+    const selects = wrapper.findAll('.schema-array-item select')
+    expect(selects).toHaveLength(2)
+    expect(selects[1]?.element).toHaveProperty('value', 'exchange.sent.county')
+    expect(selects[1]?.findAll('option').map((option) => option.text())).toEqual(
+      options.map((option) => option.label),
+    )
+    expect(
+      selects[1]?.find('option[value="worked_callsign"]').element,
+    ).toHaveProperty('disabled', true)
+  })
+
+  it('maps a configured entry field to Cabrillo LOCATION', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      additionalProperties: {
+        type: 'string',
+        enum: ['CALLSIGN', 'CONTEST', 'LOCATION'],
+      },
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { callsign: 'CALLSIGN', contest: 'CONTEST' },
+        path: 'rules-format-header_fields',
+        entryExchangeFieldOptions: [{ value: 'home_area', label: 'Station area' }],
+      },
+    })
+
+    await wrapper.get('button.secondary-button').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      callsign: 'CALLSIGN',
+      contest: 'CONTEST',
+      home_area: 'LOCATION',
+    })
+    await wrapper.setProps({
+      modelValue: {
+        callsign: 'CALLSIGN',
+        contest: 'CONTEST',
+        home_area: 'LOCATION',
+      },
+    })
+    const keySelect = wrapper.findAll('.schema-map-key select')[2]
+    expect(
+      keySelect.findAll('option').some((option) =>
+        option.text().includes('Station area'),
+      ),
+    ).toBe(true)
+    expect(wrapper.findAll('.schema-map-value select')[2]?.element).toHaveProperty(
+      'value',
+      'LOCATION',
+    )
+  })
+
   it('renders category mapping dimensions and choices as constrained dropdowns', async () => {
     const schema: JsonSchema = {
       type: 'object',

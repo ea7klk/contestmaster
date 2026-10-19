@@ -166,6 +166,50 @@ const exchangeFieldOptions = computed(() => {
   }
   return [...options].map(([value, label]) => ({ value, label }))
 })
+const entryExchangeFieldOptions = computed(() => {
+  const options = new Map<string, string>()
+  for (const configured of rules.value) {
+    if (configured.rule.kind !== 'exchange') continue
+    const fields = configured.rule.fields
+    if (!Array.isArray(fields)) continue
+    for (const candidate of fields) {
+      if (!candidate || typeof candidate !== 'object') continue
+      const field = candidate as Record<string, unknown>
+      if (field.direction !== 'entry' || typeof field.key !== 'string') continue
+      options.set(
+        field.key,
+        typeof field.label === 'string' ? field.label : field.key,
+      )
+    }
+  }
+  return [...options].map(([value, label]) => ({ value, label }))
+})
+const duplicateScopeOptions = computed(() => {
+  const options = new Map<string, string>([
+    ['worked_callsign', 'Worked callsign'],
+    ['band', 'Band'],
+    ['mode', 'Mode'],
+    ['grid', 'Worked station grid'],
+    ['transmitter', 'Transmitter'],
+  ])
+  for (const configured of rules.value) {
+    if (configured.rule.kind !== 'exchange') continue
+    const fields = configured.rule.fields
+    if (!Array.isArray(fields)) continue
+    for (const candidate of fields) {
+      if (!candidate || typeof candidate !== 'object') continue
+      const field = candidate as Record<string, unknown>
+      if (typeof field.key !== 'string' || typeof field.direction !== 'string')
+        continue
+      const label = typeof field.label === 'string' ? field.label : field.key
+      if (field.direction === 'sent' || field.direction === 'both')
+        options.set(`exchange.sent.${field.key}`, `Sent: ${label}`)
+      if (field.direction === 'received' || field.direction === 'both')
+        options.set(`exchange.received.${field.key}`, `Received: ${label}`)
+    }
+  }
+  return [...options].map(([value, label]) => ({ value, label }))
+})
 const scoreFormulaVariables = computed(() => [
   { value: 'points_total', label: 'QSO points total' },
   { value: 'multiplier_count', label: 'Combined multiplier count (legacy)' },
@@ -622,11 +666,11 @@ const helpText: Record<string, string> = {
   categories:
     'Use these dimensions and choices to define the entrant classes shown in results. The controls below explain stable keys, required choices, declarations, and incompatible combinations.',
   exchange:
-    'Define the canonical values used to validate contacts and entrant declarations. The controls below explain field keys, labels, directions, value types, and serial settings; format mappings connect these values to uploaded log fields. If the sponsor uses a different ordered exchange for different entry or contact classes, add a separate exchange rule and condition each layout on facts known before parsing the exchange. Do not use an exchange value or qso.grid to choose the layout; if different layouts match the same QSO, Contestmaster will not guess.',
+    'Define the canonical values used to validate contacts and entrant declarations. The controls below explain field keys, labels, directions, value types, and serial settings; format mappings connect these values to uploaded log fields. If the sponsor uses a different ordered exchange for different entry classes, add a separate exchange rule and condition each layout on facts known before parsing the exchange. An entry-scoped field mapped from Cabrillo LOCATION can select the layout. Do not use a sent/received exchange value or qso.grid to choose the layout; if different layouts match the same QSO, Contestmaster sends the contact to review rather than guessing.',
   eligibility:
     'This rule determines which submitted contacts may count before points and multipliers are applied. Use band and mode selections when the sponsor restricts operating segments; leave those lists unrestricted when any catalog value is allowed. Add a condition for geography or other supported contact facts only when the written rules define that limit. Conditions that refer to unresolved facts stay unknown, including when wrapped in Not; unknown facts follow Missing Fact Action (review by default), while known mismatches follow Action. For regional workability, for example, require station.entity to exist and then allow either an Arizona entrant or a worked Arizona station. The built-in checks can reject self-contacts, out-of-period contacts, and missing required exchange data.',
   duplicates:
-    'Choose the values that make two contacts count as the same contact. Worked callsign is always part of the identity; adding band, mode, grid, or transmitter makes otherwise repeated contacts distinct when that value changes. For example, callsign plus band permits one contact per station on each band. Then choose the sponsor’s consequence for another contact in the same scope: ignore it, leave it uncredited, apply an integer penalty, or send it for review. Duplicate contacts never earn QSO points. Enable “Count for multipliers” only when the sponsor allows a duplicate to supply a new multiplier; the duplicate must still pass the other eligibility checks. This option defaults off.',
+    'Choose the values that make two contacts count as the same contact. Worked callsign is always part of the identity; adding band, mode, grid, transmitter, or a configured sent/received exchange field makes contacts distinct when that value changes. For example, callsign plus received county allows a mobile station to be worked again after it changes counties, while a repeat in the same county is a duplicate. An incomplete exchange-based duplicate key is sent to review and never merges unrelated contacts. Then choose the sponsor’s consequence for another contact in the same scope: ignore it, leave it uncredited, apply an integer penalty, or send it for review. Duplicate contacts never earn QSO points. Enable “Count for multipliers” only when the sponsor allows a duplicate to supply a new multiplier; the duplicate must still pass the other eligibility checks. This option defaults off.',
   points:
     'This rule assigns the base integer points for each eligible contact, before multiplier and bonus rules. Fixed points give every eligible contact the same value. A lookup assigns a value by one supported fact, such as band, mode, entity, zone, or an exchange field. Add a default only if the sponsor defines what to do when the fact has no matching lookup entry. Every value must be an integer at least zero; do not convert fractional point rules into decimals.',
   distance_points:
@@ -644,7 +688,7 @@ const helpText: Record<string, string> = {
   session_resets:
     'Use this optional rule only when the sponsor defines repeated scoring sessions inside one contest edition. Session 1 starts at the contest start instant configured on the contest, interpreted in UTC; each later session starts after the configured fixed number of minutes. The final session may be shorter. Choose independently whether duplicate identity, multiplier uniqueness, and sent serial sequence restart at each boundary. Serial checking requires one sent serial field in every exchange layout and validates it chronologically within its configured entry, band, mode, or transmitter scope. This fixed interval model does not express irregular session calendars, pauses, or sponsor-specific exceptions; leave those for review instead of approximating them.',
   format_mapping:
-    'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Cabrillo exchange values follow the active ordered exchange schema. ADIF uses STX_STRING/SRX_STRING for ordered exchange tokens, standard tags when recognized, or optional custom sent/received tag mappings for other configured exchange fields. Unrecognized source fields can be preserved for later review.',
+    'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Cabrillo exchange values follow the active ordered exchange schema. Map an entry-scoped exchange field to the standard LOCATION header when the sponsor uses a submitted station area to select exchange rules; Contestmaster requires exactly one non-empty mapped header. ADIF uses STX_STRING/SRX_STRING for ordered exchange tokens, standard tags when recognized, or optional custom sent/received tag mappings for other configured exchange fields. Unrecognized source fields can be preserved for later review.',
   workflow_hook:
     'Workflow hooks describe cross-log comparisons, review, publication, or award behavior that affects more than one contact. Enable a hook only when the sponsor’s rules require that workflow and its configured settings express the rule. Hooks do not execute arbitrary code; unsupported or ambiguous cases must be reviewed rather than guessed.',
 }
@@ -1394,6 +1438,8 @@ function catalogErrorMessage(reason: unknown) {
                   :fact-options="multiplierSourceFacts"
                   :variable-options="scoreFormulaVariables"
                   :exchange-field-options="exchangeFieldOptions"
+                  :entry-exchange-field-options="entryExchangeFieldOptions"
+                  :duplicate-scope-options="duplicateScopeOptions"
                   :label="`${configured.rule.kind} rule settings`"
                   :path="`rules-${index}`"
                   @update:model-value="updateRule(configured, $event)"

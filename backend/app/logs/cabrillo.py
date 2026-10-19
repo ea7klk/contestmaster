@@ -325,6 +325,19 @@ def parse_cabrillo(
                     f"Exactly one non-empty {required_header} header is required.",
                 )
             )
+    for alias, selected in aliases.items():
+        if alias in {"callsign", "contest"}:
+            continue
+        mapped_values = headers.get(selected, [])
+        if len(mapped_values) != 1 or not mapped_values[0].strip():
+            errors.append(
+                ImportMessage(
+                    0,
+                    "required_mapped_header",
+                    f"Exactly one non-empty {selected} header is required for the "
+                    f"configured entry field {alias}.",
+                )
+            )
     if not qsos:
         errors.append(
             ImportMessage(0, "no_qsos", "The log must contain at least one valid QSO record.")

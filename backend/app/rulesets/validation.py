@@ -110,6 +110,13 @@ def _conditional_exchange_schema_errors(definition: RulesetDefinition) -> list[d
         return []
 
     errors: list[dict[str, object]] = []
+    entry_condition_keys = {
+        comparison.fact.removeprefix("exchange.entry.")
+        for configured in exchange_rules
+        if configured.when is not None
+        for comparison in _walk_conditions(configured.when)
+        if comparison.fact.startswith("exchange.entry.")
+    }
     for index, configured in enumerate(definition.rules):
         if not isinstance(configured.rule, ExchangeRule):
             continue
@@ -125,18 +132,45 @@ def _conditional_exchange_schema_errors(definition: RulesetDefinition) -> list[d
             )
             continue
         if any(
-            comparison.fact.startswith("exchange.") or comparison.fact == "qso.grid"
+            comparison.fact == "qso.grid"
+            or (
+                comparison.fact.startswith("exchange.")
+                and not comparison.fact.startswith("exchange.entry.")
+            )
             for comparison in _walk_conditions(configured.when)
         ):
             errors.append(
                 {
                     "path": f"rules[{index}].when",
                     "message": (
-                        "Alternative exchange schema conditions cannot depend on exchange values "
-                        "or qso.grid because those facts require the schema to be parsed first."
+                        "Alternative exchange schema conditions may use entry declarations, but "
+                        "cannot depend on exchange values (sent or received) or qso.grid because "
+                        "those "
+                        "facts require the schema to be parsed first."
                     ),
                 }
             )
+    if entry_condition_keys:
+        format_rules = [
+            configured.rule
+            for configured in definition.rules
+            if configured.rule.kind == "format_mapping"
+        ]
+        for key in sorted(entry_condition_keys):
+            if not format_rules or any(
+                mapping.format != "cabrillo" or mapping.header_fields.get(key) != "LOCATION"
+                for mapping in format_rules
+            ):
+                errors.append(
+                    {
+                        "path": "rules.format_mapping.header_fields",
+                        "message": (
+                            f"Conditional exchange selection uses entry field {key!r}; every "
+                            "accepted format must supply it before QSO parsing. For Cabrillo, "
+                            "map that field to the WWROF LOCATION header."
+                        ),
+                    }
+                )
     return errors
 
 
@@ -345,15 +379,28 @@ def _cross_reference_errors(
             )
             valid_exchange = False
             if parts[0] == "exchange" and len(parts) == 2:
-                field = exchange_fields.get(parts[1])
-                valid_exchange = field is not None and field.direction in {"received", "both"}
+                valid_exchange = any(
+                    field.key == parts[1] and field.direction in {"received", "both"}
+                    for configured_exchange in definition.rules
+                    if isinstance(configured_exchange.rule, ExchangeRule)
+                    for field in configured_exchange.rule.fields
+                )
             elif (
                 parts[0] == "exchange"
                 and len(parts) == 3
                 and parts[1] in {"sent", "received", "entry"}
             ):
-                field = exchange_fields.get(parts[2])
-                valid_exchange = field is not None and field.direction in {parts[1], "both"}
+                valid_exchange = any(
+                    field.key == parts[2]
+                    and (
+                        field.direction == "entry"
+                        if parts[1] == "entry"
+                        else field.direction in {parts[1], "both"}
+                    )
+                    for configured_exchange in definition.rules
+                    if isinstance(configured_exchange.rule, ExchangeRule)
+                    for field in configured_exchange.rule.fields
+                )
             if not (valid_qso or valid_entry or valid_station or valid_exchange):
                 errors.append(
                     {
@@ -507,6 +554,25 @@ def _cross_reference_errors(
                     }
                 )
         elif rule.kind == "format_mapping":
+            for header_key, header_tag in rule.header_fields.items():
+                if header_key in {"callsign", "contest"}:
+                    continue
+                entry_field = exchange_fields.get(header_key)
+                if (
+                    rule.format != "cabrillo"
+                    or header_tag != "LOCATION"
+                    or entry_field is None
+                    or entry_field.direction != "entry"
+                ):
+                    errors.append(
+                        {
+                            "path": f"rules[{index}].header_fields.{header_key}",
+                            "message": (
+                                "Only Cabrillo LOCATION may map to a configured entry-scoped "
+                                "exchange field."
+                            ),
+                        }
+                    )
             if check_import_mapping_consistency:
                 if rule.format == "cabrillo":
                     configured_columns = rule.qso_columns
@@ -613,6 +679,43 @@ def _cross_reference_errors(
                                 "message": f"Unknown category value {dimension_key}={choice_key}.",
                             }
                         )
+        elif rule.kind == "duplicates":
+            for scope_index, scope in enumerate(rule.scope):
+                if not scope.startswith("exchange."):
+                    continue
+                parts = scope.split(".")
+                matching_fields = [
+                    field
+                    for configured_exchange in definition.rules
+                    if isinstance(configured_exchange.rule, ExchangeRule)
+                    for field in configured_exchange.rule.fields
+                    if len(parts) == 3 and field.key == parts[2]
+                ]
+                if (
+                    parts[1] not in {"sent", "received"}
+                    or not any(field.direction in {parts[1], "both"} for field in matching_fields)
+                ):
+                    errors.append(
+                        {
+                            "path": f"rules[{index}].scope[{scope_index}]",
+                            "message": (
+                                "Exchange-based duplicate scopes must reference a configured "
+                                "sent or received exchange field available in that direction."
+                            ),
+                        }
+                    )
+                if check_import_mapping_consistency and any(
+                    format_rule.format not in {"cabrillo", "adif"} for format_rule in format_rules
+                ):
+                    errors.append(
+                        {
+                            "path": f"rules[{index}].scope[{scope_index}]",
+                            "message": (
+                                "Exchange-based duplicate scopes require a supported Cabrillo "
+                                "or ADIF upload format."
+                            ),
+                        }
+                    )
     return errors
 
 
@@ -630,12 +733,12 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
         for field in configured.rule.fields
         if field.direction == "entry"
     }
-    exchange_keys = {
-        field.key
-        for configured in definition.rules
-        if configured.rule.kind == "exchange"
-        for field in configured.rule.fields
-    }
+    exchange_directions: dict[str, set[str]] = {}
+    for configured in definition.rules:
+        if not isinstance(configured.rule, ExchangeRule):
+            continue
+        for field in configured.rule.fields:
+            exchange_directions.setdefault(field.key, set()).add(field.direction)
     qso_fields = {
         "id",
         "occurred_at",
@@ -684,12 +787,22 @@ def _condition_reference_errors(definition: RulesetDefinition) -> list[dict[str,
                     and parts[0] == "entry"
                     and parts[1] in {"id", "power_multiplier"}
                 )
-                or (len(parts) == 2 and parts[0] == "exchange" and parts[1] in exchange_keys)
+                or (
+                    len(parts) == 2
+                    and parts[0] == "exchange"
+                    and parts[1] in exchange_directions
+                    and bool(exchange_directions[parts[1]] & {"received", "both"})
+                )
                 or (
                     len(parts) == 3
                     and parts[0] == "exchange"
                     and parts[1] in {"sent", "received", "entry"}
-                    and parts[2] in exchange_keys
+                    and parts[2] in exchange_directions
+                    and (
+                        "entry" in exchange_directions[parts[2]]
+                        if parts[1] == "entry"
+                        else bool(exchange_directions[parts[2]] & {parts[1], "both"})
+                    )
                 )
             )
             if not valid:

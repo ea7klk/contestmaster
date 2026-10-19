@@ -246,6 +246,7 @@ def _scoring_inputs(
     for index, qso in enumerate(qsos):
         scored_qso = scoring_qsos[index]
         selected_exchange_rule = _exchange_schema_for_qso(exchange_rules, entry_input, scored_qso)
+        scored_qso.exchange_schema_resolved = selected_exchange_rule is not None
         sent_exchange = _exchange_values(
             qso.exchange_sent_normalized or qso.exchange_sent_submitted,
             selected_exchange_rule,

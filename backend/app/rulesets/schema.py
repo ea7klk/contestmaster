@@ -256,9 +256,19 @@ class EligibilityRule(StrictModel):
 
 class DuplicateRule(StrictModel):
     kind: Literal["duplicates"]
-    scope: list[Literal["worked_callsign", "band", "mode", "grid", "transmitter"]] = Field(
-        min_length=1, max_length=5
-    )
+    scope: list[
+        Annotated[
+            str,
+            StringConstraints(
+                min_length=1,
+                max_length=160,
+                pattern=(
+                    r"^(worked_callsign|band|mode|grid|transmitter|"
+                    r"exchange\.(sent|received)\.[a-zA-Z0-9_-]+)$"
+                ),
+            ),
+        ]
+    ] = Field(min_length=1, max_length=12)
     effect: Literal["ignore", "not_credited", "penalty", "needs_review"]
     penalty_points: NonNegativeInteger = 0
     count_for_multipliers: bool = Field(
@@ -273,6 +283,8 @@ class DuplicateRule(StrictModel):
     def penalty_requires_points(self) -> DuplicateRule:
         if "worked_callsign" not in self.scope:
             raise ValueError("duplicate scope must include worked_callsign")
+        if len(set(self.scope)) != len(self.scope):
+            raise ValueError("duplicate scope values must be unique")
         if self.effect == "penalty" and self.penalty_points <= 0:
             raise ValueError("duplicate penalty requires positive integer penalty_points")
         if self.effect != "penalty" and self.penalty_points:
@@ -741,11 +753,14 @@ class FormatMappingRule(StrictModel):
             "the choices declared by this contest's category dimensions."
         ),
     )
-    header_fields: dict[Literal["callsign", "contest"], Literal["CALLSIGN", "CONTEST"]] = Field(
+    header_fields: dict[
+        Identifier, Literal["CALLSIGN", "CONTEST", "LOCATION"]
+    ] = Field(
         default_factory=dict,
-        max_length=2,
+        max_length=42,
         description=(
-            "Select the standard WWROF header tag for the required CALLSIGN or CONTEST value."
+            "Map required callsign/contest headers and configured entry-scoped exchange fields "
+            "to standard WWROF headers. LOCATION can supply an explicit station-area declaration."
         ),
     )
     qso_columns: list[CabrilloQsoColumn] = Field(default_factory=list, max_length=11)
@@ -791,6 +806,13 @@ class FormatMappingRule(StrictModel):
             key == "contest" and value != "CONTEST" for key, value in self.header_fields.items()
         ):
             raise ValueError("contest header mapping must use the WWROF CONTEST tag")
+        if any(
+            key not in {"callsign", "contest"} and value != "LOCATION"
+            for key, value in self.header_fields.items()
+        ):
+            raise ValueError("entry-scoped header mappings must use the WWROF LOCATION tag")
+        if len(set(self.header_fields.values())) != len(self.header_fields):
+            raise ValueError("each WWROF header tag can be mapped only once")
         return self
 
 

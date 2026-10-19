@@ -709,10 +709,33 @@ def test_azqp_2026_sponsor_fixture_scores_and_publishes_safe_explanation(result_
 
     with TestClient(app) as client:
         uploaded_at = datetime.now(UTC).replace(second=0, microsecond=0)
+        missing_location = [
+            "START-OF-LOG: 3.0",
+            f"CONTEST: {contest_slug}",
+            "CALLSIGN: K7NLOC",
+            "CATEGORY-OPERATOR: SINGLE-OP",
+            f"QSO: 7048 CW {uploaded_at:%Y-%m-%d} {uploaded_at:%H%M} K7NLOC 599 APH K1OUT 599 NY",
+            "END-OF-LOG:",
+        ]
+        rejected = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "azqp-fixture-missing-location-2026"},
+            files={
+                "file": (
+                    "azqp-missing-location.log",
+                    ("\n".join(missing_location) + "\n").encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert rejected.status_code == 422, rejected.text
+        assert "LOCATION" in rejected.text
+
         lines = [
             "START-OF-LOG: 3.0",
             f"CONTEST: {contest_slug}",
             f"CALLSIGN: {fixture['entrant']['callsign']}",
+            f"LOCATION: {fixture['entrant']['home_area']}",
             "EMAIL: k1out@nomail.invalid",
             "NAME: Private Synthetic Operator",
             f"CATEGORY-OPERATOR: {fixture['entrant']['category_operator']}",
@@ -734,6 +757,34 @@ def test_azqp_2026_sponsor_fixture_scores_and_publishes_safe_explanation(result_
         assert uploaded.status_code == 201, uploaded.text
         assert uploaded.json()["summary"]["accepted_qsos"] == expected["credited_qsos"]
 
+        arizona_lines = [
+            "START-OF-LOG: 3.0",
+            f"CONTEST: {contest_slug}",
+            "CALLSIGN: K7AZ",
+            "LOCATION: AZ",
+            "CATEGORY-OPERATOR: SINGLE-OP",
+        ]
+        for index, county in enumerate(("APH", "CHS", "APH"), start=1):
+            timestamp = uploaded_at + timedelta(minutes=index)
+            arizona_lines.append(
+                f"QSO: 7048 CW {timestamp:%Y-%m-%d} {timestamp:%H%M} "
+                f"K7AZ 599 {county} K1OUT 599 NY"
+            )
+        arizona_lines.append("END-OF-LOG:")
+        arizona_uploaded = client.post(
+            f"/api/v1/public/contests/{contest_slug}/logs",
+            headers={"Idempotency-Key": "azqp-fixture-arizona-layout-2026"},
+            files={
+                "file": (
+                    "azqp-arizona.log",
+                    ("\n".join(arizona_lines) + "\n").encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert arizona_uploaded.status_code == 201, arizona_uploaded.text
+        assert arizona_uploaded.json()["summary"]["accepted_qsos"] == 3
+
         closed = manager.put(
             f"/api/v1/contests/{contest_id}/status",
             headers=headers,
@@ -748,6 +799,24 @@ def test_azqp_2026_sponsor_fixture_scores_and_publishes_safe_explanation(result_
         assert generated.status_code == 202, generated.text
         review = manager.get(f"/api/v1/contests/{contest_id}/results/review")
         assert review.status_code == 200, review.text
+        arizona_candidate = next(
+            item for item in review.json()["items"] if item["callsign"] == "K7AZ"
+        )
+        with factory() as session:
+            arizona_run = session.get(ScoreRun, arizona_candidate["score_run_id"])
+            assert arizona_run is not None
+            arizona_qso_scores = list(
+                session.scalars(
+                    select(QsoScore)
+                    .where(QsoScore.score_run_id == arizona_run.id)
+                    .order_by(QsoScore.qso_id)
+                )
+            )
+        assert [score.status for score in arizona_qso_scores] == [
+            "credited",
+            "credited",
+            "not_credited",
+        ], [(score.status, score.reason_codes) for score in arizona_qso_scores]
         candidate = next(
             item
             for item in review.json()["items"]

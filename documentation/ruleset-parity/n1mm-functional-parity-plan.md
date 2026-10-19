@@ -14,15 +14,15 @@ Do not translate handlers mechanically. First establish the applicable published
 
 Contestmaster already has typed rules for categories, exchange validation, eligibility, duplicate identity/effect, points, multiple multiplier rules and scopes, bonuses, penalties, integer score formulas, operating constraints, import mappings, and review hooks. Contest configuration separately owns event dates, recurrence, and the log cutoff. See the [ruleset schema](../../backend/app/rulesets/schema.py), [scoring engine](../../backend/app/rulesets/engine.py), [rule catalog](../../backend/app/rulesets/registry.py), and [radio contest body of knowledge](../radio-contest-body-of-knowledge/README.md#current-contestmaster-capability-comparison).
 
-The comparison identified these functional gaps:
+The comparison identified these functional gaps; this status describes the implementation after #396 and #397:
 
 1. **Distance scoring (G1):** a first declarative distance-points rule now computes integer points per commenced kilometer from entrant/worked-station Maidenhead locators. Other sponsor-specific distance methods remain to be verified and added as needed.
 2. **Entrant-relative geography (G2):** entrant entity and continent are now exposed as pinned-CTY station facts; full sponsor branch coverage and portable-location override policy remain open.
-3. **Independent multiplier totals (G3):** the final formula can use only the combined multiplier count, not each configured multiplier rule’s count independently.
-4. **Compound event-specific scoring (G4):** QSO Party patterns need reusable rules for conditional point matrices and distinct bonus-station/county counts, beyond a simple per-QSO bonus.
-5. **Workability and derived facts (G5):** some contact checks depend on entrant location, validated exchange/reference lists, or other derived facts not currently available to rules.
+3. **Independent multiplier totals (G3):** implemented. Score formulas can refer to each configured multiplier rule's total while retaining the legacy combined count.
+4. **Compound event-specific scoring (G4):** implemented for the selected patterns. Conditional per-QSO points and distinct bonus station/county counts are sponsor-fixtured; broader contests can require additional primitives.
+5. **Workability and derived facts (G5):** partially implemented. Declarative three-valued conditions can use the entrant declaration, and the Cabrillo `LOCATION` header can select one of the validated exchange layouts before parsing. Exchange-based duplicate keys can include a configured sent or received exchange value, including a mobile entrant's changing sent county. The system does not infer location or validate Arizona county membership from callsigns.
 6. **Handler-specific scoring behavior (G6):** code-only behavior has no direct representation. This is addressed by identifying reusable primitives per verified behavior, not by embedding custom code.
-7. **Exchange and format semantics (G7):** contest-specific ordered, conditional, and asymmetric exchanges need end-to-end coverage through supported upload adapters and validation.
+7. **Exchange and format semantics (G7):** conditional and asymmetric layouts have end-to-end Cabrillo coverage when a mapped `LOCATION` entry fact selects the layout; ADIF sent/received mappings have separate integration coverage. Additional sponsor-specific required fields and attachments need individual profiles.
 8. **Scoring-relevant session resets (G8):** some contests reset duplicate keys, multipliers, or sent serial sequences by operating session. Event schedule and recurrence remain contest configuration, not ruleset fields.
 
 Existing coverage is partial: ordinary fixed/look-up scores, multipliers, duplicates, and supported exchange mappings already work. The [body-of-knowledge gap table](../radio-contest-body-of-knowledge/README.md#current-contestmaster-capability-comparison) records additional cautions including distance, QTC traffic, team/series aggregation, and human adjudication. Those broader areas are not silently included in this N1MM parity plan unless a specific built-in profile and sponsor rule demonstrates the need.
@@ -47,11 +47,11 @@ Specify and test supported-format mappings for the verified exchange patterns, i
 
 ### Workstream 5 — Prove behavior with conformance fixtures
 
-For each implemented primitive, include behavior-focused unit tests and API/import integration tests where boundaries matter. Add sponsor-linked fixtures with valid and invalid logs and known component totals. Compare the same input/rules against independently hand-calculated expected outcomes; do not use the N1MM executable as the sole oracle. Include boundary, missing-fact, duplicate, reset, and integer-rounding cases. Run representative profiles end-to-end through import, validation, scoring, and score explanation.
+For each implemented primitive, include behavior-focused unit tests and API/import integration tests where boundaries matter. Add sponsor-linked fixtures with valid and invalid logs and known component totals. Compare the same input/rules against independently hand-calculated expected outcomes; do not use the N1MM executable as the sole oracle. Include boundary, missing-fact, duplicate, reset, and integer-rounding cases. Run representative profiles end-to-end through import, validation, scoring, and score explanation. Current selected evidence covers CQ WW's four point branches across its API and focused tests, AZQP outside-station exchange selection and mobile county identity, RSGB distance/session resets, and SARL ADIF exchange mapping.
 
 ## Issue breakdown and dependencies
 
-The implementation is tracked by parent issue [#385](https://github.com/ea7klk/contestmaster/issues/385) and child issues [#386](https://github.com/ea7klk/contestmaster/issues/386)–[#395](https://github.com/ea7klk/contestmaster/issues/395). The child issues are linked using GitHub's parent/sub-issue relationship. Each child has its own acceptance criteria and verification expectations; #395 tracks importable sample rulesets and synthetic test contests so rule-engine changes remain demonstrable.
+The implementation is tracked by parent issue [#385](https://github.com/ea7klk/contestmaster/issues/385) and child issues [#386](https://github.com/ea7klk/contestmaster/issues/386)–[#397](https://github.com/ea7klk/contestmaster/issues/397). The child issues are linked using GitHub's parent/sub-issue relationship. Each child has its own acceptance criteria and verification expectations; #395 tracks importable sample rulesets and synthetic test contests so rule-engine changes remain demonstrable.
 
 | Child | Outcome | Dependencies |
 |---|---|---|
@@ -65,6 +65,8 @@ The implementation is tracked by parent issue [#385](https://github.com/ea7klk/c
 | [#393 — Scoring session reset policies](https://github.com/ea7klk/contestmaster/issues/393) | Support sponsor-required reset boundaries for duplicates, multipliers, and serial sequences without moving event schedules into rulesets. | Benchmark. |
 | [#394 — Sponsor-linked scoring conformance fixtures](https://github.com/ea7klk/contestmaster/issues/394) | Exercise selected representative built-in profiles end-to-end and document residual gaps. | Relevant implemented primitives above. |
 | [#395 — Sample rulesets and synthetic contests](https://github.com/ea7klk/contestmaster/issues/395) | Audit and update all current sample drafts and generated synthetic contests to exercise the new schema and rules. | Update incrementally with feature changes; finalize after the engine issues. |
+| [#396 — Cabrillo LOCATION conditional exchange selection](https://github.com/ea7klk/contestmaster/issues/396) | Select an asymmetric exchange schema from a configured entry declaration, require mapped `LOCATION`, and reject missing or ambiguous headers. | #392; fixture updates in #395. |
+| [#397 — Exchange fields in duplicate identity](https://github.com/ea7klk/contestmaster/issues/397) | Allow validated sent/received exchange values in duplicate keys so a changed mobile county can be distinguished. | #396 for the sponsor example; fixture and tests in #395. |
 
 ## Completion criteria
 

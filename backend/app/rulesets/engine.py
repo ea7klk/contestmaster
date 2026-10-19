@@ -71,6 +71,7 @@ class ScoringQso(BaseModel):
     itu_zone: str | None = None
     sent_exchange: dict[str, Any] = Field(default_factory=dict)
     received_exchange: dict[str, Any] = Field(default_factory=dict)
+    exchange_schema_resolved: bool = True
 
     @model_validator(mode="after")
     def require_aware_time(self) -> ScoringQso:
@@ -227,6 +228,12 @@ def _scope_value(rule: DuplicateRule | MultiplierRule, qso: ScoringQso) -> tuple
     for part in parts:
         if part in {"contest", "worked_callsign"}:
             value = qso.worked_callsign.strip().upper()
+        elif part.startswith("exchange."):
+            _prefix, direction, field_key = part.split(".", 2)
+            exchange_values = (
+                qso.sent_exchange if direction == "sent" else qso.received_exchange
+            )
+            value = exchange_values.get(field_key)
         else:
             value = getattr(qso, part, None)
         if value is None or value == "":
@@ -378,6 +385,9 @@ def score_entry(
         status: Literal["credited", "not_credited", "needs_review"] = "credited"
         reasons: list[str] = []
         qso_penalties = 0
+        if not qso.exchange_schema_resolved:
+            status = "needs_review"
+            reasons.append("exchange_schema_unresolved")
         instant = qso.occurred_at.astimezone(UTC)
         session_number = (
             int((instant - start).total_seconds() // session_seconds) + 1

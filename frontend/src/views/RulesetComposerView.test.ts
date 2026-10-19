@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { JsonSchema, RuleCatalogResponse } from '../api/rulesets'
 import { expectAccessible } from '../test/a11y'
 import RulesetComposerView from './RulesetComposerView.vue'
 
@@ -82,7 +83,7 @@ async function validateOnReview(wrapper: ReturnType<typeof mount>) {
 
 describe('RulesetComposerView', () => {
   it('offers optional fixed UTC scoring-session resets with guidance', async () => {
-    const catalog = catalogResponse()
+    const catalog = catalogResponse() as RuleCatalogResponse
     catalog.rule_types.push({
       key: 'session_resets',
       label: 'Scoring session resets',
@@ -100,7 +101,7 @@ describe('RulesetComposerView', () => {
           reset_serials: { type: 'boolean', default: false },
         },
         required: ['kind'],
-      },
+      } as JsonSchema,
     })
     vi.stubGlobal(
       'fetch',

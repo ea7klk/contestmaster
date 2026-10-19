@@ -5,7 +5,11 @@
   "accepted_format": "cabrillo",
   "ruleset_key": "cq-ww-dx-2026-cw-conformance",
   "ruleset_version": "2026-cw-fixture-1",
-  "entrant": {"callsign": "K1OUT", "category_operator": "SINGLE-OP", "cq_zone": "05"},
+  "entrant": {
+    "callsign": "K1OUT",
+    "category_operator": "SINGLE-OP",
+    "cq_zone": "05"
+  },
   "ruleset": {
     "schema_version": 2,
     "ruleset_key": "cq-ww-dx-2026-cw-conformance",
@@ -13,30 +17,262 @@
     "source_url": "https://www.cqww.com/rules/",
     "source_edition": "2026 CW rules; simplified single-operator conformance fixture",
     "rules": [
-      {"id": "submission", "rule": {"kind": "submission", "late_policy": "checklog"}},
-      {"id": "categories", "rule": {"kind": "categories", "dimensions": [{"key": "operator", "label": "Operator", "choices": [{"key": "single", "label": "Single operator"}]}]}},
-      {"id": "exchange", "rule": {"kind": "exchange", "fields": [{"key": "cq_zone", "label": "CQ Zone", "value_type": "zone", "direction": "both", "required": true, "min_integer": 1, "max_integer": 40}]}},
-      {"id": "eligibility", "rule": {"kind": "eligibility", "allowed_bands": ["20m"], "allowed_modes": ["CW"]}},
-      {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band"], "effect": "not_credited"}},
-      {"id": "same-country-points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 0}, "when": {"kind": "compare", "fact": "qso.same_entity", "operator": "eq", "value": true}},
-      {"id": "different-continent-points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 3}, "when": {"kind": "compare", "fact": "qso.different_continent", "operator": "eq", "value": true}},
-      {"id": "north-america-points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 2}, "when": {"kind": "all", "conditions": [{"kind": "compare", "fact": "qso.same_continent", "operator": "eq", "value": true}, {"kind": "compare", "fact": "qso.same_entity", "operator": "eq", "value": false}, {"kind": "compare", "fact": "station.continent", "operator": "eq", "value": "NA"}]}},
-      {"id": "same-continent-points", "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1}, "when": {"kind": "all", "conditions": [{"kind": "compare", "fact": "qso.same_continent", "operator": "eq", "value": true}, {"kind": "compare", "fact": "qso.same_entity", "operator": "eq", "value": false}, {"kind": "compare", "fact": "station.continent", "operator": "ne", "value": "NA"}]}},
-      {"id": "score-formula", "rule": {"kind": "score_formula", "start": {"variable": "multiplier.cq-zone"}, "steps": [{"operator": "add", "operand": {"variable": "multiplier.country"}}, {"operator": "multiply", "operand": {"variable": "points_total"}}]}},
-      {"id": "format-mapping", "rule": {"kind": "format_mapping", "format": "cabrillo", "qso_columns": ["frequency", "mode", "date", "time", "callsign_sent", "rst_sent", "exchange_sent", "callsign_received", "rst_received", "exchange_received"], "category_mappings": [{"external_field": "CATEGORY-OPERATOR", "external_value": "SINGLE-OP", "category_values": {"operator": "single"}}]}},
-      {"id": "cq-zone", "rule": {"kind": "multiplier", "source_fact": "qso.cq_zone", "scope": "band", "label": "CQ Zone"}},
-      {"id": "country", "rule": {"kind": "multiplier", "source_fact": "qso.entity", "scope": "band", "label": "Country"}}
+      {
+        "id": "submission",
+        "rule": {
+          "kind": "submission",
+          "late_policy": "checklog"
+        }
+      },
+      {
+        "id": "categories",
+        "rule": {
+          "kind": "categories",
+          "dimensions": [
+            {
+              "key": "operator",
+              "label": "Operator",
+              "choices": [
+                {
+                  "key": "single",
+                  "label": "Single operator"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "exchange",
+        "rule": {
+          "kind": "exchange",
+          "fields": [
+            {
+              "key": "cq_zone",
+              "label": "CQ Zone",
+              "value_type": "zone",
+              "direction": "both",
+              "required": true,
+              "min_integer": 1,
+              "max_integer": 40
+            }
+          ]
+        }
+      },
+      {
+        "id": "eligibility",
+        "rule": {
+          "kind": "eligibility",
+          "allowed_bands": [
+            "20m"
+          ],
+          "allowed_modes": [
+            "CW"
+          ]
+        }
+      },
+      {
+        "id": "duplicates",
+        "rule": {
+          "kind": "duplicates",
+          "scope": [
+            "worked_callsign",
+            "band"
+          ],
+          "effect": "not_credited"
+        }
+      },
+      {
+        "id": "same-country-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 0
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.same_entity",
+          "operator": "eq",
+          "value": true
+        }
+      },
+      {
+        "id": "different-continent-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 3
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.different_continent",
+          "operator": "eq",
+          "value": true
+        }
+      },
+      {
+        "id": "north-america-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 2
+        },
+        "when": {
+          "kind": "all",
+          "conditions": [
+            {
+              "kind": "compare",
+              "fact": "qso.same_continent",
+              "operator": "eq",
+              "value": true
+            },
+            {
+              "kind": "compare",
+              "fact": "qso.same_entity",
+              "operator": "eq",
+              "value": false
+            },
+            {
+              "kind": "compare",
+              "fact": "station.continent",
+              "operator": "eq",
+              "value": "NA"
+            }
+          ]
+        }
+      },
+      {
+        "id": "same-continent-points",
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 1
+        },
+        "when": {
+          "kind": "all",
+          "conditions": [
+            {
+              "kind": "compare",
+              "fact": "qso.same_continent",
+              "operator": "eq",
+              "value": true
+            },
+            {
+              "kind": "compare",
+              "fact": "qso.same_entity",
+              "operator": "eq",
+              "value": false
+            },
+            {
+              "kind": "compare",
+              "fact": "station.continent",
+              "operator": "ne",
+              "value": "NA"
+            }
+          ]
+        }
+      },
+      {
+        "id": "score-formula",
+        "rule": {
+          "kind": "score_formula",
+          "start": {
+            "variable": "multiplier.cq-zone"
+          },
+          "steps": [
+            {
+              "operator": "add",
+              "operand": {
+                "variable": "multiplier.country"
+              }
+            },
+            {
+              "operator": "multiply",
+              "operand": {
+                "variable": "points_total"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "format-mapping",
+        "rule": {
+          "kind": "format_mapping",
+          "format": "cabrillo",
+          "qso_columns": [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "exchange_received"
+          ],
+          "category_mappings": [
+            {
+              "external_field": "CATEGORY-OPERATOR",
+              "external_value": "SINGLE-OP",
+              "category_values": {
+                "operator": "single"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "cq-zone",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "qso.cq_zone",
+          "scope": "band",
+          "label": "CQ Zone"
+        }
+      },
+      {
+        "id": "country",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "qso.entity",
+          "scope": "band",
+          "label": "Country"
+        }
+      }
     ]
   },
   "contacts": [
-    {"worked_callsign": "EA7AAA", "entity": "EA", "continent": "EU", "cq_zone": "14", "qso_points": 3},
-    {"worked_callsign": "W1AW", "entity": "K", "continent": "NA", "cq_zone": "05", "qso_points": 0},
-    {"worked_callsign": "VE3ABC", "entity": "VE", "continent": "NA", "cq_zone": "04", "qso_points": 2}
+    {
+      "worked_callsign": "EA7AAA",
+      "entity": "EA",
+      "continent": "EU",
+      "cq_zone": "14",
+      "qso_points": 3
+    },
+    {
+      "worked_callsign": "W1AW",
+      "entity": "K",
+      "continent": "NA",
+      "cq_zone": "05",
+      "qso_points": 0
+    },
+    {
+      "worked_callsign": "VE3ABC",
+      "entity": "VE",
+      "continent": "NA",
+      "cq_zone": "04",
+      "qso_points": 2
+    }
   ],
   "expected": {
     "credited_qsos": 3,
     "qso_points": 5,
-    "multiplier_counts": {"cq-zone": 3, "country": 3},
+    "multiplier_counts": {
+      "cq-zone": 3,
+      "country": 3
+    },
     "bonus_counts": {},
     "bonus_points": 0,
     "penalty_points": 0,
@@ -44,7 +280,7 @@
     "final_score": 30
   },
   "notes": [
-    "The fixture explicitly tests same-country zero points with multiplier credit, the North American same-continent exception, and a different-continent contact.",
+    "This fixture tests same-country zero points with multiplier credit, the North American same-continent exception, and a different-continent contact; a separate assertion covers the same-continent non-NA branch.",
     "The synthetic CTY version is contest-start-pinned and deliberately contains only the station assignments needed for these scoring assertions.",
     "The event timestamp is generated during the test; the fixture validates 2026 CW rules, not the official event date."
   ]

@@ -25,6 +25,8 @@ const props = withDefaults(
     factOptions?: Array<{ value: string; label: string }>
     variableOptions?: Array<{ value: string; label: string }>
     exchangeFieldOptions?: Array<{ value: string; label: string }>
+    entryExchangeFieldOptions?: Array<{ value: string; label: string }>
+    duplicateScopeOptions?: Array<{ value: string; label: string }>
   }>(),
   {
     label: '',
@@ -38,6 +40,8 @@ const props = withDefaults(
     factOptions: () => [],
     variableOptions: () => [],
     exchangeFieldOptions: () => [],
+    entryExchangeFieldOptions: () => [],
+    duplicateScopeOptions: () => [],
   },
 )
 
@@ -90,6 +94,12 @@ function enumLabel(value: unknown): string {
   if (props.path.endsWith('-variable')) {
     const option = props.variableOptions.find((item) => item.value === value)
     return option?.label ?? `${value} (${translateText('Unavailable in this ruleset')})`
+  }
+  if (/-scope-\d+$/.test(props.path)) {
+    const option = props.duplicateScopeOptions.find(
+      (item) => item.value === value,
+    )
+    if (option) return translateText(option.label)
   }
   const words = String(value).replaceAll('_', ' ')
   const title = words.replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -204,9 +214,20 @@ const enumOptions = computed(() => {
     if (currentValue && !values.includes(currentValue)) values.unshift(currentValue)
     return values
   }
+  if (/-scope-\d+$/.test(props.path) && props.duplicateScopeOptions.length) {
+    const values = props.duplicateScopeOptions.map((item) => item.value)
+    const currentValue = String(props.modelValue ?? '')
+    if (currentValue && !values.includes(currentValue)) values.unshift(currentValue)
+    return values
+  }
   const values = primitiveSchema.value.enum ?? []
   if (props.path.includes('-header_fields-') && props.headerKey) {
-    const expected = props.headerKey === 'callsign' ? 'CALLSIGN' : 'CONTEST'
+    const expected =
+      props.headerKey === 'callsign'
+        ? 'CALLSIGN'
+        : props.headerKey === 'contest'
+          ? 'CONTEST'
+          : 'LOCATION'
     return values.filter((value) => value === expected)
   }
   if (!props.path.endsWith('-external_value') || !props.categoryHeader)
@@ -382,6 +403,21 @@ function currentQsoColumnIndex() {
   return match ? Number(match[1]) : -1
 }
 
+function currentScopeIndex() {
+  const match = /-scope-(\d+)$/.exec(props.path)
+  return match ? Number(match[1]) : -1
+}
+
+function duplicateScopeSelectedElsewhere(value: unknown) {
+  const currentIndex = currentScopeIndex()
+  return (
+    currentIndex >= 0 &&
+    props.arraySiblings.some(
+      (item, itemIndex) => itemIndex !== currentIndex && item === value,
+    )
+  )
+}
+
 function moveArrayItem(index: number, offset: number) {
   const target = index + offset
   if (!isQsoColumnList() || target < 0 || target >= arrayValue.value.length)
@@ -415,11 +451,23 @@ function addMapRow() {
     return
   }
   if (props.path.endsWith('-header_fields')) {
-    const header = ['callsign', 'contest'].find(
+    const header = [
+      'callsign',
+      'contest',
+      ...props.entryExchangeFieldOptions.map((item) => item.value),
+    ].find(
       (item) => !Object.hasOwn(values, item),
     )
     if (!header) return
-    setValue({ ...values, [header]: header.toUpperCase() })
+    setValue({
+      ...values,
+      [header]:
+        header === 'callsign'
+          ? 'CALLSIGN'
+          : header === 'contest'
+            ? 'CONTEST'
+            : 'LOCATION',
+    })
     return
   }
   let key = 'value'
@@ -564,6 +612,8 @@ function onEnumInput(event: Event) {
               :fact-options="factOptions"
               :variable-options="variableOptions"
               :exchange-field-options="exchangeFieldOptions"
+              :entry-exchange-field-options="entryExchangeFieldOptions"
+              :duplicate-scope-options="duplicateScopeOptions"
               @update:model-value="updateProperty(key, $event)"
             />
           </template>
@@ -593,6 +643,8 @@ function onEnumInput(event: Event) {
           :fact-options="factOptions"
           :variable-options="variableOptions"
           :exchange-field-options="exchangeFieldOptions"
+          :entry-exchange-field-options="entryExchangeFieldOptions"
+          :duplicate-scope-options="duplicateScopeOptions"
           @update:model-value="updateArrayItem(index, $event)"
         />
         <div v-if="isQsoColumnList()" class="schema-array-order">
@@ -671,8 +723,26 @@ function onEnumInput(event: Event) {
               renameMapKey(key, ($event.target as HTMLSelectElement).value)
             "
           >
-            <option value="callsign">CALLSIGN</option>
-            <option value="contest">CONTEST</option>
+            <option
+              value="callsign"
+              :disabled="key !== 'callsign' && Object.hasOwn(objectValue, 'callsign')"
+            >
+              CALLSIGN
+            </option>
+            <option
+              value="contest"
+              :disabled="key !== 'contest' && Object.hasOwn(objectValue, 'contest')"
+            >
+              CONTEST
+            </option>
+            <option
+              v-for="field in entryExchangeFieldOptions"
+              :key="field.value"
+              :value="field.value"
+              :disabled="key !== field.value && Object.hasOwn(objectValue, field.value)"
+            >
+              {{ $tr(field.label) }} ({{ field.value }})
+            </option>
           </select>
           <input
             v-else
@@ -715,6 +785,8 @@ function onEnumInput(event: Event) {
             :fact-options="factOptions"
             :variable-options="variableOptions"
             :exchange-field-options="exchangeFieldOptions"
+            :entry-exchange-field-options="entryExchangeFieldOptions"
+            :duplicate-scope-options="duplicateScopeOptions"
             @update:model-value="updateMapValue(key, $event)"
           />
         </div>
@@ -787,7 +859,9 @@ function onEnumInput(event: Event) {
             :key="String(option)"
             :value="String(option)"
             :disabled="
-              qsoColumnSelectedElsewhere(currentQsoColumnIndex(), option)
+              qsoColumnSelectedElsewhere(currentQsoColumnIndex(), option) ||
+              (/-scope-\d+$/.test(path) &&
+                duplicateScopeSelectedElsewhere(option))
             "
           >
             {{ enumLabel(option) }}

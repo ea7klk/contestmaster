@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -328,6 +329,178 @@ def test_distance_points_missing_or_invalid_grid_has_explicit_outcome(
     assert result.qso_scores[0].status == expected_status
     assert result.qso_scores[0].points == 0
     assert "distance_grid_missing_or_invalid:distance" in result.qso_scores[0].reasons
+
+
+def test_duplicate_identity_can_include_the_entrant_sent_county():
+    payload = valid_payload()
+    payload["rules"][1]["rule"]["dimensions"][0]["choices"].append(
+        {"key": "rover", "label": "Rover"}
+    )
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")["rule"]
+    exchange["fields"].append(
+        {
+            "key": "county",
+            "label": "County",
+            "value_type": "text",
+            "direction": "sent",
+            "required": True,
+        }
+    )
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")[
+        "rule"
+    ]
+    duplicate_rule["scope"] = ["worked_callsign", "band", "exchange.sent.county"]
+    definition = validate_ruleset(payload)
+
+    entry = sample_entry().model_copy(
+        update={
+            "categories": {"operator": "rover"},
+            "qsos": [
+                sample_entry().qsos[0].model_copy(
+                    update={"qso_id": 10, "sent_exchange": {"serial": "001", "county": "PIMA"}}
+                ),
+                sample_entry().qsos[0].model_copy(
+                    update={"qso_id": 11, "sent_exchange": {"serial": "002", "county": "COCHISE"}}
+                ),
+                sample_entry().qsos[0].model_copy(
+                    update={"qso_id": 12, "sent_exchange": {"serial": "003", "county": "PIMA"}}
+                ),
+            ],
+        }
+    )
+
+    result = score_entry(definition, entry, contest_starts_at=START, contest_ends_at=END)
+
+    assert [item.status for item in result.qso_scores] == [
+        "credited",
+        "credited",
+        "not_credited",
+    ]
+    assert [item.points for item in result.qso_scores] == [2, 2, 0]
+    assert "duplicate" in result.qso_scores[2].reasons
+
+
+def test_duplicate_scope_rejects_repeated_identity_fields():
+    payload = valid_payload()
+    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
+    duplicate_rule["rule"]["scope"] = ["worked_callsign", "band", "band"]
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+
+    assert any(
+        "duplicate scope values must be unique" in item["message"]
+        for item in error.value.errors
+    )
+
+
+def test_incomplete_exchange_duplicate_key_does_not_merge_later_contact():
+    payload = valid_payload()
+    payload["rules"][1]["rule"]["dimensions"][0]["choices"].append(
+        {"key": "rover", "label": "Rover"}
+    )
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")["rule"]
+    exchange["fields"].append(
+        {
+            "key": "county",
+            "label": "County",
+            "value_type": "text",
+            "direction": "sent",
+            "required": True,
+        }
+    )
+    duplicates = next(item for item in payload["rules"] if item["id"] == "duplicates")[
+        "rule"
+    ]
+    duplicates["scope"] = ["worked_callsign", "band", "exchange.sent.county"]
+    contact = sample_entry().qsos[0]
+    entry = sample_entry().model_copy(
+        update={
+            "categories": {"operator": "rover"},
+            "qsos": [
+                contact.model_copy(
+                    update={"qso_id": 20, "sent_exchange": {"serial": "001"}}
+                ),
+                contact.model_copy(
+                    update={
+                        "qso_id": 21,
+                        "sent_exchange": {"serial": "002", "county": "PIMA"},
+                    }
+                ),
+            ],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == "not_credited"
+    assert "duplicate_key_incomplete" in result.qso_scores[0].reasons
+    assert result.qso_scores[1].status == "credited"
+
+
+def test_cqww_same_continent_non_north_america_scores_one_point():
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/cq-ww-dx-2026-cw-cabrillo.json"
+    )
+    payload = json.loads(fixture_path.read_text())["ruleset"]
+    entry = sample_entry().model_copy(
+        update={
+            "station_callsign": "EA7AAA",
+            "station_entity": "EA",
+            "station_continent": "EU",
+            "qsos": [
+                sample_entry().qsos[0].model_copy(
+                    update={
+                        "qso_id": 50,
+                        "worked_callsign": "DL1ABC",
+                        "entity": "DL",
+                        "continent": "EU",
+                        "cq_zone": "14",
+                        "band": "20m",
+                        "mode": "CW",
+                        "sent_exchange": {"cq_zone": "05"},
+                        "received_exchange": {"cq_zone": "14"},
+                    }
+                )
+            ],
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.qso_scores[0].status == "credited"
+    assert result.qso_scores[0].points == 1
+
+
+def test_conditional_exchange_entry_fact_requires_cabrillo_location_mapping():
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "documentation/ruleset-parity/fixtures/arizona-qso-party-2026-cabrillo.json"
+    )
+    payload = json.loads(fixture_path.read_text())["ruleset"]
+
+    eligibility = next(item for item in payload["rules"] if item["id"] == "eligibility")
+    eligibility["when"] = {
+        "kind": "compare",
+        "fact": "exchange.received.county",
+        "operator": "exists",
+    }
+    valid = validate_ruleset(payload)
+    assert sum(item.rule.kind == "exchange" for item in valid.rules) == 2
+
+    format_rule = next(item for item in payload["rules"] if item["id"] == "format-mapping")
+    format_rule["rule"]["header_fields"] = {}
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any(
+        "map that field to the WWROF LOCATION header" in item["message"]
+        for item in error.value.errors
+    )
 
 
 def test_distance_points_rule_requires_a_received_grid_exchange_field():
@@ -1518,8 +1691,6 @@ def _distinct_bonus_rule(
 
 def test_distinct_bonus_counts_a_qualifying_callsign_only_once_across_bands():
     payload = valid_payload()
-    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
-    duplicate_rule["rule"]["scope"].append("band")
     payload["rules"].append(
         _distinct_bonus_rule(
             when={
@@ -1550,8 +1721,6 @@ def test_distinct_bonus_counts_a_qualifying_callsign_only_once_across_bands():
 
 def test_distinct_bonus_applies_all_conditions_before_counting_values():
     payload = valid_payload()
-    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
-    duplicate_rule["rule"]["scope"].append("band")
     payload["rules"].append(
         _distinct_bonus_rule(
             when={
@@ -1593,8 +1762,6 @@ def test_distinct_bonus_applies_all_conditions_before_counting_values():
 
 def test_distinct_bonus_cap_allocates_integer_awards_in_contact_order():
     payload = valid_payload()
-    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
-    duplicate_rule["rule"]["scope"].append("band")
     payload["rules"].append(_distinct_bonus_rule(points=100, cap=150))
     first, second = sample_entry().qsos
     entry = sample_entry().model_copy(
@@ -1617,8 +1784,6 @@ def test_distinct_bonus_cap_allocates_integer_awards_in_contact_order():
 
 def test_distinct_bonus_award_group_prevents_overlapping_rules_from_stacking():
     payload = valid_payload()
-    duplicate_rule = next(item for item in payload["rules"] if item["id"] == "duplicates")
-    duplicate_rule["rule"]["scope"].append("band")
     payload["rules"].extend(
         [
             _distinct_bonus_rule("first-award", award_group="special-contact"),

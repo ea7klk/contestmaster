@@ -11,6 +11,8 @@ These fixtures pair a named sponsor edition, machine-readable Contestmaster rule
 - One QSO with K7A earns a single 100-point bonus during the contest.
 - Total score is QSO points multiplied by multipliers, plus bonus points.
 - The exchange direction for this fixture is an outside entrant sending a state and an Arizona station sending a county.
+- Cabrillo `LOCATION` carries the entrant area and selects the matching conditional exchange layout before QSO exchange tokens are parsed. The companion Arizona layout declares county as sent and state as received.
+- The ruleset can distinguish repeated contacts by sent or received exchange values when the sponsor makes that value part of station identity. For a mobile Arizona entrant, its changing sent county can distinguish a new station area; incomplete keys are held for review.
 
 The fixture has three CW QSOs with three counties and two Phone QSOs with one county. Its independent arithmetic is `8 × 4 + 100 = 132`. The repeated K7A contact is on a different mode, so it remains a valid QSO and can supply a new band/mode county multiplier; the K7A bonus is still counted once. Cabrillo uses the WWROF `PH` mode token for Phone, as defined by the [WWROF QSO data specification](https://wwrof.org/cabrillo/cabrillo-qso-data/).
 
@@ -20,13 +22,13 @@ The API integration test builds the dated QSO records at runtime, validates the 
 .venv/bin/pytest -q backend/tests/test_results.py::test_azqp_2026_sponsor_fixture_scores_and_publishes_safe_explanation
 ```
 
-This fixture does not resolve Arizona status from callsigns, validate the county list against station locations, adjudicate mobile/expedition operation, or model Arizona entrant multipliers. Those requirements need additional rules and authoritative data and remain outside this fixture's claim.
+The API test exercises both the outside-entrant branch and an Arizona entrant branch. The Arizona log repeats a worked station in the same county, then in a new county, then again in the original county: only the new-county contact is credited. This verifies the mobile-style sent-county identity rule but does not claim to adjudicate mobile eligibility. The fixtures do not resolve Arizona status from callsigns, validate the county list against station locations, or model Arizona entrant multiplier tables. Those sponsor requirements need additional rules and authoritative data and remain outside these fixture claims.
 
 ## CQ WW DX 2026 CW
 
 [`cq-ww-dx-2026-cw-cabrillo.json`](cq-ww-dx-2026-cw-cabrillo.json) is a small, sponsor-linked profile for the [CQ WW 2026 rules](https://www.cqww.com/rules/). It exercises entrant-relative geography and independent multiplier totals through the Cabrillo upload, score-run, and public publication paths.
 
-The pinned synthetic CTY subset resolves the entrant and three worked stations. The contacts cover the different-continent 3-point branch, same-country zero QSO points while retaining multiplier eligibility, and the North American same-continent/different-country 2-point branch. Expected totals are 5 QSO points, 3 CQ zones, 3 countries, and `(3 + 3) × 5 = 30` final points. The integration test asserts that the public output contains the score explanation and does not reveal raw QSOs or email data.
+The pinned synthetic CTY subset resolves the entrant and three worked stations. The contacts cover the different-continent 3-point branch, same-country zero QSO points while retaining multiplier eligibility, and the North American same-continent/different-country 2-point branch. Expected totals are 5 QSO points, 3 CQ zones, 3 countries, and `(3 + 3) × 5 = 30` final points. A focused engine test covers the remaining same-continent, non-North-American 1-point branch from the published rule. The integration test asserts that the public output contains the score explanation and does not reveal raw QSOs or email data.
 
 Run it with:
 
@@ -34,7 +36,7 @@ Run it with:
 .venv/bin/pytest -q backend/tests/test_results.py::test_cqww_2026_sponsor_fixture_uses_contest_pinned_geography_and_separate_counts
 ```
 
-This is a deliberately small scoring profile, not a complete implementation of CQ WW categories, eligibility, judging, or all geography branches.
+This is a deliberately small scoring profile, not a complete implementation of CQ WW categories, eligibility, judging, portable station location, or adjudication.
 
 ## RSGB VHF/UHF/SHF General Rules 2026
 

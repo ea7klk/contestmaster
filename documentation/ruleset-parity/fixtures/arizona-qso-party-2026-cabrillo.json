@@ -10,15 +10,30 @@
     "ruleset_key": "azqp-2026-conformance",
     "version": "2026-fixture-1",
     "source_url": "https://www.azqp.org/rules",
-    "source_edition": "2026 rules; simplified outside-entrant conformance fixture",
+    "source_edition": "2026 rules; simplified outside and Arizona entrant conformance fixture",
     "rules": [
-      {"id": "submission", "rule": {"kind": "submission", "late_policy": "checklog"}},
+      {
+        "id": "submission",
+        "rule": {
+          "kind": "submission",
+          "late_policy": "checklog"
+        }
+      },
       {
         "id": "categories",
         "rule": {
           "kind": "categories",
           "dimensions": [
-            {"key": "operator", "label": "Operator", "choices": [{"key": "single", "label": "Single operator"}]}
+            {
+              "key": "operator",
+              "label": "Operator",
+              "choices": [
+                {
+                  "key": "single",
+                  "label": "Single operator"
+                }
+              ]
+            }
           ]
         }
       },
@@ -27,31 +42,182 @@
         "rule": {
           "kind": "exchange",
           "fields": [
-            {"key": "state", "label": "State", "value_type": "text", "direction": "sent", "required": true, "max_length": 2},
-            {"key": "county", "label": "Arizona county", "value_type": "text", "direction": "received", "required": true, "max_length": 3}
+            {
+              "key": "home_area",
+              "label": "Station area",
+              "value_type": "enum",
+              "direction": "entry",
+              "required": true,
+              "choices": [
+                "AZ",
+                "NY"
+              ]
+            },
+            {
+              "key": "state",
+              "label": "State",
+              "value_type": "text",
+              "direction": "sent",
+              "required": true,
+              "max_length": 2
+            },
+            {
+              "key": "county",
+              "label": "Arizona county",
+              "value_type": "text",
+              "direction": "received",
+              "required": true,
+              "max_length": 3
+            }
+          ]
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.entry.home_area",
+          "operator": "ne",
+          "value": "AZ"
+        }
+      },
+      {
+        "id": "arizona-exchange",
+        "rule": {
+          "kind": "exchange",
+          "fields": [
+            {
+              "key": "home_area",
+              "label": "Station area",
+              "value_type": "enum",
+              "direction": "entry",
+              "required": true,
+              "choices": [
+                "AZ",
+                "NY"
+              ]
+            },
+            {
+              "key": "county",
+              "label": "Arizona county",
+              "value_type": "text",
+              "direction": "sent",
+              "required": true,
+              "max_length": 3
+            },
+            {
+              "key": "state",
+              "label": "State",
+              "value_type": "text",
+              "direction": "received",
+              "required": true,
+              "max_length": 2
+            }
+          ]
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.entry.home_area",
+          "operator": "eq",
+          "value": "AZ"
+        }
+      },
+      {
+        "id": "eligibility",
+        "rule": {
+          "kind": "eligibility",
+          "allowed_bands": [
+            "40m"
+          ],
+          "allowed_modes": [
+            "CW",
+            "PH"
           ]
         }
       },
-      {"id": "eligibility", "rule": {"kind": "eligibility", "allowed_bands": ["40m"], "allowed_modes": ["CW", "PH"]}},
-      {"id": "duplicates", "rule": {"kind": "duplicates", "scope": ["worked_callsign", "band", "mode"], "effect": "not_credited"}},
+      {
+        "id": "duplicates",
+        "rule": {
+          "kind": "duplicates",
+          "scope": [
+            "worked_callsign",
+            "band",
+            "mode",
+            "exchange.received.county"
+          ],
+          "effect": "not_credited"
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.entry.home_area",
+          "operator": "ne",
+          "value": "AZ"
+        }
+      },
+      {
+        "id": "arizona-mobile-duplicates",
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.entry.home_area",
+          "operator": "eq",
+          "value": "AZ"
+        },
+        "rule": {
+          "kind": "duplicates",
+          "scope": [
+            "worked_callsign",
+            "band",
+            "mode",
+            "exchange.sent.county"
+          ],
+          "effect": "not_credited"
+        }
+      },
       {
         "id": "cw-points",
-        "rule": {"kind": "points", "fact": "fixed", "fixed_points": 2},
-        "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "CW"}
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 2
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.mode",
+          "operator": "eq",
+          "value": "CW"
+        }
       },
       {
         "id": "phone-points",
-        "rule": {"kind": "points", "fact": "fixed", "fixed_points": 1},
-        "when": {"kind": "compare", "fact": "qso.mode", "operator": "eq", "value": "PH"}
+        "rule": {
+          "kind": "points",
+          "fact": "fixed",
+          "fixed_points": 1
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.mode",
+          "operator": "eq",
+          "value": "PH"
+        }
       },
       {
         "id": "score-formula",
         "rule": {
           "kind": "score_formula",
-          "start": {"variable": "points_total"},
+          "start": {
+            "variable": "points_total"
+          },
           "steps": [
-            {"operator": "multiply", "operand": {"variable": "multiplier_count"}},
-            {"operator": "add", "operand": {"variable": "bonus_points"}}
+            {
+              "operator": "multiply",
+              "operand": {
+                "variable": "multiplier_count"
+              }
+            },
+            {
+              "operator": "add",
+              "operand": {
+                "variable": "bonus_points"
+              }
+            }
           ]
         }
       },
@@ -60,35 +226,113 @@
         "rule": {
           "kind": "format_mapping",
           "format": "cabrillo",
-          "qso_columns": ["frequency", "mode", "date", "time", "callsign_sent", "rst_sent", "exchange_sent", "callsign_received", "rst_received", "exchange_received"],
-          "category_mappings": [{"external_field": "CATEGORY-OPERATOR", "external_value": "SINGLE-OP", "category_values": {"operator": "single"}}]
+          "qso_columns": [
+            "frequency",
+            "mode",
+            "date",
+            "time",
+            "callsign_sent",
+            "rst_sent",
+            "exchange_sent",
+            "callsign_received",
+            "rst_received",
+            "exchange_received"
+          ],
+          "category_mappings": [
+            {
+              "external_field": "CATEGORY-OPERATOR",
+              "external_value": "SINGLE-OP",
+              "category_values": {
+                "operator": "single"
+              }
+            }
+          ],
+          "header_fields": {
+            "home_area": "LOCATION"
+          }
         }
       },
-      {"id": "county-by-band-mode", "rule": {"kind": "multiplier", "source_fact": "exchange.received.county", "scope": "band_mode", "label": "Arizona county"}},
+      {
+        "id": "county-by-band-mode",
+        "rule": {
+          "kind": "multiplier",
+          "source_fact": "exchange.received.county",
+          "scope": "band_mode",
+          "label": "Arizona county"
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "exchange.entry.home_area",
+          "operator": "ne",
+          "value": "AZ"
+        }
+      },
       {
         "id": "k7a-one-time",
-        "rule": {"kind": "bonus", "basis": "per_distinct_value", "points": 100, "cap": 100, "source_fact": "qso.worked_callsign", "scope": "contest"},
-        "when": {"kind": "compare", "fact": "qso.worked_callsign", "operator": "eq", "value": "K7A"}
+        "rule": {
+          "kind": "bonus",
+          "basis": "per_distinct_value",
+          "points": 100,
+          "cap": 100,
+          "source_fact": "qso.worked_callsign",
+          "scope": "contest"
+        },
+        "when": {
+          "kind": "compare",
+          "fact": "qso.worked_callsign",
+          "operator": "eq",
+          "value": "K7A"
+        }
       }
     ]
   },
   "entrant": {
     "callsign": "K1OUT",
     "state": "NY",
-    "category_operator": "SINGLE-OP"
+    "category_operator": "SINGLE-OP",
+    "home_area": "NY"
   },
   "contacts": [
-    {"mode": "CW", "worked_callsign": "K7A", "county": "APH", "qso_points": 2},
-    {"mode": "CW", "worked_callsign": "K7B", "county": "CHS", "qso_points": 2},
-    {"mode": "CW", "worked_callsign": "K7C", "county": "GLA", "qso_points": 2},
-    {"mode": "PH", "worked_callsign": "K7A", "county": "APH", "qso_points": 1},
-    {"mode": "PH", "worked_callsign": "K7D", "county": "APH", "qso_points": 1}
+    {
+      "mode": "CW",
+      "worked_callsign": "K7A",
+      "county": "APH",
+      "qso_points": 2
+    },
+    {
+      "mode": "CW",
+      "worked_callsign": "K7B",
+      "county": "CHS",
+      "qso_points": 2
+    },
+    {
+      "mode": "CW",
+      "worked_callsign": "K7C",
+      "county": "GLA",
+      "qso_points": 2
+    },
+    {
+      "mode": "PH",
+      "worked_callsign": "K7A",
+      "county": "APH",
+      "qso_points": 1
+    },
+    {
+      "mode": "PH",
+      "worked_callsign": "K7D",
+      "county": "APH",
+      "qso_points": 1
+    }
   ],
   "expected": {
     "credited_qsos": 5,
     "qso_points": 8,
-    "multiplier_counts": {"county-by-band-mode": 4},
-    "bonus_counts": {"k7a-one-time": 1},
+    "multiplier_counts": {
+      "county-by-band-mode": 4
+    },
+    "bonus_counts": {
+      "k7a-one-time": 1
+    },
     "bonus_points": 100,
     "penalty_points": 0,
     "formula": "(8 QSO points x 4 county multipliers) + 100 K7A bonus",
@@ -97,6 +341,8 @@
   "notes": [
     "The fixture is an outside Arizona entrant and tests the sponsor's county-per-band-and-mode multiplier rule.",
     "The repeated K7A contact on a different mode remains a valid QSO and must not repeat the one-time bonus.",
-    "The event timestamp is generated during the test; the fixture validates 2026 rules, not the official event date."
+    "The event timestamp is generated during the test; the fixture validates 2026 rules, not the official event date.",
+    "Cabrillo LOCATION selects the entry-area-dependent exchange layout before the exchange tokens are interpreted; Arizona stations reverse the state and county directions.",
+    "Outside entrants key repeats by received Arizona county; Arizona mobile entrants key repeats by their sent county so a county change can be worked again."
   ]
 }

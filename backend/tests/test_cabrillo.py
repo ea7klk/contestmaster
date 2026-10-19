@@ -144,6 +144,27 @@ def test_contest_specific_header_template_maps_required_fields_without_losing_or
     assert parsed.warnings == []
 
 
+@pytest.mark.parametrize(
+    ("location_headers", "expected_error"),
+    [
+        ("", "required_mapped_header"),
+        ("LOCATION: AZ\nLOCATION: NY\n", "required_mapped_header"),
+    ],
+)
+def test_configured_location_entry_header_must_be_present_exactly_once(
+    location_headers, expected_error
+):
+    parsed = parse_cabrillo(
+        "START-OF-LOG: 3.0\nCONTEST: AZQP\nCALLSIGN: K7ABC\n"
+        + location_headers
+        + "QSO: 7000 CW 2026-10-15 1234 K7ABC 599 MARIC N7XYZ 599 AZ\n"
+        "END-OF-LOG:\n",
+        header_fields={"callsign": "CALLSIGN", "contest": "CONTEST", "home_area": "LOCATION"},
+    )
+
+    assert expected_error in {item.code for item in parsed.errors}
+
+
 def test_cabrillo_parser_bounds_line_count_and_line_length():
     from backend.app.logs.cabrillo import (
         MAX_CABRILLO_LINE_LENGTH,
