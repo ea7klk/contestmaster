@@ -708,6 +708,26 @@ def test_manager_review_endpoint_records_audited_override_and_exposes_runs(scori
     app.dependency_overrides[get_session] = override_session
     with factory.begin() as session:
         manager = session.scalar(select(SystemUser))
+        contest = session.get(Contest, contest_id)
+        saved_ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        session_ruleset = dict(saved_ruleset.configuration)
+        session_ruleset["rules"] = [
+            *session_ruleset["rules"],
+            {
+                "id": "sessions",
+                "rule": {
+                    "kind": "session_resets",
+                    "period_minutes": 60,
+                    "reset_duplicates": True,
+                    "reset_multipliers": False,
+                    "reset_serials": False,
+                },
+            },
+        ]
+        saved_ruleset.configuration = session_ruleset
+        saved_ruleset.rule_type_keys = sorted(
+            {*saved_ruleset.rule_type_keys, "session_resets"}
+        )
         token, csrf, _record = issue_session(session, manager)
         outsider = SystemUser(
             username="other-manager",
@@ -723,6 +743,12 @@ def test_manager_review_endpoint_records_audited_override_and_exposes_runs(scori
             select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
         )
         qso_id = qso.id
+        second_qso = session.scalar(
+            select(Qso)
+            .where(Qso.entry_revision_id == revision_id, Qso.id != qso_id)
+            .order_by(Qso.id)
+        )
+        second_qso.occurred_at = START + timedelta(minutes=60)
     client = TestClient(app)
     client.cookies.set("contestmaster_session", token)
     client.cookies.set("contestmaster_csrf", csrf)
@@ -748,6 +774,7 @@ def test_manager_review_endpoint_records_audited_override_and_exposes_runs(scori
         )
         assert detail.status_code == 200
         assert len(detail.json()["qso_scores"]) == 2
+        assert [row["session_number"] for row in detail.json()["qso_scores"]] == [1, 2]
         assert all(type(row["points"]) is int for row in detail.json()["qso_scores"])
         outsider_client = TestClient(app)
         outsider_client.cookies.set("contestmaster_session", outsider_token)

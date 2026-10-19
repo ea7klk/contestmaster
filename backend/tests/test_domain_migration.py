@@ -128,6 +128,9 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     assert "iaru_regions" not in tables
     assert "itu_radio_regions" not in tables
     assert "operating_catalog_items" not in tables
+    assert "session_number" in {
+        column["name"] for column in inspect(engine).get_columns("qso_scores")
+    }
     system_user_columns = {
         column["name"]: column for column in inspect(engine).get_columns("system_users")
     }
@@ -137,7 +140,7 @@ def test_single_baseline_migration_creates_current_schema_and_catalog(tmp_path) 
     }
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0027_audit_event_retention"
+            "0028_scoring_session_numbers"
         )
         assert (
             connection.scalar(
@@ -333,27 +336,29 @@ def test_migration_history_has_one_baseline_and_forward_migrations() -> None:
     config.set_main_option("script_location", os.path.join(project_root, "backend", "migrations"))
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
-    assert len(revisions) == 10
-    assert revisions[0].revision == "0027_audit_event_retention"
-    assert revisions[0].down_revision == "0026_guest_email_locale"
-    assert revisions[1].revision == "0026_guest_email_locale"
-    assert revisions[1].down_revision == "0025_initial_password_change"
-    assert revisions[2].revision == "0025_initial_password_change"
-    assert revisions[2].down_revision == "0024_guest_email_access_and_notices"
-    assert revisions[3].revision == "0024_guest_email_access_and_notices"
-    assert revisions[3].down_revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[4].revision == "0023_participant_accounts_and_shared_iam"
-    assert revisions[4].down_revision == "0022_recurring_contest_series"
-    assert revisions[5].revision == "0022_recurring_contest_series"
-    assert revisions[5].down_revision == "0021_authorized_ruleset_deletion"
-    assert revisions[6].revision == "0021_authorized_ruleset_deletion"
-    assert revisions[6].down_revision == "0020_authorized_contest_deletion"
-    assert revisions[7].revision == "0020_authorized_contest_deletion"
-    assert revisions[7].down_revision == "0019_contest_periodicity"
-    assert revisions[8].revision == "0019_contest_periodicity"
-    assert revisions[8].down_revision == "0018_remove_unscored_country_data"
-    assert revisions[9].down_revision is None
-    assert revisions[9].revision == "0018_remove_unscored_country_data"
+    assert len(revisions) == 11
+    assert revisions[0].revision == "0028_scoring_session_numbers"
+    assert revisions[0].down_revision == "0027_audit_event_retention"
+    assert revisions[1].revision == "0027_audit_event_retention"
+    assert revisions[1].down_revision == "0026_guest_email_locale"
+    assert revisions[2].revision == "0026_guest_email_locale"
+    assert revisions[2].down_revision == "0025_initial_password_change"
+    assert revisions[3].revision == "0025_initial_password_change"
+    assert revisions[3].down_revision == "0024_guest_email_access_and_notices"
+    assert revisions[4].revision == "0024_guest_email_access_and_notices"
+    assert revisions[4].down_revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[5].revision == "0023_participant_accounts_and_shared_iam"
+    assert revisions[5].down_revision == "0022_recurring_contest_series"
+    assert revisions[6].revision == "0022_recurring_contest_series"
+    assert revisions[6].down_revision == "0021_authorized_ruleset_deletion"
+    assert revisions[7].revision == "0021_authorized_ruleset_deletion"
+    assert revisions[7].down_revision == "0020_authorized_contest_deletion"
+    assert revisions[8].revision == "0020_authorized_contest_deletion"
+    assert revisions[8].down_revision == "0019_contest_periodicity"
+    assert revisions[9].revision == "0019_contest_periodicity"
+    assert revisions[9].down_revision == "0018_remove_unscored_country_data"
+    assert revisions[10].down_revision is None
+    assert revisions[10].revision == "0018_remove_unscored_country_data"
 
 
 def test_recurring_series_migration_preserves_existing_contest_references(tmp_path) -> None:
@@ -561,7 +566,7 @@ def test_startup_upgrades_pre_squash_database_without_losing_records(tmp_path) -
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0027_audit_event_retention"
+            "0028_scoring_session_numbers"
         )
     with Session(engine) as session:
         legacy_user = session.query(SystemUser).filter_by(username="legacy-admin").one()
@@ -581,7 +586,7 @@ def test_startup_does_not_send_current_revision_to_legacy_graph(tmp_path) -> Non
     engine = build_engine(database_url)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0027_audit_event_retention"
+            "0028_scoring_session_numbers"
         )
     engine.dispose()
 
@@ -680,7 +685,7 @@ def test_startup_upgrades_legacy_database_at_shared_baseline_revision(tmp_path) 
     assert "periodicity" in columns
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0027_audit_event_retention"
+            "0028_scoring_session_numbers"
         )
     with Session(engine) as session:
         assert session.query(SystemUser).filter_by(username="shared-baseline-admin").count() == 1

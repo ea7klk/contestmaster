@@ -1169,5 +1169,10 @@
   "s_c25230ea": "Multiplier rule {rule}",
   "s_a72bbc7c": "Bonus rule {rule}",
   "s_943cf5da": "for each distinct {fact} per {scope}",
-  "s_b4c2a3bc": "configured value"
+  "s_b4c2a3bc": "configured value",
+  "s_3946dd1a": "Scoring session resets",
+  "s_e512b73f": "Use this optional rule only when the sponsor defines repeated scoring sessions inside one contest edition. Session 1 starts at the contest start instant configured on the contest, interpreted in UTC; each later session starts after the configured fixed number of minutes. The final session may be shorter. Choose independently whether duplicate identity, multiplier uniqueness, and sent serial sequence restart at each boundary. Serial checking requires one sent serial field in every exchange layout and validates it chronologically within its configured entry, band, mode, or transmitter scope. This fixed interval model does not express irregular session calendars, pauses, or sponsor-specific exceptions; leave those for review instead of approximating them.",
+  "s_832101dd": "Example: a 120-minute contest with 60-minute sessions assigns contacts before 01:00Z to session 1 and contacts at or after 01:00Z to session 2. If duplicate and multiplier resets are enabled, the same station and multiplier value can count again in session 2. A sent serial configured per band starts at 001 for each band in each session.",
+  "s_84f8d38c": "Initial sent serial number in each scope and scoring session.",
+  "s_1135870c": "Choose an exchange field"
 }

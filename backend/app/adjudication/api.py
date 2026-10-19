@@ -110,6 +110,7 @@ def get_score_run(
         "qso_scores": [
             {
                 "qso_id": row.qso_id,
+                "session_number": row.session_number,
                 "status": row.status,
                 "credited": row.credited,
                 "points": row.points,

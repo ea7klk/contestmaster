@@ -915,6 +915,7 @@ class QsoScore(Base):
     score_run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     qso_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     entry_revision_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    session_number: Mapped[int | None] = mapped_column(Integer)
     credited: Mapped[bool] = mapped_column(Boolean, nullable=False)
     points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     bonus_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

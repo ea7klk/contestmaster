@@ -81,6 +81,55 @@ async function validateOnReview(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('RulesetComposerView', () => {
+  it('offers optional fixed UTC scoring-session resets with guidance', async () => {
+    const catalog = catalogResponse()
+    catalog.rule_types.push({
+      key: 'session_resets',
+      label: 'Scoring session resets',
+      description: 'Configure scoring reset boundaries.',
+      execution: 'automatic',
+      required: false,
+      schema: {
+        type: 'object',
+        properties: {
+          kind: { const: 'session_resets', type: 'string' },
+          period_minutes: { type: 'integer', default: 60, minimum: 1 },
+          serial_start_value: { type: 'integer', default: 1, minimum: 1 },
+          reset_duplicates: { type: 'boolean', default: false },
+          reset_multipliers: { type: 'boolean', default: false },
+          reset_serials: { type: 'boolean', default: false },
+        },
+        required: ['kind'],
+      },
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path.endsWith('/rulesets/catalog'))
+          return new Response(JSON.stringify(catalog), { status: 200 })
+        if (
+          path.endsWith('/rulesets/bands') ||
+          path.endsWith('/rulesets/modes')
+        )
+          return new Response(JSON.stringify(operatingCatalogResponse()), {
+            status: 200,
+          })
+        throw new Error(`Unexpected request ${path}`)
+      }),
+    )
+
+    const wrapper = mount(RulesetComposerView)
+    await flushPromises()
+    await navigateToStep(wrapper, 5)
+    await wrapper.get('#add-rule-type').setValue('session_resets')
+    await wrapper.get('.add-rule-control button').trigger('click')
+
+    expect(wrapper.text()).toContain('Session 1 starts at the contest start instant')
+    expect(wrapper.text()).toContain('irregular session calendars')
+    expect(wrapper.text()).toContain('serial start value')
+  })
+
   it('seeds a new Cabrillo mapping with the complete WWROF QSO default order', async () => {
     vi.stubGlobal(
       'fetch',

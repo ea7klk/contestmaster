@@ -35,6 +35,7 @@ from backend.app.rulesets.schema import (
     ScoreFormulaRule,
     ScoreOperand,
     ScoreStep,
+    SessionResetRule,
     WorkflowHookRule,
 )
 from backend.app.rulesets.validation import RulesetValidationError, validate_ruleset
@@ -103,6 +104,7 @@ class QsoScoreResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     qso_id: StrictInt
+    session_number: StrictInt | None = None
     status: Literal["credited", "not_credited", "needs_review"]
     points: StrictInt = Field(ge=0)
     bonus_points: StrictInt = Field(default=0, ge=0)
@@ -347,13 +349,26 @@ def score_entry(
     multiplier_rules = [item for item in configured if item.rule.kind == "multiplier"]
     bonus_rules = [item for item in configured if item.rule.kind == "bonus"]
     penalty_rules = [item for item in configured if item.rule.kind == "penalty"]
+    session_reset = next(
+        (item for item in configured if isinstance(item.rule, SessionResetRule)), None
+    )
     formula = next(item.rule for item in configured if item.rule.kind == "score_formula")
     if not isinstance(formula, ScoreFormulaRule):
         raise RuleExecutionError("Ruleset has no usable score formula")
+    session_seconds = (
+        session_reset.rule.period_minutes * 60
+        if session_reset is not None and isinstance(session_reset.rule, SessionResetRule)
+        else None
+    )
+    if session_seconds is not None and session_seconds >= int((end - start).total_seconds()):
+        raise RuleExecutionError(
+            "Scoring session length must be shorter than the configured contest duration"
+        )
 
     results: dict[int, dict[str, Any]] = {}
     seen: dict[str, set[tuple[str, ...]]] = {item.id: set() for item in duplicate_rules}
     multiplier_keys: set[str] = set()
+    sent_serial_progress: dict[tuple[str, ...], int] = {}
     penalty_occurrences: dict[str, int] = {item.id: 0 for item in penalty_rules}
     qso_overrides = qso_overrides or {}
     eligible_contexts: list[tuple[ScoringQso, dict[str, Any]]] = []
@@ -364,9 +379,24 @@ def score_entry(
         reasons: list[str] = []
         qso_penalties = 0
         instant = qso.occurred_at.astimezone(UTC)
+        session_number = (
+            int((instant - start).total_seconds() // session_seconds) + 1
+            if session_seconds is not None and start <= instant < end
+            else None
+        )
         if instant < start or instant >= end:
             status = "not_credited"
             reasons.append("out_of_period")
+            results[qso.qso_id] = {
+                "qso_id": qso.qso_id,
+                "session_number": None,
+                "status": status,
+                "points": 0,
+                "penalty_points": 0,
+                "multiplier_keys": [],
+                "reasons": reasons,
+            }
+            continue
 
         for configured_rule in eligibility_rules:
             rule = configured_rule.rule
@@ -435,6 +465,63 @@ def score_entry(
                 status = "not_credited" if action == "not_credited" else "needs_review"
                 reasons.append("eligibility_rule_failed")
 
+        if (
+            session_number is not None
+            and session_reset is not None
+            and isinstance(session_reset.rule, SessionResetRule)
+            and session_reset.rule.reset_serials
+        ):
+            active_serial_fields_by_key = {
+                (field.key, field.serial_scope): field
+                for configured_exchange in exchange_rules
+                if isinstance(configured_exchange.rule, ExchangeRule)
+                and _condition_applies(configured_exchange, context)
+                for field in configured_exchange.rule.fields
+                if field.value_type == "serial" and field.direction in {"sent", "both"}
+            }
+            active_serial_fields = list(active_serial_fields_by_key.values())
+            serial_field = active_serial_fields[0] if len(active_serial_fields) == 1 else None
+            raw_serial = (
+                qso.sent_exchange.get(serial_field.key) if serial_field is not None else None
+            )
+            if isinstance(raw_serial, int) and not isinstance(raw_serial, bool):
+                serial_number = raw_serial
+            elif isinstance(raw_serial, str) and raw_serial.strip().isdecimal():
+                serial_number = int(raw_serial.strip())
+            else:
+                serial_number = None
+            if serial_field is None or serial_number is None or serial_number < 1:
+                if status == "credited":
+                    status = "needs_review"
+                reasons.append("sent_serial_sequence_unverifiable")
+            else:
+                serial_scope = serial_field.serial_scope or "entry"
+                serial_scope_value = (
+                    ("entry",)
+                    if serial_scope == "entry"
+                    else (getattr(qso, serial_scope),)
+                )
+                if any(value is None or value == "" for value in serial_scope_value):
+                    if status == "credited":
+                        status = "needs_review"
+                    reasons.append("sent_serial_scope_unverifiable")
+                else:
+                    sequence_key = (
+                        serial_field.key,
+                        *(str(value).strip().upper() for value in serial_scope_value),
+                        str(session_number),
+                    )
+                    expected_serial = sent_serial_progress.get(
+                        sequence_key, session_reset.rule.serial_start_value
+                    )
+                    if serial_number != expected_serial:
+                        if status == "credited":
+                            status = "needs_review"
+                        reasons.append(
+                            f"sent_serial_sequence_mismatch:{expected_serial}:{serial_number}"
+                        )
+                    sent_serial_progress[sequence_key] = expected_serial + 1
+
         eligible_before_duplicates = status == "credited"
         duplicate_detected = False
         duplicate_multiplier_allowed = True
@@ -445,6 +532,14 @@ def score_entry(
             ):
                 continue
             key = _scope_value(rule, qso)
+            if (
+                key is not None
+                and session_number is not None
+                and session_reset is not None
+                and isinstance(session_reset.rule, SessionResetRule)
+                and session_reset.rule.reset_duplicates
+            ):
+                key = (*key, str(session_number))
             if key is None:
                 duplicate_multiplier_allowed = False
                 if status == "credited":
@@ -570,6 +665,14 @@ def score_entry(
                     continue
                 value = _safe_value(rule.source_fact, context)
                 scope = _scope_value(rule, qso) if rule.scope != "contest" else ("*",)
+                if (
+                    scope is not None
+                    and session_number is not None
+                    and session_reset is not None
+                    and isinstance(session_reset.rule, SessionResetRule)
+                    and session_reset.rule.reset_multipliers
+                ):
+                    scope = (*scope, f"session-{session_number}")
                 if value is None or scope is None:
                     status = "needs_review"
                     multiplier_eligible = False
@@ -591,6 +694,7 @@ def score_entry(
 
         results[qso.qso_id] = {
             "qso_id": qso.qso_id,
+            "session_number": session_number,
             "status": status,
             "points": points if status == "credited" else 0,
             "penalty_points": qso_penalties,

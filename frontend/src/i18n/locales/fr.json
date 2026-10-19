@@ -1169,5 +1169,10 @@
   "s_c25230ea": "Règle de multiplicateur {rule}",
   "s_a72bbc7c": "Règle de bonus {rule}",
   "s_943cf5da": "pour chaque {fact} distinct par {scope}",
-  "s_b4c2a3bc": "valeur configurée"
+  "s_b4c2a3bc": "valeur configurée",
+  "s_3946dd1a": "Réinitialisations des sessions de score",
+  "s_e512b73f": "Utilisez cette règle facultative uniquement lorsque l’organisateur définit plusieurs sessions de score au sein d’une édition du concours. La session 1 commence à l’instant de début du concours configuré sur celui-ci, en UTC ; chaque session suivante commence après le nombre fixe de minutes configuré. La dernière session peut être plus courte. Choisissez séparément si l’identité des doublons, l’unicité des multiplicateurs et la séquence des numéros de série envoyés sont réinitialisées à chaque limite. La vérification des séries exige un champ de série envoyé dans chaque schéma d’échange et les contrôle chronologiquement dans la portée configurée : entrée, bande, mode ou émetteur. Ce modèle à intervalles fixes ne représente pas les calendriers de sessions irréguliers, les pauses ni les exceptions propres à un organisateur ; laissez ces cas à l’examen plutôt que de les approximer.",
+  "s_832101dd": "Exemple : pour un concours de 120 minutes avec des sessions de 60 minutes, les contacts avant 01:00Z appartiennent à la session 1 et ceux à partir de 01:00Z à la session 2. Si la réinitialisation des doublons et des multiplicateurs est activée, la même station et la même valeur de multiplicateur peuvent compter à nouveau en session 2. Un numéro de série envoyé et configuré par bande recommence à 001 sur chaque bande à chaque session.",
+  "s_84f8d38c": "Numéro de série envoyé initial pour chaque portée et session de score.",
+  "s_1135870c": "Choisir un champ d’échange"
 }

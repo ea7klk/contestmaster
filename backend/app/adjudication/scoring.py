@@ -678,6 +678,7 @@ def score_entry_revision(
                 score_run_id=run.id,
                 qso_id=score.qso_id,
                 entry_revision_id=revision.id,
+                session_number=score.session_number,
                 credited=status == "credited",
                 points=score.points if status == "credited" else 0,
                 bonus_points=score.bonus_points,

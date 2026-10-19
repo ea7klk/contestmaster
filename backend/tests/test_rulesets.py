@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -205,6 +205,7 @@ def test_catalog_endpoint_exposes_typed_rule_schemas():
         "penalty",
         "score_formula",
         "operating_constraints",
+        "session_resets",
         "format_mapping",
         "workflow_hook",
     }
@@ -2081,3 +2082,248 @@ def test_score_formula_rejects_negative_final_score_and_divide_by_zero():
     formula["steps"] = [{"operator": "floor_divide", "operand": {"constant": 0}}]
     with pytest.raises(RulesetValidationError):
         validate_ruleset(payload)
+
+
+def _session_test_entry(*, serials=("001", "001", "002", "001", "001")) -> ScoringEntry:
+    return ScoringEntry.model_validate(
+        {
+            "entry_id": 1,
+            "station_callsign": "N0CALL",
+            "categories": {"operator": "single"},
+            "declarations": {"section": "EMA"},
+            "qsos": [
+                {
+                    "qso_id": 1,
+                    "occurred_at": START + timedelta(minutes=59, seconds=59),
+                    "worked_callsign": "K1ABC",
+                    "band": "40m",
+                    "mode": "CW",
+                    "entity": "K",
+                    "sent_exchange": {"serial": serials[0]},
+                    "received_exchange": {"serial": "101"},
+                },
+                {
+                    "qso_id": 2,
+                    "occurred_at": START + timedelta(minutes=60),
+                    "worked_callsign": "K1ABC",
+                    "band": "40m",
+                    "mode": "CW",
+                    "entity": "K",
+                    "sent_exchange": {"serial": serials[1]},
+                    "received_exchange": {"serial": "102"},
+                },
+                {
+                    "qso_id": 3,
+                    "occurred_at": START + timedelta(minutes=60, seconds=1),
+                    "worked_callsign": "K1XYZ",
+                    "band": "40m",
+                    "mode": "CW",
+                    "entity": "K",
+                    "sent_exchange": {"serial": serials[2]},
+                    "received_exchange": {"serial": "103"},
+                },
+                {
+                    "qso_id": 4,
+                    "occurred_at": START + timedelta(minutes=60, seconds=2),
+                    "worked_callsign": "K1DEF",
+                    "band": "20m",
+                    "mode": "CW",
+                    "entity": "K",
+                    "sent_exchange": {"serial": serials[3]},
+                    "received_exchange": {"serial": "104"},
+                },
+                {
+                    "qso_id": 5,
+                    "occurred_at": END,
+                    "worked_callsign": "K1GHI",
+                    "band": "80m",
+                    "mode": "CW",
+                    "entity": "K",
+                    "sent_exchange": {"serial": serials[4]},
+                    "received_exchange": {"serial": "105"},
+                },
+            ],
+        }
+    )
+
+
+def _with_session_resets(payload: dict[str, object], **overrides) -> dict[str, object]:
+    payload["rules"].append(
+        {
+            "id": "sessions",
+            "rule": {
+                "kind": "session_resets",
+                "period_minutes": 60,
+                "reset_duplicates": True,
+                "reset_multipliers": True,
+                "reset_serials": True,
+                **overrides,
+            },
+        }
+    )
+    return payload
+
+
+def test_session_resets_apply_at_utc_boundary_to_duplicates_multipliers_and_serials():
+    payload = _with_session_resets(valid_payload())
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"][0]["serial_scope"] = "band"
+    result = score_entry(
+        validate_ruleset(payload),
+        _session_test_entry(),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    by_id = {item.qso_id: item for item in result.qso_scores}
+    assert [by_id[item].session_number for item in (1, 2, 3, 4, 5)] == [1, 2, 2, 2, None]
+    assert [by_id[item].status for item in (1, 2, 3, 4, 5)] == [
+        "credited",
+        "credited",
+        "credited",
+        "credited",
+        "not_credited",
+    ]
+    assert [by_id[item].points for item in (1, 2, 3, 4, 5)] == [2, 2, 2, 2, 0]
+    assert result.multiplier_counts["entity-multiplier"] == 2
+
+
+def test_qsos_before_contest_start_do_not_seed_in_contest_duplicate_state():
+    payload = _with_session_resets(valid_payload())
+    source = _session_test_entry().qsos[0]
+    before_start = source.model_copy(
+        update={"qso_id": 10, "occurred_at": START - timedelta(seconds=1)}
+    )
+    at_start = source.model_copy(update={"qso_id": 11, "occurred_at": START})
+    entry = _session_test_entry().model_copy(update={"qsos": [before_start, at_start]})
+
+    result = score_entry(
+        validate_ruleset(payload),
+        entry,
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    by_id = {item.qso_id: item for item in result.qso_scores}
+    assert by_id[10].status == "not_credited"
+    assert by_id[10].session_number is None
+    assert by_id[11].status == "credited"
+    assert by_id[11].session_number == 1
+
+
+def test_session_reset_targets_are_independent_and_sent_serial_sequence_is_reviewed():
+    payload = _with_session_resets(
+        valid_payload(), reset_duplicates=False, reset_multipliers=False
+    )
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"][0]["serial_scope"] = "band"
+    entry = _session_test_entry(serials=("001", "007", "008", "001", "001"))
+    entry.qsos[1].worked_callsign = "K1DEF"
+    result = score_entry(
+        validate_ruleset(payload),
+        entry,
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    by_id = {item.qso_id: item for item in result.qso_scores}
+    assert by_id[1].status == "credited"
+    assert by_id[2].status == "needs_review"
+    assert "sent_serial_sequence_mismatch:1:7" in by_id[2].reasons
+    assert by_id[2].session_number == 2
+    assert by_id[4].status == "credited"
+    assert by_id[5].session_number is None
+    assert result.multiplier_counts["entity-multiplier"] == 1
+
+
+def test_rulesets_without_session_resets_keep_whole_contest_duplicate_and_multiplier_state():
+    result = score_entry(
+        validate_ruleset(valid_payload()),
+        _session_test_entry(),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    by_id = {item.qso_id: item for item in result.qso_scores}
+    assert by_id[1].session_number is None
+    assert by_id[2].session_number is None
+    assert by_id[4].session_number is None
+    assert by_id[2].status == "not_credited"
+    assert result.multiplier_counts["entity-multiplier"] == 1
+
+
+def test_session_reset_validation_requires_reset_target_and_sent_serial_schema():
+    payload = valid_payload()
+    payload["rules"].append(
+        {"id": "sessions", "rule": {"kind": "session_resets", "period_minutes": 60}}
+    )
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any("at least one reset target" in issue["message"] for issue in error.value.errors)
+
+    payload = _with_session_resets(valid_payload())
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"] = [
+        field for field in exchange["rule"]["fields"] if field["key"] != "serial"
+    ]
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any("sent serial field" in issue["message"] for issue in error.value.errors)
+
+
+def test_session_serial_reset_rejects_inconsistent_conditional_serial_scopes():
+    payload = _with_session_resets(valid_payload())
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    alternative = json.loads(json.dumps(exchange))
+    alternative["id"] = "alternate-exchange"
+    alternative["rule"]["fields"][0]["serial_scope"] = "band"
+    alternative["when"] = {
+        "kind": "compare",
+        "fact": "entry.categories.operator",
+        "operator": "eq",
+        "value": "single",
+    }
+    payload["rules"].append(alternative)
+
+    with pytest.raises(RulesetValidationError) as error:
+        validate_ruleset(payload)
+    assert any("same key and serial scope" in issue["message"] for issue in error.value.errors)
+
+
+def test_session_serial_sequence_uses_configured_start_value_per_session_and_scope():
+    payload = _with_session_resets(valid_payload(), serial_start_value=5)
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"][0]["serial_scope"] = "band"
+    entry = _session_test_entry(serials=("005", "005", "006", "005", "001"))
+
+    result = score_entry(
+        validate_ruleset(payload),
+        entry,
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    by_id = {item.qso_id: item for item in result.qso_scores}
+    assert [by_id[item].status for item in (1, 2, 3, 4)] == ["credited"] * 4
+
+
+def test_session_period_must_be_shorter_than_contest_and_final_session_can_be_partial():
+    payload = _with_session_resets(valid_payload(), period_minutes=120)
+    with pytest.raises(RuleExecutionError, match="shorter than the configured contest duration"):
+        score_entry(
+            validate_ruleset(payload),
+            sample_entry(),
+            contest_starts_at=START,
+            contest_ends_at=END,
+        )
+
+    payload = _with_session_resets(valid_payload(), period_minutes=90)
+    entry = _session_test_entry()
+    entry.qsos[-1].occurred_at = START + timedelta(minutes=105)
+    result = score_entry(
+        validate_ruleset(payload),
+        entry,
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+    assert {item.session_number for item in result.qso_scores} == {1, 2}

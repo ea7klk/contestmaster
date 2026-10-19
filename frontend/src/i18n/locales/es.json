@@ -1169,5 +1169,10 @@
   "s_c25230ea": "Regla de multiplicador {rule}",
   "s_a72bbc7c": "Regla de bonificación {rule}",
   "s_943cf5da": "por cada {fact} distinto por {scope}",
-  "s_b4c2a3bc": "valor configurado"
+  "s_b4c2a3bc": "valor configurado",
+  "s_3946dd1a": "Reinicios de sesiones de puntuación",
+  "s_e512b73f": "Use esta regla opcional solo cuando el organizador defina varias sesiones de puntuación dentro de una edición del concurso. La sesión 1 comienza en el instante de inicio configurado para el concurso, en UTC; cada sesión posterior comienza tras el número fijo de minutos configurado. La última sesión puede ser más corta. Elija por separado si la identidad de duplicados, la unicidad de multiplicadores y la secuencia de números de serie enviados se reinician en cada límite. La comprobación de series requiere un campo de serie enviado en cada esquema de intercambio y las valida cronológicamente dentro del ámbito configurado: entrada, banda, modo o transmisor. Este modelo de intervalos fijos no representa calendarios de sesiones irregulares, pausas ni excepciones del organizador; deje esos casos para revisión en vez de aproximarlos.",
+  "s_832101dd": "Ejemplo: en un concurso de 120 minutos con sesiones de 60 minutos, los contactos anteriores a las 01:00Z pertenecen a la sesión 1 y los realizados desde las 01:00Z a la sesión 2. Si se activan los reinicios de duplicados y multiplicadores, la misma estación y el mismo valor de multiplicador pueden volver a contar en la sesión 2. Un número de serie enviado y configurado por banda comienza en 001 para cada banda en cada sesión.",
+  "s_84f8d38c": "Número de serie enviado inicial para cada ámbito y sesión de puntuación.",
+  "s_1135870c": "Elegir un campo de intercambio"
 }

@@ -96,6 +96,7 @@ const RULE_STEP: Record<string, number> = {
   penalty: 4,
   score_formula: 4,
   operating_constraints: 5,
+  session_resets: 5,
   workflow_hook: 5,
 }
 const activeStep = computed(
@@ -462,6 +463,7 @@ function supportsConditions(rule: ConfiguredRuleDraft) {
     'categories',
     'format_mapping',
     'score_formula',
+    'session_resets',
   ].includes(String(rule.rule.kind))
 }
 
@@ -639,6 +641,8 @@ const helpText: Record<string, string> = {
     'This is the final arithmetic applied after contacts, multipliers, bonuses, and penalties have been determined. Select the starting score and add operations in the same order as the published formula. Each step consumes the prior integer result and another supported integer variable or constant. The combined multiplier_count remains available; choose a named multiplier rule count to use independent dimensions. Rule IDs are stable formula references, while labels can change. Division must specify its integer rounding rule. Review the worked example after validation; it demonstrates the formula with sample values and is not a prediction of an entrant’s score. Example: points × country multipliers + zone multipliers.',
   operating_constraints:
     'Use this rule for entry-level or operating limits the engine can check, such as required off-time periods, a maximum number of transmitters, or a permitted band/mode combination. Add only constraints supported by the shown fields and the official rules. Choose whether a violation is uncredited or requires human review when the result is ambiguous.',
+  session_resets:
+    'Use this optional rule only when the sponsor defines repeated scoring sessions inside one contest edition. Session 1 starts at the contest start instant configured on the contest, interpreted in UTC; each later session starts after the configured fixed number of minutes. The final session may be shorter. Choose independently whether duplicate identity, multiplier uniqueness, and sent serial sequence restart at each boundary. Serial checking requires one sent serial field in every exchange layout and validates it chronologically within its configured entry, band, mode, or transmitter scope. This fixed interval model does not express irregular session calendars, pauses, or sponsor-specific exceptions; leave those for review instead of approximating them.',
   format_mapping:
     'This rule describes how an uploaded log format maps to the canonical station, contact, and exchange fields configured above. Add one mapping for every file format the contest accepts; do not add a format just because it appears in the menu unless the application supports its importer. Cabrillo and ADI/ADIF upload parsing are implemented; CSV and native JSON are descriptive options only. Cabrillo exchange values follow the active ordered exchange schema. ADIF uses STX_STRING/SRX_STRING for ordered exchange tokens, standard tags when recognized, or optional custom sent/received tag mappings for other configured exchange fields. Unrecognized source fields can be preserved for later review.',
   workflow_hook:
@@ -657,6 +661,9 @@ const scoringExamples: Record<string, string> = {
   penalty:
     'Example: a 5-point deduction with a maximum of 2 occurrences deducts at most 10 points, even if the entry has more violations. Non-point actions such as reclassification or disqualification do not change the points total directly.',
 }
+
+const sessionResetExample =
+  'Example: a 120-minute contest with 60-minute sessions assigns contacts before 01:00Z to session 1 and contacts at or after 01:00Z to session 2. If duplicate and multiplier resets are enabled, the same station and multiplier value can count again in session 2. A sent serial configured per band starts at 001 for each band in each session.'
 
 function buildDraft(): RulesetDraft {
   const draft: RulesetDraft = {
@@ -1348,6 +1355,16 @@ function catalogErrorMessage(reason: unknown) {
                 >
                   <strong>{{ $tr('Worked example') }}:</strong>
                   {{ $tr(scoringExamples[String(configured.rule.kind)] ?? '') }}
+                  <span>{{
+                    $tr('Illustrative only; follow the official contest rules.')
+                  }}</span>
+                </p>
+                <p
+                  v-else-if="configured.rule.kind === 'session_resets'"
+                  class="rule-example"
+                >
+                  <strong>{{ $tr('Worked example') }}:</strong>
+                  {{ $tr(sessionResetExample) }}
                   <span>{{
                     $tr('Illustrative only; follow the official contest rules.')
                   }}</span>

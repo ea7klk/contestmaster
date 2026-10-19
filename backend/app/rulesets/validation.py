@@ -18,6 +18,7 @@ from backend.app.rulesets.schema import (
     ExchangeRule,
     NotCondition,
     RulesetDefinition,
+    SessionResetRule,
     rule_types_in,
 )
 
@@ -187,6 +188,48 @@ def _cross_reference_errors(
                 "message": "A ruleset may define only one submission rule.",
             }
         )
+    if kinds.count("session_resets") > 1:
+        errors.append(
+            {
+                "path": "rules",
+                "message": "A ruleset may define only one session_resets rule.",
+            }
+        )
+    session_rule = next((rule for rule in rules if isinstance(rule, SessionResetRule)), None)
+    if session_rule is not None and session_rule.reset_serials:
+        serial_fields_by_exchange = [
+            [
+                field
+                for field in configured.rule.fields
+                if field.value_type == "serial" and field.direction in {"sent", "both"}
+            ]
+            for configured in definition.rules
+            if isinstance(configured.rule, ExchangeRule)
+        ]
+        if not serial_fields_by_exchange or any(
+            len(fields) != 1 for fields in serial_fields_by_exchange
+        ):
+            errors.append(
+                {
+                    "path": "rules.session_resets.reset_serials",
+                    "message": (
+                        "Resetting sent serials requires exactly one sent serial field in "
+                        "every configured exchange schema."
+                    ),
+                }
+            )
+        else:
+            serial_fields = [fields[0] for fields in serial_fields_by_exchange]
+            if len({(field.key, field.serial_scope) for field in serial_fields}) > 1:
+                errors.append(
+                    {
+                        "path": "rules.session_resets.reset_serials",
+                        "message": (
+                            "Sent serial fields in alternative exchange schemas must use the "
+                            "same key and serial scope when session sequence checking is enabled."
+                        ),
+                    }
+                )
     for singleton in ("categories",):
         if kinds.count(singleton) != 1:
             errors.append(
@@ -204,7 +247,8 @@ def _cross_reference_errors(
             )
     for index, configured in enumerate(definition.rules):
         if (
-            configured.rule.kind in {"submission", "categories", "format_mapping", "score_formula"}
+            configured.rule.kind
+            in {"submission", "categories", "format_mapping", "score_formula", "session_resets"}
             and configured.when is not None
         ):
             errors.append(

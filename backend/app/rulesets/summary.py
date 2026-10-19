@@ -71,6 +71,20 @@ def summarize_ruleset(definition: RulesetDefinition) -> str:
             summary = f"Multiplier from {rule.source_fact}, unique {rule.scope}"
         elif rule.kind == "score_formula":
             summary = f"Integer score formula with {len(rule.steps)} ordered operations"
+        elif rule.kind == "session_resets":
+            reset_targets = [
+                label
+                for enabled, label in (
+                    (rule.reset_duplicates, "duplicates"),
+                    (rule.reset_multipliers, "multipliers"),
+                    (rule.reset_serials, "sent serials"),
+                )
+                if enabled
+            ]
+            summary = (
+                f"{rule.period_minutes}-minute UTC scoring sessions from contest start; "
+                f"reset {', '.join(reset_targets)}"
+            )
         elif rule.kind == "operating_constraints":
             summary = "Operating and station limits; unverifiable conditions require review"
         elif rule.kind == "workflow_hook":

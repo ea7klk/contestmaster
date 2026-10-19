@@ -548,6 +548,7 @@ erDiagram
         integer score_run_id FK
         integer qso_id FK
         integer entry_revision_id FK
+        integer session_number "nullable; 1-based scoring session from contest start"
         integer credited
         text status
         integer points

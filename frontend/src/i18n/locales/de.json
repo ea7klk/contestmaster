@@ -1169,5 +1169,10 @@
   "s_c25230ea": "Multiplikatorregel {rule}",
   "s_a72bbc7c": "Bonuspunkte-Regel {rule}",
   "s_943cf5da": "für jeden eindeutigen {fact}-Wert je {scope}",
-  "s_b4c2a3bc": "konfigurierter Wert"
+  "s_b4c2a3bc": "konfigurierter Wert",
+  "s_3946dd1a": "Rücksetzungen für Wertungssitzungen",
+  "s_e512b73f": "Verwenden Sie diese optionale Regel nur, wenn der Veranstalter mehrere Wertungssitzungen innerhalb einer Contest-Ausgabe festlegt. Sitzung 1 beginnt zum beim Contest konfigurierten Startzeitpunkt in UTC; jede weitere Sitzung beginnt nach der festgelegten Anzahl Minuten. Die letzte Sitzung darf kürzer sein. Legen Sie unabhängig fest, ob Duplikatidentität, Multiplikator-Eindeutigkeit und die Folge der gesendeten Seriennummern an jeder Grenze zurückgesetzt werden. Für die Seriennummernprüfung ist in jedem Austauschschema genau ein gesendetes Seriennummernfeld erforderlich. Die Nummern werden chronologisch innerhalb des konfigurierten Geltungsbereichs für Eintrag, Band, Betriebsart oder Sender geprüft. Unregelmäßige Sitzungskalender, Pausen oder veranstalterspezifische Ausnahmen kann dieses Modell mit festen Intervallen nicht abbilden; approximieren Sie diese nicht, sondern lassen Sie sie prüfen.",
+  "s_832101dd": "Beispiel: Bei einem 120-minütigen Contest mit 60-minütigen Sitzungen gehören Kontakte vor 01:00Z zu Sitzung 1 und Kontakte ab 01:00Z zu Sitzung 2. Sind Duplikat- und Multiplikatorrücksetzungen aktiviert, können dieselbe Station und derselbe Multiplikatorwert in Sitzung 2 erneut zählen. Eine bandbezogene gesendete Seriennummer beginnt in jeder Sitzung auf jedem Band bei 001.",
+  "s_84f8d38c": "Erste gesendete Seriennummer für jeden Geltungsbereich und jede Wertungssitzung.",
+  "s_1135870c": "Austauschfeld auswählen"
 }

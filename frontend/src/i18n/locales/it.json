@@ -1169,5 +1169,10 @@
   "s_c25230ea": "Regola del moltiplicatore {rule}",
   "s_a72bbc7c": "Regola del bonus {rule}",
   "s_943cf5da": "per ogni {fact} distinto per {scope}",
-  "s_b4c2a3bc": "valore configurato"
+  "s_b4c2a3bc": "valore configurato",
+  "s_3946dd1a": "Azzeramenti delle sessioni di punteggio",
+  "s_e512b73f": "Usa questa regola facoltativa solo quando l’organizzatore definisce più sessioni di punteggio all’interno di un’edizione del contest. La sessione 1 inizia all’istante di inizio del contest configurato, in UTC; ogni sessione successiva inizia dopo il numero fisso di minuti configurato. L’ultima sessione può essere più breve. Scegli separatamente se l’identità dei duplicati, l’unicità dei moltiplicatori e la sequenza dei numeri seriali trasmessi vengono azzerate a ogni limite. Il controllo dei seriali richiede un campo seriale trasmesso in ogni schema di scambio e li verifica cronologicamente nell’ambito configurato: partecipazione, banda, modo o trasmettitore. Questo modello a intervalli fissi non rappresenta calendari di sessione irregolari, pause o eccezioni specifiche dell’organizzatore; lascia questi casi alla revisione invece di approssimarli.",
+  "s_832101dd": "Esempio: in un contest di 120 minuti con sessioni di 60 minuti, i contatti prima delle 01:00Z appartengono alla sessione 1 e quelli dalle 01:00Z alla sessione 2. Se sono attivi gli azzeramenti di duplicati e moltiplicatori, la stessa stazione e lo stesso valore del moltiplicatore possono essere conteggiati di nuovo nella sessione 2. Un numero seriale trasmesso configurato per banda riparte da 001 per ogni banda in ogni sessione.",
+  "s_84f8d38c": "Numero seriale trasmesso iniziale per ogni ambito e sessione di punteggio.",
+  "s_1135870c": "Scegli un campo di scambio"
 }

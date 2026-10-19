@@ -19,6 +19,7 @@ from backend.app.rulesets.schema import (
     PenaltyRule,
     PointRule,
     ScoreFormulaRule,
+    SessionResetRule,
     SubmissionRule,
     WorkflowHookRule,
 )
@@ -119,6 +120,14 @@ RULE_TYPES: tuple[RuleType, ...] = (
         "Check operating/off time and station limitations.",
         "automatic_or_review",
         OperatingConstraintRule,
+    ),
+    RuleType(
+        "session_resets",
+        "Scoring session resets",
+        "Optionally reset duplicate, multiplier, or sent-serial state at fixed UTC intervals "
+        "from contest start.",
+        "automatic",
+        SessionResetRule,
     ),
     RuleType(
         "format_mapping",

@@ -469,6 +469,30 @@ class ScoreFormulaRule(StrictModel):
     steps: list[ScoreStep] = Field(default_factory=list, max_length=32)
 
 
+class SessionResetRule(StrictModel):
+    kind: Literal["session_resets"]
+    period_minutes: Annotated[int, Field(strict=True, ge=1, le=10080)] = Field(
+        default=60,
+        description=(
+            "Length of each scoring session in minutes. Session 1 starts at the contest's "
+            "configured UTC start; later sessions follow at this fixed interval."
+        ),
+    )
+    serial_start_value: PositiveInteger = Field(
+        default=1,
+        description="Initial sent serial number in each scope and scoring session.",
+    )
+    reset_duplicates: bool = False
+    reset_multipliers: bool = False
+    reset_serials: bool = False
+
+    @model_validator(mode="after")
+    def require_reset_target(self) -> SessionResetRule:
+        if not any((self.reset_duplicates, self.reset_multipliers, self.reset_serials)):
+            raise ValueError("session resets must enable at least one reset target")
+        return self
+
+
 class OperatingConstraintRule(StrictModel):
     kind: Literal["operating_constraints"]
     max_operating_minutes: PositiveInteger | None = None
@@ -819,6 +843,7 @@ RuleDefinition = Annotated[
     | BonusRule
     | PenaltyRule
     | ScoreFormulaRule
+    | SessionResetRule
     | OperatingConstraintRule
     | FormatMappingRule
     | WorkflowHookRule,
