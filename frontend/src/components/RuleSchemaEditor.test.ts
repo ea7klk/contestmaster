@@ -4,6 +4,65 @@ import type { JsonSchema } from '../api/rulesets'
 import RuleSchemaEditor from './RuleSchemaEditor.vue'
 
 describe('RuleSchemaEditor', () => {
+  it('shows multiplier source facts in a dropdown and emits the chosen fact', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        source_fact: { type: 'string', title: 'Source Fact' },
+      },
+      required: ['source_fact'],
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { source_fact: '' },
+        path: 'rules-3',
+        factOptions: [
+          { value: 'qso.entity', label: 'Contest entity' },
+          { value: 'exchange.received.section', label: 'Section — received' },
+        ],
+      },
+    })
+
+    const sourceFactSelect = wrapper.get('select')
+    expect(
+      sourceFactSelect.findAll('option').map((option) => option.text()),
+    ).toEqual(['Choose a fact', 'Contest entity', 'Section — received'])
+    await sourceFactSelect.setValue('exchange.received.section')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      source_fact: 'exchange.received.section',
+    })
+  })
+
+  it('keeps an existing source fact visible when it is no longer defined', async () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        source_fact: { type: 'string', title: 'Source Fact' },
+      },
+      required: ['source_fact'],
+    }
+    const wrapper = mount(RuleSchemaEditor, {
+      props: {
+        schema,
+        rootSchema: schema,
+        modelValue: { source_fact: 'exchange.old_field' },
+        path: 'rules-3',
+        factOptions: [{ value: 'qso.entity', label: 'Contest entity' }],
+      },
+    })
+
+    const options = wrapper.get('select').findAll('option')
+    expect(options.map((option) => option.attributes('value'))).toEqual([
+      'exchange.old_field',
+      'qso.entity',
+    ])
+    expect(options[0]?.text()).toBe(
+      'exchange.old_field (Unavailable in this ruleset)',
+    )
+  })
+
   it('offers WWROF QSO fields without allowing a duplicate selection', async () => {
     const columns = [
       'frequency',

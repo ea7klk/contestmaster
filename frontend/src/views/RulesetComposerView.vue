@@ -6,6 +6,7 @@ import CategoryExchangeEditor from '../components/CategoryExchangeEditor.vue'
 import EligibilityCatalogEditor from '../components/EligibilityCatalogEditor.vue'
 import ResourceAdministrators from '../components/ResourceAdministrators.vue'
 import { translateText } from '../i18n'
+import { availableMultiplierSourceFacts } from './multiplierSourceFacts'
 import {
   getBands,
   getModes,
@@ -142,6 +143,9 @@ const categoryDimensions = computed(() => {
     ]
   })
 })
+const multiplierSourceFacts = computed(() =>
+  availableMultiplierSourceFacts(rules.value),
+)
 const cabrilloExchangeMapPreview = computed(() => {
   const exchangeRule = rules.value.find(
     (item) => item.rule.kind === 'exchange',
@@ -1330,6 +1334,7 @@ function catalogErrorMessage(reason: unknown) {
                         : []
                   "
                   :category-dimensions="categoryDimensions"
+                  :fact-options="multiplierSourceFacts"
                   :label="`${configured.rule.kind} rule settings`"
                   :path="`rules-${index}`"
                   @update:model-value="updateRule(configured, $event)"

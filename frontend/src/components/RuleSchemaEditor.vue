@@ -22,6 +22,7 @@ const props = withDefaults(
     categoryHeader?: string
     arraySiblings?: unknown[]
     headerKey?: string
+    factOptions?: Array<{ value: string; label: string }>
   }>(),
   {
     label: '',
@@ -32,6 +33,7 @@ const props = withDefaults(
     categoryHeader: '',
     arraySiblings: () => [],
     headerKey: '',
+    factOptions: () => [],
   },
 )
 
@@ -74,6 +76,13 @@ function displayLabel(source: string): string {
     : translateText(source)
 }
 function enumLabel(value: unknown): string {
+  if (props.path.endsWith('-source_fact')) {
+    const option = props.factOptions.find((item) => item.value === value)
+    return (
+      option?.label ??
+      `${value} (${translateText('Unavailable in this ruleset')})`
+    )
+  }
   const words = String(value).replaceAll('_', ' ')
   const title = words.replace(/\b\w/g, (letter) => letter.toUpperCase())
   return translateText(title)
@@ -169,6 +178,13 @@ const primitiveSchema = computed(() => {
 })
 const primitiveType = computed(() => primitiveSchema.value.type ?? 'string')
 const enumOptions = computed(() => {
+  if (props.path.endsWith('-source_fact')) {
+    const values = props.factOptions.map((item) => item.value)
+    const currentValue = String(props.modelValue ?? '')
+    if (currentValue && !values.includes(currentValue))
+      values.unshift(currentValue)
+    return values
+  }
   const values = primitiveSchema.value.enum ?? []
   if (props.path.includes('-header_fields-') && props.headerKey) {
     const expected = props.headerKey === 'callsign' ? 'CALLSIGN' : 'CONTEST'
@@ -526,6 +542,7 @@ function onEnumInput(event: Event) {
               :hidden-properties="hiddenProperties"
               :category-dimensions="categoryDimensions"
               :category-header="categoryHeader"
+              :fact-options="factOptions"
               @update:model-value="updateProperty(key, $event)"
             />
           </template>
@@ -552,6 +569,7 @@ function onEnumInput(event: Event) {
           :array-siblings="arrayValue"
           :category-dimensions="categoryDimensions"
           :category-header="categoryHeader"
+          :fact-options="factOptions"
           @update:model-value="updateArrayItem(index, $event)"
         />
         <div v-if="isQsoColumnList()" class="schema-array-order">
@@ -671,6 +689,7 @@ function onEnumInput(event: Event) {
             :depth="depth + 1"
             :category-dimensions="categoryDimensions"
             :header-key="isHeaderFieldsMap() ? key : ''"
+            :fact-options="factOptions"
             @update:model-value="updateMapValue(key, $event)"
           />
         </div>
@@ -712,6 +731,13 @@ function onEnumInput(event: Event) {
       <label v-else-if="enumOptions.length" class="schema-control">
         {{ displayLabel(fieldLabel) }}
         <select :value="inputValue" @change="onEnumInput">
+          <option
+            v-if="path.endsWith('-source_fact') && !inputValue"
+            value=""
+            disabled
+          >
+            {{ $tr('Choose a fact') }}
+          </option>
           <option
             v-for="option in enumOptions"
             :key="String(option)"
