@@ -10,6 +10,8 @@ N1MM handlers are executable code and some shared handlers branch on the selecte
 
 The gap list is checked against the current Contestmaster engine. It recognizes existing declarative distance points, independent per-rule multiplier totals, formulas, conditional rules, and Cabrillo/ADIF mappings. It does not repeat earlier comparisons that described those broad primitives as wholly absent. Per-profile custom conventions, external lookup facts, and logger-only behavior may still require new capabilities or may be out of scope for a server ruleset.
 
+For a staged, non-implementation plan covering the current profile list, see [support-strategy.md](support-strategy.md).
+
 ## Source provenance
 
 - Official update page and download: [N1MM Logger+ Update 1.0.11466](https://n1mmwp.hamdocs.com/mmfiles/n1mm-logger-update-1-0-11466-october-13-2026/).
