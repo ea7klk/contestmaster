@@ -164,6 +164,74 @@ def test_scoring_creates_integer_auditable_run_and_is_idempotent(scoring_db):
         assert session.query(ScoreRun).count() == 1
 
 
+def test_received_grid_exchange_is_exposed_to_multiplier_scoring(scoring_db):
+    factory, _contest_id, entry_id, revision_id = scoring_db
+    with factory.begin() as session:
+        contest = session.get(Contest, _contest_id)
+        current_ruleset = session.get(RulesetVersion, contest.ruleset_version_id)
+        config = dict(current_ruleset.configuration)
+        config["version"] = "grid-multiplier"
+        exchange_rule = next(item for item in config["rules"] if item["id"] == "exchange")
+        exchange_rule["rule"]["fields"].append(
+            {
+                "key": "grid",
+                "label": "Grid",
+                "value_type": "grid",
+                "direction": "both",
+                "required": True,
+            }
+        )
+        config["rules"].append(
+            {
+                "id": "grid-multiplier",
+                "rule": {
+                    "kind": "multiplier",
+                    "source_fact": "qso.grid",
+                    "scope": "band",
+                    "label": "Grid square",
+                },
+            }
+        )
+        persisted = save_ruleset_version(session, validate_ruleset(config), created_by_user_id=None)
+        contest.ruleset_version_id = persisted.version.id
+        qsos = list(
+            session.scalars(
+                select(Qso).where(Qso.entry_revision_id == revision_id).order_by(Qso.id)
+            )
+        )
+        for index, (qso, callsign, grid) in enumerate(
+            zip(qsos, ("F4ABC", "VE3XYZ"), ("JN18", "FN31"), strict=True), start=1
+        ):
+            qso.callsign_submitted = callsign
+            qso.callsign_normalized = callsign
+            qso.exchange_sent_submitted = {
+                "raw": "599 1",
+                "rst": "599",
+                "values": {"serial": index, "grid": "FN20"},
+            }
+            qso.exchange_received_submitted = {
+                "raw": "599 1",
+                "rst": "599",
+                "values": {"serial": index, "grid": grid},
+            }
+        run = score_entry_revision(
+            session,
+            entry_id=entry_id,
+            revision_id=revision_id,
+            idempotency_key="grid-multiplier-run",
+        )
+
+        assert run.status is ScoreRunStatus.COMPLETED
+        assert run.multiplier_count == 2
+        persisted_scores = list(
+            session.scalars(
+                select(QsoScore).where(QsoScore.score_run_id == run.id).order_by(QsoScore.qso_id)
+            )
+        )
+        assert [score.multiplier_count for score in persisted_scores] == [1, 1]
+        assert all(score.status == "credited" for score in persisted_scores)
+
+
 def test_manual_decision_is_append_only_and_supersedes_in_a_new_score_run(scoring_db):
     factory, _contest_id, entry_id, revision_id = scoring_db
     with factory.begin() as session:

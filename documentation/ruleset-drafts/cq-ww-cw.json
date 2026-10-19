@@ -181,6 +181,15 @@
         "source_fact": "qso.entity",
         "scope": "band",
         "label": "Contest entity"
+      },
+      "when": {
+        "kind": "not",
+        "condition": {
+          "kind": "compare",
+          "fact": "qso.worked_callsign",
+          "operator": "matches",
+          "value": ".*/MM"
+        }
       }
     }
   ]

@@ -118,7 +118,7 @@ The schema is in `backend/app/rulesets/schema.py`; execution is in `backend/app/
 | Typed exchange fields and serial scopes | Supported for declared fields | Conditional asymmetric exchanges and compound/multi-contact exchanges require end-to-end validation. |
 | Cabrillo and ADIF mappings | Supported for declared mappings | EDI/REG1TEST and arbitrary sponsor forms need adapters; WWROF remains authority for Cabrillo QSO columns. |
 | Fixed, band, mode, continent, entity, zone, and received-exchange points | Supported for engine facts | Distance-based scoring and formulas needing undeclared facts are gaps; no hidden fallback. |
-| Multipliers from supported engine facts | Supported for current sources/scopes | Prefix/suffix/specific-call multiplier capability is tracked separately; do not equate prefix with entity. |
+| Multipliers from supported engine facts | Supported for current sources/scopes, with validated inputs and per-entry/per-rule uniqueness | A grid source or scope requires a received grid exchange in all accepted formats; a transmitter source or scope requires the Cabrillo transmitter column. Prefix/suffix/specific-call multiplier capability is tracked in [issue #274](https://github.com/ea7klk/contestmaster/issues/274); do not equate a CTY entity prefix with a WPX prefix. |
 | Duplicate QSO point/multiplier behavior | Separate settings supported | Verify exact scope and ordering against each sponsor rule. |
 | Penalty/adjudication workflows | Partial | Human decisions, evidence, team awards, percentage deductions, and score normalization need explicit capability review. |
 | Time windows, off-time, band changes, transmitter limits | Partial | Longitudinal constraints need complete cross-log/session facts and clear boundary semantics. |
@@ -145,6 +145,12 @@ Current score facts are finite and typed. A JSON field name alone does not make 
 - [ ] Define exchange order, direction, value constraints, serial scope, and required file fields.
 - [ ] Define QSO eligibility and duplicate behavior separately for points and multipliers.
 - [ ] Define point and multiplier facts, scopes, caps, calculation order, rounding, and tie-breaks.
+
+## Verified multiplier scope examples
+
+- [CQ WW DX rules](https://www.cqww.com/rules/) award each CQ zone and country/entity once per band. Maritime-mobile contacts count for a zone multiplier only. The CQ WW sample drafts use independent multiplier rules so each rule has its own unique-value set; the entity rule excludes callsigns ending in `/MM`.
+- [CQ WPX rules](https://cqwpx.com/rules/) count each valid prefix once across the whole contest, regardless of band. CTY entity/prefix-resolution data is not the WPX prefix algorithm. The application does not claim to support WPX-style prefix extraction until [call-sign multiplier support](https://github.com/ea7klk/contestmaster/issues/274) is implemented.
+- [CW Open rules](https://cwops.org/cwops-tests/cw-open/) score each session separately. Contestmaster's `contest` scope is an entry-wide uniqueness set; representing each session as its own contest therefore resets this scope for that session. Cross-session aggregation remains a separate series/result capability and is not implied by multiplier scope.
 - [ ] Define operating limits, evidence requirements, penalties, late/checklog policy, and publication eligibility.
 - [ ] Identify engine/schema gaps and do not work around them with contest-name branches.
 - [ ] Add worked examples and boundary tests before calling the configuration verified.

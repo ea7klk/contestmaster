@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -995,6 +996,240 @@ def test_every_matching_duplicate_rule_must_allow_multiplier_credit():
     assert result.points_total == 2
     assert result.multiplier_count == 1
     assert next(item for item in result.qso_scores if item.qso_id == 2).multiplier_keys == []
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected"),
+    [
+        ("contest", 2),
+        ("band", 3),
+        ("mode", 3),
+        ("band_mode", 4),
+        ("grid", 2),
+        ("transmitter", 3),
+    ],
+)
+def test_multiplier_scope_counts_again_at_exact_scope_boundary(scope, expected):
+    payload = valid_payload()
+    multiplier = next(item for item in payload["rules"] if item["id"] == "entity-multiplier")
+    multiplier["rule"]["scope"] = scope
+    exchange = next(item for item in payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"].append(
+        {
+            "key": "grid",
+            "label": "Grid",
+            "value_type": "grid",
+            "direction": "both",
+            "required": False,
+        }
+    )
+    format_rule = next(item for item in payload["rules"] if item["id"] == "format")
+    format_rule["rule"]["qso_columns"].append("transmitter")
+    entry = ScoringEntry(
+        entry_id=1,
+        station_callsign="N0CALL",
+        categories={"operator": "single"},
+        declarations={"section": "EMA"},
+        qsos=[
+            {
+                "qso_id": 1,
+                "occurred_at": START,
+                "worked_callsign": "K1AAA",
+                "band": "20m",
+                "mode": "CW",
+                "entity": "K",
+                "grid": "FN31",
+                "transmitter": "1",
+                "sent_exchange": {"serial": 1},
+                "received_exchange": {"serial": 1, "grid": "FN31"},
+            },
+            {
+                "qso_id": 2,
+                "occurred_at": START,
+                "worked_callsign": "K1BBB",
+                "band": "20m",
+                "mode": "SSB",
+                "entity": "K",
+                "grid": "FN31",
+                "transmitter": "2",
+                "sent_exchange": {"serial": 2},
+                "received_exchange": {"serial": 2, "grid": "FN31"},
+            },
+            {
+                "qso_id": 3,
+                "occurred_at": START,
+                "worked_callsign": "K1CCC",
+                "band": "40m",
+                "mode": "CW",
+                "entity": "K",
+                "grid": "FN31",
+                "transmitter": "1",
+                "sent_exchange": {"serial": 3},
+                "received_exchange": {"serial": 3, "grid": "FN31"},
+            },
+            {
+                "qso_id": 4,
+                "occurred_at": START,
+                "worked_callsign": "VE3DDD",
+                "band": "20m",
+                "mode": "CW",
+                "entity": "VE",
+                "grid": "FN42",
+                "transmitter": "1",
+                "sent_exchange": {"serial": 4},
+                "received_exchange": {"serial": 4, "grid": "FN42"},
+            },
+        ],
+    )
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.multiplier_count == expected
+    assert all(item.status == "credited" for item in result.qso_scores)
+
+
+def test_missing_multiplier_value_withholds_all_keys_for_that_qso():
+    payload = valid_payload()
+    payload["rules"].append(
+        {
+            "id": "zone-multiplier",
+            "rule": {
+                "kind": "multiplier",
+                "source_fact": "qso.cq_zone",
+                "scope": "contest",
+                "label": "CQ zone",
+            },
+        }
+    )
+
+    result = score_entry(
+        validate_ruleset(payload),
+        sample_entry(),
+        contest_starts_at=START,
+        contest_ends_at=END,
+    )
+
+    assert result.outcome == "needs_review"
+    assert result.multiplier_count == 0
+    assert all(not item.multiplier_keys for item in result.qso_scores)
+
+
+@pytest.mark.parametrize(
+    ("source_fact", "scope", "expected_message"),
+    [
+        ("qso.grid", "band", "received or bidirectional grid exchange field"),
+        ("qso.entity", "grid", "Grid multiplier scope requires"),
+        ("qso.transmitter", "contest", "transmitter QSO column"),
+        ("qso.entity", "transmitter", "Transmitter multiplier scope requires"),
+    ],
+)
+def test_multiplier_validation_rejects_unavailable_data_sources(
+    source_fact, scope, expected_message
+):
+    payload = valid_payload()
+    multiplier = next(item for item in payload["rules"] if item["id"] == "entity-multiplier")
+    multiplier["rule"]["source_fact"] = source_fact
+    multiplier["rule"]["scope"] = scope
+
+    with pytest.raises(RulesetValidationError) as exc_info:
+        validate_ruleset(payload)
+
+    assert expected_message in str(exc_info.value.errors)
+
+
+def test_multiplier_validation_accepts_data_available_in_every_enabled_format():
+    grid_payload = valid_payload()
+    grid_multiplier = next(
+        item for item in grid_payload["rules"] if item["id"] == "entity-multiplier"
+    )
+    grid_multiplier["rule"].update(source_fact="qso.grid", scope="grid")
+    exchange = next(item for item in grid_payload["rules"] if item["id"] == "exchange")
+    exchange["rule"]["fields"].append(
+        {
+            "key": "grid",
+            "label": "Grid",
+            "value_type": "grid",
+            "direction": "received",
+            "required": False,
+        }
+    )
+    validate_ruleset(grid_payload)
+
+    transmitter_payload = valid_payload()
+    transmitter_multiplier = next(
+        item for item in transmitter_payload["rules"] if item["id"] == "entity-multiplier"
+    )
+    transmitter_multiplier["rule"].update(source_fact="qso.transmitter", scope="transmitter")
+    format_rule = next(item for item in transmitter_payload["rules"] if item["id"] == "format")
+    format_rule["rule"]["qso_columns"].append("transmitter")
+    validate_ruleset(transmitter_payload)
+
+    unsupported_combination = json.loads(json.dumps(transmitter_payload))
+    cabrillo_format = next(
+        item for item in unsupported_combination["rules"] if item["id"] == "format"
+    )
+    adif_format = json.loads(json.dumps(cabrillo_format))
+    adif_format["id"] = "format-adif"
+    adif_format["rule"]["format"] = "adif"
+    adif_format["rule"]["qso_columns"] = []
+    unsupported_combination["rules"].append(adif_format)
+
+    with pytest.raises(RulesetValidationError) as exc_info:
+        validate_ruleset(unsupported_combination)
+
+    assert "Cabrillo as every accepted log format" in str(exc_info.value.errors)
+
+
+def test_ruleset_validation_api_returns_multiplier_availability_error():
+    payload = valid_payload()
+    multiplier = next(item for item in payload["rules"] if item["id"] == "entity-multiplier")
+    multiplier["rule"]["source_fact"] = "qso.grid"
+
+    response = TestClient(app).post("/api/v1/rulesets/validate", json=payload)
+
+    assert response.status_code == 422
+    assert "qso.grid multiplier requires" in response.text
+
+
+def test_multiplier_conditions_exclude_cq_ww_maritime_mobile_entity_credit():
+    payload = valid_payload()
+    multiplier = next(item for item in payload["rules"] if item["id"] == "entity-multiplier")
+    multiplier["when"] = {
+        "kind": "not",
+        "condition": {
+            "kind": "compare",
+            "fact": "qso.worked_callsign",
+            "operator": "matches",
+            "value": ".*/MM",
+        },
+    }
+    entry = sample_entry()
+    maritime_qso = entry.qsos[1].model_copy(update={"worked_callsign": "EA1ABC/MM", "entity": "EA"})
+    entry = entry.model_copy(update={"qsos": [entry.qsos[0], maritime_qso]})
+
+    result = score_entry(
+        validate_ruleset(payload), entry, contest_starts_at=START, contest_ends_at=END
+    )
+
+    assert result.multiplier_count == 1
+    maritime_score = next(item for item in result.qso_scores if item.qso_id == maritime_qso.qso_id)
+    assert maritime_score.status == "credited"
+    assert maritime_score.multiplier_keys == []
+
+
+def test_cq_ww_draft_entity_multipliers_exclude_maritime_mobile():
+    from pathlib import Path
+
+    drafts = Path(__file__).parents[2] / "documentation" / "ruleset-drafts"
+    for name in ("cq-ww-cw.json", "cq-ww-ssb.json", "cq-ww-rtty.json"):
+        payload = json.loads((drafts / name).read_text())
+        definition = validate_ruleset(payload)
+        entity_multiplier = next(item for item in definition.rules if item.id == "multiplier-2")
+        assert entity_multiplier.rule.source_fact == "qso.entity"
+        assert entity_multiplier.rule.scope == "band"
+        assert entity_multiplier.when is not None
 
 
 def test_bonus_evidence_key_replaces_legacy_required_boolean_in_json():

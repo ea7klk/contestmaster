@@ -152,6 +152,17 @@ def _cross_reference_errors(
     exchange_fields = {
         field.key: field for rule in rules if rule.kind == "exchange" for field in rule.fields
     }
+    format_rules = [rule for rule in rules if rule.kind == "format_mapping"]
+    received_grid_field = exchange_fields.get("grid")
+    grid_exchange_available = (
+        received_grid_field is not None
+        and received_grid_field.direction in {"received", "both"}
+        and bool(format_rules)
+        and all(rule.format in {"cabrillo", "adif"} for rule in format_rules)
+    )
+    transmitter_available = bool(format_rules) and all(
+        rule.format == "cabrillo" and "transmitter" in rule.qso_columns for rule in format_rules
+    )
     for index, rule in enumerate(rules):
         if (
             rule.kind == "points"
@@ -228,6 +239,62 @@ def _cross_reference_errors(
                     {
                         "path": f"rules[{index}].source_fact",
                         "message": "Multiplier references an unsupported or undefined fact.",
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.source_fact == "qso.grid"
+                and not grid_exchange_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].source_fact",
+                        "message": (
+                            "A qso.grid multiplier requires a received or bidirectional grid "
+                            "exchange field supported by every accepted log format."
+                        ),
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.source_fact == "qso.transmitter"
+                and not transmitter_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].source_fact",
+                        "message": (
+                            "A qso.transmitter multiplier requires Cabrillo as every accepted "
+                            "log format and the transmitter QSO column."
+                        ),
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.scope == "grid"
+                and not grid_exchange_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].scope",
+                        "message": (
+                            "Grid multiplier scope requires a received or bidirectional grid "
+                            "exchange field supported by every accepted log format."
+                        ),
+                    }
+                )
+            if (
+                check_import_mapping_consistency
+                and rule.scope == "transmitter"
+                and not transmitter_available
+            ):
+                errors.append(
+                    {
+                        "path": f"rules[{index}].scope",
+                        "message": (
+                            "Transmitter multiplier scope requires Cabrillo as every accepted "
+                            "log format and the transmitter QSO column."
+                        ),
                     }
                 )
         elif rule.kind == "format_mapping":

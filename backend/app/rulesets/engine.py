@@ -470,7 +470,11 @@ def score_entry(
                     status = "needs_review"
                     multiplier_eligible = False
                     reasons.append(f"missing_multiplier_value:{configured_rule.id}")
-                    continue
+                    # A QSO is all-or-nothing across the multiplier rules that
+                    # apply to it. Do not return candidate keys if another
+                    # required multiplier value is missing.
+                    qso_multiplier_keys.clear()
+                    break
                 unique_key = f"{configured_rule.id}:{'|'.join(scope)}:{str(value).strip().upper()}"
                 if unique_key not in multiplier_keys:
                     qso_multiplier_keys.append(unique_key)

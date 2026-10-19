@@ -191,6 +191,14 @@ def _scoring_inputs(
                 worked_callsign=callsign,
                 band=scoring_band,
                 mode=qso.mode,
+                # Grid exchanges are parsed into their semantic field names. Expose
+                # the received locator as the canonical QSO grid fact used by
+                # multiplier rules and conditions.
+                grid=(
+                    str(received_exchange["grid"]).strip().upper()
+                    if received_exchange.get("grid") is not None
+                    else None
+                ),
                 transmitter=transmitter or None,
                 entity=entity,
                 cq_zone=cq_zone,
